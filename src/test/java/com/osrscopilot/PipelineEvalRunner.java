@@ -206,10 +206,10 @@ public class PipelineEvalRunner
 				continue;
 			}
 
-			out.printf("%nroute: items=%s monsters=%s quests=%s pages=%s skills=%s needs=%s facilities=%s bank=%s%n",
+			out.printf("%nroute: items=%s monsters=%s quests=%s pages=%s skills=%s needs=%s facilities=%s diaryTier=%s bank=%s%n",
 				route.entities.items, route.entities.monsters, route.entities.quests,
 				route.entities.pages, route.entities.skills, route.needs,
-				route.facilityPages, route.bankMode);
+				route.facilityPages, route.diaryTier, route.bankMode);
 
 			List<String> assertFailures = checkAssertions(item.asserts, route);
 			for (String f : assertFailures)
@@ -313,6 +313,8 @@ public class PipelineEvalRunner
 		routeLists.put("skills", route.entities.skills);
 		routeLists.put("needs", route.needs);
 		routeLists.put("facilities", route.facilityPages);
+		routeLists.put("diary_tier",
+			route.diaryTier == null ? List.of() : List.of(route.diaryTier));
 
 		for (String key : asserts.keySet())
 		{

@@ -75,6 +75,11 @@ public class CopilotPipeline
 	private static final Pattern ANAPHORIC = Pattern.compile(
 		"\\b(it|its|that|those|them|these|this|ones?|same|again|instead|"
 		+ "what about|how about|and if|what if)\\b");
+	/** Diary tiers are a closed vocabulary; the match only applies when a
+	 * resolved page is a diary, so "hard" in other questions is inert. */
+	private static final Pattern DIARY_TIER =
+		Pattern.compile("\\b(easy|medium|hard|elite)\\b", Pattern.CASE_INSENSITIVE);
+
 	private static final Object[][] FACILITY_RULES = {
 		{Pattern.compile("\\b(pray(er)?|altar)\\b"), "Altar"},
 		{Pattern.compile("\\bbank\\b"), "Bank"},
@@ -178,6 +183,9 @@ public class CopilotPipeline
 		public EntityResolver.Resolution entities;
 		public List<String> needs;
 		public List<String> facilityPages;
+		/** Named diary tier (easy/medium/hard/elite) when a diary page
+		 * resolved; routes the prefetch to that tier's section only. */
+		public String diaryTier;
 		/** complete | summarized | unknown */
 		public String bankMode;
 		public boolean hasEvents;
@@ -302,6 +310,22 @@ public class CopilotPipeline
 			r.needs.remove(NEED_TRANSPORT);
 		}
 		r.facilityPages = facilityPages(question);
+		// A diary page holds all four tiers' task tables -- far past any
+		// page budget, so a whole-page fetch truncates mid-Easy. Every
+		// diary shares the wiki's Easy/Medium/Hard/Elite section structure
+		// and tiers are a closed four-word vocabulary, so a named tier
+		// routes to exactly its section.
+		if (r.entities.pages.stream().anyMatch(CopilotPipeline::isDiaryPage))
+		{
+			Matcher tier = DIARY_TIER.matcher(question);
+			if (tier.find())
+			{
+				r.diaryTier = tier.group(1).toLowerCase(Locale.ROOT);
+				// The diary rule has claimed the tier word; without this it
+				// also resolves as a junk standalone page ("Medium").
+				r.entities.pages.removeIf(p -> p.equalsIgnoreCase(r.diaryTier));
+			}
+		}
 		r.bankMode = cap.bank == null ? "unknown"
 			: cap.bank.size() <= BANK_INLINE_LIMIT ? "complete" : "summarized";
 		log.debug("route: items={} monsters={} quests={} pages={} needs={} facilities={} bank={}",
@@ -321,6 +345,13 @@ public class CopilotPipeline
 				into.add(name);
 			}
 		}
+	}
+
+	/** Every achievement diary page ends in " Diary" ("Varrock Diary",
+	 * "Lumbridge & Draynor Diary"); tier names redirect to these. */
+	private static boolean isDiaryPage(String page)
+	{
+		return page.endsWith(" Diary");
 	}
 
 	/**
@@ -373,7 +404,7 @@ public class CopilotPipeline
 		p.ownedNames = buildOwnedNames(cap);
 		p.bankInlined = !"summarized".equals(p.route.bankMode);
 
-		List<String> facts = prefetch(p.route.entities, p.route.needs, cap,
+		List<String> facts = prefetch(p.route, cap,
 			p.ownedIndex, p.ownedNames, p.bankInlined);
 		prefetchFacilities(p.route.facilityPages, p.route.entities.pages, facts);
 		addFacilitiesFromFacts(question, p.route, facts);
@@ -772,11 +803,12 @@ public class CopilotPipeline
 	// Deterministic prefetch
 	// ------------------------------------------------------------------
 
-	private List<String> prefetch(EntityResolver.Resolution ents, List<String> needsList,
+	private List<String> prefetch(Route route,
 		GameCapture cap, Map<String, long[]> owned, Map<String, String> ownedNames, boolean bankInlined)
 	{
+		EntityResolver.Resolution ents = route.entities;
 		List<String> facts = new ArrayList<>();
-		Set<String> needs = new TreeSet<>(needsList);
+		Set<String> needs = new TreeSet<>(route.needs);
 
 		// Core bundle: monster info always; extras per needs.
 		for (String monster : limit(ents.monsters, 3))
@@ -851,6 +883,20 @@ public class CopilotPipeline
 		// third silently guts the comparison.
 		for (String page : limit(ents.pages, 3))
 		{
+			// A named diary tier replaces the whole-page fetch: the tier's
+			// section (task table + rewards, as table-preserving wikitext)
+			// is the answer; the other three tiers are pure noise.
+			if (route.diaryTier != null && isDiaryPage(page))
+			{
+				String tierHeading = "^" + route.diaryTier + "$";
+				String section = wiki.sectionByHeading(page,
+					Pattern.compile(tierHeading, Pattern.CASE_INSENSITIVE), FACILITY_CHAR_LIMIT);
+				if (section != null)
+				{
+					addFact(facts, "Diary tasks (" + route.diaryTier + "): " + page, section);
+					continue;
+				}
+			}
 			addFact(facts, "Page: " + page, wiki.page(page));
 			// Untradeable equipment (Arclight, Emberlight, barrows gloves...)
 			// resolves as a page, not an item -- it still has an infobox.
@@ -1016,7 +1062,24 @@ public class CopilotPipeline
 		state.put("bank", bank);
 		if (cap.diaries != null && !cap.diaries.isEmpty())
 		{
-			state.put("achievement_diaries", cap.diaries);
+			// Self-describing, like the bank field: bare per-area lists left
+			// the model guessing what "[]" meant. Only areas with completed
+			// tiers are listed; the note carries the semantics for the rest.
+			Map<String, Object> completed = new LinkedHashMap<>();
+			for (Map.Entry<String, Object> e : cap.diaries.entrySet())
+			{
+				if (e.getValue() instanceof List && !((List<?>) e.getValue()).isEmpty())
+				{
+					completed.put(e.getKey(), e.getValue());
+				}
+			}
+			Map<String, Object> diaries = new LinkedHashMap<>();
+			diaries.put("status", "authoritative, from the game client");
+			diaries.put("completed_tiers", completed);
+			diaries.put("note", "any area or tier not listed here is NOT complete. "
+				+ "Per-task progress inside an incomplete tier is not visible: present its "
+				+ "tasks as a checklist, never claim which individual tasks are done");
+			state.put("achievement_diaries", diaries);
 		}
 
 		StringBuilder sb = new StringBuilder();
