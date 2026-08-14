@@ -48,6 +48,7 @@ public class EntityResolver
 		("a an the i my me you your it its this that these those is are was be been "
 		+ "do does did can could should would will whats what's what how where when why which who "
 		+ "best good better fast fastest quick quickest way ways get got make making need needs "
+		+ "build building built "
 		+ "worth for with without and or not no yes of in on at to from into vs versus about "
 		+ "more less most many much have has had if while during active right now current level "
 		+ "levels xp exp experience quest quests boss monster gear setup strategy guide tips "
@@ -146,6 +147,20 @@ public class EntityResolver
 
 	public Resolution resolve(String question, Collection<String> questNames) throws IOException
 	{
+		return resolve(question, questNames, false);
+	}
+
+	/**
+	 * @param hasContext true when the conversation already has a resolved
+	 * subject. The desperation widening (trying bare dictionary words as
+	 * redirects) exists to find SOMETHING in a context-free question; on a
+	 * follow-up it only manufactures junk -- "master list of all resources"
+	 * once resolved pages Master, List, and Resources, crowding the real
+	 * subject out of the prefetch budget.
+	 */
+	public Resolution resolve(String question, Collection<String> questNames, boolean hasContext)
+		throws IOException
+	{
 		ensureVocabs();
 		Map<String, String> questVocab = new HashMap<>();
 		for (String q : questNames)
@@ -208,8 +223,10 @@ public class EntityResolver
 				continue;
 			}
 			String gram = String.join(" ", gramTokens);
+			// Inherited conversation context counts as "already resolved":
+			// it satisfies the same need desperation exists to fill.
 			if (!chosen.containsKey(gram)
-				&& isRedirectCandidate(span[1], gramTokens, gram, english, vocabHit))
+				&& isRedirectCandidate(span[1], gramTokens, gram, english, vocabHit || hasContext))
 			{
 				chosen.put(gram, span);
 			}

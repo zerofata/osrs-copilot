@@ -88,12 +88,13 @@ final class AnswerDecorator
 	private static final int ICON_SQUARE = 14;
 	private static final int ITEM_ICON_W = 16;
 
-	/** All 23 skills; every "<Skill>_icon.png" file exists on the wiki. */
+	/** All 24 skills; every "<Skill>_icon.png" file exists on the wiki. */
 	private static final List<String> SKILLS = List.of(
 		"Attack", "Strength", "Defence", "Ranged", "Prayer", "Magic",
 		"Runecraft", "Hitpoints", "Crafting", "Mining", "Smithing", "Fishing",
 		"Cooking", "Firemaking", "Woodcutting", "Agility", "Herblore",
-		"Thieving", "Fletching", "Slayer", "Farming", "Construction", "Hunter");
+		"Thieving", "Fletching", "Slayer", "Farming", "Construction", "Hunter",
+		"Sailing");
 
 	static AnswerDecorator build(GameCapture cap, EntityResolver.Resolution entities,
 		List<String> tradeableNames, IconCache icons)
