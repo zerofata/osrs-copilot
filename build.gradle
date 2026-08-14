@@ -1,0 +1,114 @@
+plugins {
+	id 'java'
+}
+
+repositories {
+	mavenLocal()
+	maven {
+		url = 'https://repo.runelite.net'
+		content {
+			includeGroupByRegex("net\\.runelite.*")
+		}
+	}
+	mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+def pluginMainClass = 'com.osrscopilot.CopilotPluginTest'
+
+dependencies {
+	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
+
+	compileOnly 'org.projectlombok:lombok:1.18.30'
+	annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+	testImplementation 'junit:junit:4.12'
+	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
+	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
+}
+
+group = 'com.osrscopilot'
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+	options.release.set(11)
+}
+
+tasks.register('run', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = pluginMainClass
+
+	jvmArgs "-ea"
+	args "--developer-mode", "--debug"
+}
+
+// Offline eval: run the in-plugin pipeline against a recorded snapshot.
+// gradlew evalRun -Penv=path/to/.env -Psnapshot=path/to/snapshot.json -Pquestion="..."
+tasks.register('evalRun', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.osrscopilot.PipelineEvalRunner'
+	// Property names prefixed to avoid colliding with Gradle's own project
+	// properties (e.g. 'model').
+	[env: 'evalEnv', snapshot: 'evalSnapshot', question: 'evalQuestion',
+	 question2: 'evalQuestion2', model: 'evalModel', showPrompt: 'evalShowPrompt',
+	 battery: 'evalBattery', routeOnly: 'evalRouteOnly',
+	 promptOnly: 'evalPromptOnly'].each { arg, prop ->
+		if (project.hasProperty(prop)) {
+			args "--${arg}", project.property(prop)
+		}
+	}
+}
+
+// Renders the chat panel offscreen to PNGs for UI review.
+// gradlew uiPreview -PpreviewTag=before
+tasks.register('uiPreview', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.osrscopilot.UiPreview'
+	if (project.hasProperty('previewTag')) {
+		args project.property('previewTag')
+	}
+}
+
+// Prints decorated answer HTML for a synthetic capture, for eyeballing.
+tasks.register('decoratorScan', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.osrscopilot.DecoratorScan'
+}
+
+// Measures the ungrounded-name detector against a recorded answer.
+// gradlew nameCheck -PscanAnswer=file.txt -PscanContext=prompt.txt
+tasks.register('nameCheck', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.osrscopilot.pipeline.NameCheckScan'
+	[answer: 'scanAnswer', context: 'scanContext'].each { arg, prop ->
+		if (project.hasProperty(prop)) {
+			args "--${arg}", project.property(prop)
+		}
+	}
+}
+
+tasks.register('shadowJar', Jar) {
+	dependsOn configurations.testRuntimeClasspath
+	manifest {
+		attributes('Main-Class': pluginMainClass, 'Multi-Release': true)
+	}
+
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	from sourceSets.main.output
+	from sourceSets.test.output
+	from {
+		configurations.testRuntimeClasspath.collect { file ->
+			file.isDirectory() ? file : zipTree(file)
+		}
+	}
+
+	exclude 'META-INF/INDEX.LIST'
+	exclude 'META-INF/*.SF'
+	exclude 'META-INF/*.DSA'
+	exclude 'META-INF/*.RSA'
+	exclude '**/module-info.class'
+
+	group = BasePlugin.BUILD_GROUP
+	archiveClassifier.set('shadow')
+	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
+}

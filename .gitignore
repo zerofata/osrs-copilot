@@ -1,0 +1,16 @@
+.gradle
+build
+.idea/
+.project
+.settings/
+.classpath
+nbactions.xml
+nb-configuration.xml
+nbproject/
+# Local development aids -- not part of the published plugin.
+# eval/ holds recorded game snapshots and prompt dumps (personal game state);
+# run.ps1 hardcodes a local JDK path; AGENTS.md/CLAUDE.md steer AI tooling.
+eval/
+run.ps1
+AGENTS.md
+CLAUDE.md
