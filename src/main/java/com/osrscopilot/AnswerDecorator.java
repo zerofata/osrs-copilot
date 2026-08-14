@@ -45,9 +45,14 @@ final class AnswerDecorator
 		/** Skill names are everyday words ("attack the demon", "a ranged
 		 * switch"); only their capitalized form denotes the skill. */
 		final boolean capitalizedOnly;
+		/** Ownership annotation ("×5,006 banked") rendered after the FIRST
+		 * mention of the name; null = none. Colors alone ask the reader to
+		 * know the legend -- the badge states it: when the model says "mine
+		 * mithril ore", the ore the player already owns says so inline. */
+		final String badge;
 
 		Rule(String lowerName, String title, String color, String iconFile,
-			int iconW, int iconH, boolean capitalizedOnly)
+			int iconW, int iconH, boolean capitalizedOnly, String badge)
 		{
 			this.lowerName = lowerName;
 			this.title = title;
@@ -56,6 +61,7 @@ final class AnswerDecorator
 			this.iconW = iconW;
 			this.iconH = iconH;
 			this.capitalizedOnly = capitalizedOnly;
+			this.badge = badge;
 		}
 	}
 
@@ -107,9 +113,7 @@ final class AnswerDecorator
 		}
 		if (cap != null)
 		{
-			addItems(byName, cap.inventory, theme.itemCarriedHex);
-			addItems(byName, cap.equipment, theme.itemCarriedHex);
-			addItems(byName, cap.bank, theme.itemBankedHex);
+			addOwnedItems(byName, cap, theme);
 		}
 		for (String skill : SKILLS)
 		{
@@ -137,8 +141,43 @@ final class AnswerDecorator
 		return new AnswerDecorator(new ArrayList<>(byName.values()), icons);
 	}
 
-	private static void addItems(Map<String, Rule> byName, List<Map<String, Object>> container,
-		String color)
+	/** Aggregate every owned copy of an item across containers (dose and
+	 * charge variants collapse to one base name), then emit a single rule
+	 * whose badge states quantity and place: "×5,006 banked", "equipped",
+	 * "×20 carried, ×5,006 banked". */
+	private static void addOwnedItems(Map<String, Rule> byName, GameCapture cap, Theme theme)
+	{
+		Map<String, long[]> counts = new LinkedHashMap<>(); // {carried, equipped, banked}
+		Map<String, String> iconName = new LinkedHashMap<>();
+		accumulate(counts, iconName, cap.inventory, 0);
+		accumulate(counts, iconName, cap.equipment, 1);
+		accumulate(counts, iconName, cap.bank, 2);
+		for (Map.Entry<String, long[]> e : counts.entrySet())
+		{
+			long[] c = e.getValue();
+			boolean carried = c[0] > 0 || c[1] > 0;
+			List<String> parts = new ArrayList<>();
+			if (c[1] > 0)
+			{
+				parts.add(c[1] > 1 ? String.format("×%,d equipped", c[1]) : "equipped");
+			}
+			if (c[0] > 0)
+			{
+				parts.add(String.format("×%,d carried", c[0]));
+			}
+			if (c[2] > 0)
+			{
+				parts.add(String.format("×%,d banked", c[2]));
+			}
+			add(byName, e.getKey(), e.getKey(),
+				carried ? theme.itemCarriedHex : theme.itemBankedHex,
+				iconName.get(e.getKey()) + ".png", ITEM_ICON_W, ICON_SQUARE, false,
+				String.join(", ", parts));
+		}
+	}
+
+	private static void accumulate(Map<String, long[]> counts, Map<String, String> iconName,
+		List<Map<String, Object>> container, int slot)
 	{
 		if (container == null)
 		{
@@ -152,12 +191,22 @@ final class AnswerDecorator
 			// The icon file keeps the exact name -- that is what the wiki's
 			// sprite files are named after.
 			String base = name.replaceAll("\\s*\\([^)]*\\)$", "").trim();
-			add(byName, base, base, color, name + ".png", ITEM_ICON_W, ICON_SQUARE, false);
+			Object q = item.get("quantity");
+			long qty = q instanceof Number ? ((Number) q).longValue() : 1;
+			counts.computeIfAbsent(base, k -> new long[3])[slot] += qty;
+			iconName.putIfAbsent(base, name);
 		}
 	}
 
 	private static void add(Map<String, Rule> byName, String name, String title,
 		String color, String iconFile, int iconW, int iconH, boolean capitalizedOnly)
+	{
+		add(byName, name, title, color, iconFile, iconW, iconH, capitalizedOnly, null);
+	}
+
+	private static void add(Map<String, Rule> byName, String name, String title,
+		String color, String iconFile, int iconW, int iconH, boolean capitalizedOnly,
+		String badge)
 	{
 		if (name == null || name.length() < MIN_NAME_LENGTH)
 		{
@@ -165,7 +214,7 @@ final class AnswerDecorator
 		}
 		byName.putIfAbsent(name.toLowerCase(Locale.ROOT),
 			new Rule(name.toLowerCase(Locale.ROOT), title, color,
-				iconFile, iconW, iconH, capitalizedOnly));
+				iconFile, iconW, iconH, capitalizedOnly, badge));
 	}
 
 	/**
@@ -212,6 +261,8 @@ final class AnswerDecorator
 		}
 		chosen.sort((a, b) -> a[0] - b[0]);
 		StringBuilder out = new StringBuilder(html.length() + chosen.size() * 64);
+		String badgeHex = Theme.active().metaHex;
+		java.util.Set<Integer> badged = new java.util.HashSet<>();
 		int pos = 0;
 		for (int[] m : chosen)
 		{
@@ -234,6 +285,13 @@ final class AnswerDecorator
 			out.append("<font color='").append(rule.color).append("'>")
 				.append(html, m[0], m[1])
 				.append("</font></a>");
+			// Ownership badge on the first mention only: repeated names in
+			// one answer would otherwise repeat the same annotation.
+			if (rule.badge != null && badged.add(m[2]))
+			{
+				out.append(" <font size='2' color='").append(badgeHex)
+					.append("'>[").append(rule.badge).append("]</font>");
+			}
 			pos = m[1];
 		}
 		out.append(html, pos, html.length());
