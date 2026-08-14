@@ -406,7 +406,17 @@ public class CopilotPipeline
 
 		List<String> facts = prefetch(p.route, cap,
 			p.ownedIndex, p.ownedNames, p.bankInlined);
-		prefetchFacilities(p.route.facilityPages, p.route.entities.pages, facts);
+		// Dedupe against pages the entity loop actually fetched: it skips
+		// pages the facility rule claimed, so those must not count here.
+		List<String> fetchedPages = new ArrayList<>();
+		for (String pg : p.route.entities.pages)
+		{
+			if (p.route.facilityPages.stream().noneMatch(f -> f.equalsIgnoreCase(pg)))
+			{
+				fetchedPages.add(pg);
+			}
+		}
+		prefetchFacilities(p.route.facilityPages, fetchedPages, facts);
 		addFacilitiesFromFacts(question, p.route, facts);
 		Map<String, String> questFacts = relevantQuestStates(question, facts,
 			p.route.entities, cap.questStates);
@@ -539,6 +549,14 @@ public class CopilotPipeline
 	 */
 	private void addFacilitiesFromFacts(String question, Route route, List<String> facts)
 	{
+		// Discovery is for questions that DON'T name a facility. When one
+		// matched, its table is already in the facts -- and facility tables
+		// list nearby amenities, so scanning them "discovers" every other
+		// facility ("nearest bank" once pulled Furnace and Cooking range).
+		if (!route.facilityPages.isEmpty())
+		{
+			return;
+		}
 		String ql = question.toLowerCase(Locale.ROOT);
 		if (!route.needs.contains(NEED_ITEM_SOURCES) && !LOCATIONAL.matcher(ql).find())
 		{
@@ -883,6 +901,15 @@ public class CopilotPipeline
 		// third silently guts the comparison.
 		for (String page : limit(ents.pages, 3))
 		{
+			// When the resolver and a facility rule land on the same page
+			// ("nearest bank" -> page Bank + facility Bank), the facility
+			// fetch wins: it targets the Locations section, which is the
+			// part a locational question needs; the generic article on top
+			// would only double the tokens.
+			if (route.facilityPages.stream().anyMatch(p -> p.equalsIgnoreCase(page)))
+			{
+				continue;
+			}
 			// A named diary tier replaces the whole-page fetch: the tier's
 			// section (task table + rewards, as table-preserving wikitext)
 			// is the answer; the other three tiers are pure noise.

@@ -48,7 +48,7 @@ public class EntityResolver
 		("a an the i my me you your it its this that these those is are was be been "
 		+ "do does did can could should would will whats what's what how where when why which who "
 		+ "best good better fast fastest quick quickest way ways get got make making need needs "
-		+ "build building built "
+		+ "build building built nearest closest "
 		+ "worth for with without and or not no yes of in on at to from into vs versus about "
 		+ "more less most many much have has had if while during active right now current level "
 		+ "levels xp exp experience quest quests boss monster gear setup strategy guide tips "
@@ -67,8 +67,12 @@ public class EntityResolver
 		+ "if while during until when where what whats what's how why which who whose "
 		+ "and or nor but not no yes vs versus "
 		+ "of in on at to from into onto with without for by about than then as "
+		// "nearest"/"closest" belong here, not just STOPWORDS: the wiki
+		// redirects "Nearest bank" to its "Closest..." navigation page, so
+		// the two-word span leaks through content counting. No real entity
+		// name begins or ends on a locational superlative.
 		+ "between above below over under across behind among upon after before near "
-		+ "there here also just really please any some").split(" ")));
+		+ "nearest closest there here also just really please any some").split(" ")));
 
 	public static class Resolution
 	{
