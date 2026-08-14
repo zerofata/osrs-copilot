@@ -78,6 +78,7 @@ public class CopilotPipeline
 		{Pattern.compile("\\bspirit tree\\b"), "Spirit tree"},
 		{Pattern.compile("\\b(farm(ing)? patch|allotment)\\b"), "Farming patch"},
 		{Pattern.compile("\\bwater(fill| source)?\\b"), "Water source"},
+		{Pattern.compile("\\bsaw ?mill\\b"), "Sawmill"},
 	};
 
 	private static final String SYNTH_SYSTEM =
@@ -127,6 +128,7 @@ public class CopilotPipeline
 		{Pattern.compile("\\b(price|cost|how much|value|alch|sell)\\b"), new String[]{NEED_PRICES}},
 		{Pattern.compile("\\bworth (doing|it|killing|farming)\\b"), new String[]{NEED_DROP_TABLE, NEED_PRICES, NEED_STRATEGY}},
 		{Pattern.compile("\\b(where|how) (do|can|to|i)\\b.*\\b(get|find|make|obtain|farm)\\b"), new String[]{NEED_ITEM_SOURCES}},
+		{Pattern.compile("\\b(quickest|fastest|easiest|best) way\\b.*\\b(get|make|obtain)\\b"), new String[]{NEED_ITEM_SOURCES}},
 		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring))\\b"), new String[]{NEED_STRATEGY}},
 		{Pattern.compile("\\b(strategy|safespot|(how|best way) to (kill|beat|fight))\\b"), new String[]{NEED_STRATEGY, NEED_MECHANICS}},
 		{Pattern.compile("\\b(afk|aggro|mechanic|spawn|attack style|weakness)\\b"), new String[]{NEED_MECHANICS}},
@@ -268,14 +270,21 @@ public class CopilotPipeline
 				questNames, r.entities);
 		}
 		// A follow-up keeps the conversation's subject unless it names a new
-		// one ("what about addy darts" is still about the monster under
-		// discussion, so its facts and quest requirements stay retrievable).
-		if (previous != null && r.entities.monsters.isEmpty()
-			&& r.entities.pages.isEmpty() && r.entities.quests.isEmpty())
+		// one. Two tiers: a question that resolves NOTHING is pure anaphora
+		// ("do i have the stats for it") and inherits everything; a question
+		// that names any new entity keeps only the monster under discussion
+		// ("what about addy darts" is still about the slayer task, but a
+		// self-contained "quickest way to get planks" must not drag pages
+		// from three questions ago into its facts).
+		if (previous != null && !r.entities.anyEntity())
 		{
 			r.entities.monsters.addAll(previous.monsters);
 			r.entities.quests.addAll(previous.quests);
 			r.entities.pages.addAll(previous.pages);
+		}
+		else if (previous != null && r.entities.monsters.isEmpty())
+		{
+			r.entities.monsters.addAll(previous.monsters);
 		}
 		r.hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
 		r.needs = classifyNeeds(question, r.hasEvents);
@@ -348,6 +357,7 @@ public class CopilotPipeline
 		List<String> facts = prefetch(p.route.entities, p.route.needs, cap,
 			p.ownedIndex, p.ownedNames, p.bankInlined);
 		prefetchFacilities(p.route.facilityPages, p.route.entities.pages, facts);
+		addFacilitiesFromFacts(question, p.route, facts);
 		Map<String, String> questFacts = relevantQuestStates(question, facts,
 			p.route.entities, cap.questStates);
 		if (questFacts != null)
@@ -466,6 +476,50 @@ public class CopilotPipeline
 			}
 		}
 		return pages;
+	}
+
+	/**
+	 * Second pass, mirror of addOwnershipFromFacts: a sourcing answer often
+	 * hinges on a facility the question never names. "Quickest way to get
+	 * planks" retrieves the Plank page, which says "sawmill" throughout but
+	 * never says WHERE one is -- a vacuum the model once filled with an
+	 * invented Taverley sawmill. When a sourcing/locational question's facts
+	 * lean on a known facility (repeated mentions, not incidental), ground
+	 * its locations from the live wiki instead of the model's memory.
+	 */
+	private void addFacilitiesFromFacts(String question, Route route, List<String> facts)
+	{
+		String ql = question.toLowerCase(Locale.ROOT);
+		if (!route.needs.contains(NEED_ITEM_SOURCES) && !LOCATIONAL.matcher(ql).find())
+		{
+			return;
+		}
+		String hay = String.join("\n", facts).toLowerCase(Locale.ROOT);
+		List<String> pages = new ArrayList<>();
+		for (Object[] rule : FACILITY_RULES)
+		{
+			String page = (String) rule[1];
+			// Banks are mentioned incidentally on half the wiki ("bank
+			// nearby", "withdraw from the bank") and every player knows
+			// where one is; only a question naming banks fetches that page.
+			if ("Bank".equals(page) || pages.size() >= 2)
+			{
+				continue;
+			}
+			Matcher m = ((Pattern) rule[0]).matcher(hay);
+			int hits = 0;
+			while (hits < 3 && m.find())
+			{
+				hits++;
+			}
+			if (hits >= 3)
+			{
+				pages.add(page);
+			}
+		}
+		List<String> alreadyFetched = new ArrayList<>(route.entities.pages);
+		alreadyFetched.addAll(route.facilityPages);
+		prefetchFacilities(pages, alreadyFetched, facts);
 	}
 
 	/** For facility questions, attach the wiki's canonical listing page
