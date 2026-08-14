@@ -115,9 +115,13 @@ class CopilotPanel extends PluginPanel
 	private final JPanel content = new JPanel(new BorderLayout(0, 8));
 	private JFrame popOutFrame;
 
-	CopilotPanel()
+	/** Base pixel size for message text; everything HTML scales from it. */
+	private final int bodyFontPx;
+
+	CopilotPanel(int bodyFontPx)
 	{
 		super(false);
+		this.bodyFontPx = bodyFontPx;
 		setLayout(new BorderLayout());
 		setBackground(theme.chromeBg);
 
@@ -505,7 +509,7 @@ class CopilotPanel extends PluginPanel
 		}
 		for (Block block : blocks)
 		{
-			block.card = new MessageCard(theme, "You".equals(block.who), linkOpener);
+			block.card = new MessageCard(theme, "You".equals(block.who), linkOpener, bodyFontPx);
 			syncCard(block);
 			messageList.add(block.card);
 		}
@@ -563,7 +567,7 @@ class CopilotPanel extends PluginPanel
 
 	private JEditorPane welcomePane()
 	{
-		JEditorPane pane = newHtmlPane(linkOpener);
+		JEditorPane pane = newHtmlPane(linkOpener, bodyFontPx);
 		pane.setText("<html><body><br><br><center>"
 			+ "<font size='4' color='" + Theme.hex(theme.accent) + "'><b>OSRS Copilot</b></font><br>"
 			+ "<font color='" + theme.welcomeTextHex + "'>"
@@ -579,7 +583,7 @@ class CopilotPanel extends PluginPanel
 	/** HTML pane tuned for card bodies: transparent, non-editable, entity
 	 * links colored but not underlined (color carries the state; underlining
 	 * every known name turns dense answers into noise). */
-	private static JEditorPane newHtmlPane(HyperlinkListener links)
+	private static JEditorPane newHtmlPane(HyperlinkListener links, int fontPx)
 	{
 		JEditorPane pane = new JEditorPane()
 		{
@@ -599,7 +603,7 @@ class CopilotPanel extends PluginPanel
 		pane.setEditable(false);
 		pane.setOpaque(false);
 		pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-		pane.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
+		pane.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, fontPx));
 		pane.addHyperlinkListener(links);
 		return pane;
 	}
@@ -830,7 +834,7 @@ class CopilotPanel extends PluginPanel
 		private final String bodyHex;
 		private final JEditorPane body;
 
-		MessageCard(Theme theme, boolean you, HyperlinkListener links)
+		MessageCard(Theme theme, boolean you, HyperlinkListener links, int fontPx)
 		{
 			super(new BorderLayout(0, 4));
 			boolean chatLine = you && theme.userAsChatLine;
@@ -853,7 +857,7 @@ class CopilotPanel extends PluginPanel
 				add(label, BorderLayout.NORTH);
 			}
 
-			body = newHtmlPane(links);
+			body = newHtmlPane(links, fontPx);
 			add(body, BorderLayout.CENTER);
 		}
 

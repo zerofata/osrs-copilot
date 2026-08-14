@@ -192,7 +192,7 @@ public class CopilotPlugin extends Plugin
 
 	private CopilotPanel createPanel()
 	{
-		CopilotPanel p = new CopilotPanel();
+		CopilotPanel p = new CopilotPanel(config.fontSize());
 		p.setAskHandler(this::askQuestion);
 		p.setClearHandler(() -> {
 			synchronized (conversation)
@@ -259,8 +259,10 @@ public class CopilotPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if ("osrscopilot".equals(event.getGroup()) && "theme".equals(event.getKey()))
+		if ("osrscopilot".equals(event.getGroup())
+			&& ("theme".equals(event.getKey()) || "fontSize".equals(event.getKey())))
 		{
+			// Both rebuild the panel and replay the conversation into it.
 			SwingUtilities.invokeLater(this::applyTheme);
 		}
 	}

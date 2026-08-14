@@ -187,6 +187,19 @@ public interface CopilotConfig extends Config
 		return PanelTheme.GAME_NATIVE;
 	}
 
+	@ConfigItem(
+		keyName = "fontSize",
+		name = "Text size",
+		description = "Base size of chat message text, in pixels",
+		section = appearanceSection,
+		position = 1
+	)
+	@Range(min = 11, max = 24)
+	default int fontSize()
+	{
+		return 13;
+	}
+
 	// ------------------------------------------------------------------
 	// Developer
 	// ------------------------------------------------------------------

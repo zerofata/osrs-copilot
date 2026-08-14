@@ -813,6 +813,63 @@ public class WikiApi
 		}
 	}
 
+	/**
+	 * Quest requirements from the wiki's structured quest bucket. The
+	 * {{Quest details}} template never survives plaintext extracts, so
+	 * without this "can I do X" answers lack the skill levels and the
+	 * prerequisite quest tree -- a vacuum the model once filled with RS3
+	 * quest names from its training data. As a bonus, prerequisite names
+	 * appearing in this fact cause the pipeline to attach the player's
+	 * live progress for each of them (relevantQuestStates scans facts).
+	 */
+	Map<String, Object> questInfo(String name)
+	{
+		try
+		{
+			JsonObject r = bucket("bucket('quest')"
+				+ ".select('page_name','requirements','items_required','start_point')"
+				+ ".where('page_name','" + name.replace("'", "\\'") + "').limit(2).run()");
+			JsonArray rows = r.getAsJsonArray("bucket");
+			if (rows == null || rows.size() == 0)
+			{
+				return Map.of("error", "No quest named '" + name
+					+ "' found. Check spelling via wiki_search.");
+			}
+			Map<String, Object> info = gson.fromJson(rows.get(0),
+				new TypeToken<Map<String, Object>>() { }.getType());
+			info.values().removeIf(Objects::isNull);
+			info.replaceAll((k, v) -> v instanceof String ? flattenWikitext((String) v) : v);
+			return info;
+		}
+		catch (Exception e)
+		{
+			return Map.of("error", "lookup failed: " + e.getMessage());
+		}
+	}
+
+	/** Line-preserving cleanup for wikitext bucket fields: drops icon file
+	 * links, unwraps [[page|label]] links, and strips HTML, but keeps the
+	 * "*"/"**" bullet nesting that encodes the prerequisite tree. */
+	private static String flattenWikitext(String wikitext)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (String line : wikitext.split("\n"))
+		{
+			String s = line
+				.replaceAll("\\[\\[File:[^\\]]*\\]\\]", "")
+				.replaceAll("\\[\\[[^|\\]]*\\|([^\\]]*)\\]\\]", "$1")
+				.replaceAll("\\[\\[([^\\]]*)\\]\\]", "$1")
+				.replaceAll("<[^>]+>", "")
+				.replaceAll("[ \t]+", " ")
+				.trim();
+			if (!s.isEmpty() && !s.matches("\\**"))
+			{
+				sb.append(s).append('\n');
+			}
+		}
+		return sb.toString().trim();
+	}
+
 	/** Bucket TEXT fields can carry raw HTML ("<div class=..>*31 (auto)");
 	 * flatten to plain text so stat blocks stay readable. */
 	@SuppressWarnings("unchecked")

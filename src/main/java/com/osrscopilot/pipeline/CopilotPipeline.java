@@ -765,6 +765,10 @@ public class CopilotPipeline
 		for (String quest : limit(ents.quests, 2))
 		{
 			addFact(facts, "Quest page: " + quest, wiki.page(quest, FACT_PAGE_BUDGET));
+			// Requirements live in the {{Quest details}} template, which no
+			// text fetch carries. The prerequisite names in this fact also
+			// pull the player's progress for each via relevantQuestStates.
+			addFact(facts, "Quest requirements: " + quest, wiki.questInfo(quest));
 		}
 
 		// Other resolved pages (locations, guides, diaries...). wiki.page()
@@ -1074,6 +1078,9 @@ public class CopilotPipeline
 		specs.add(toolSpec("item_stats",
 			"Get a wearable item's combat bonuses: attack and defence by style, "
 				+ "strength, ranged strength, magic damage, and prayer.", "item_name"));
+		specs.add(toolSpec("quest_info",
+			"Get a quest's requirements (skill levels and prerequisite quests), "
+				+ "items required, and start point.", "quest_name"));
 		specs.add(toolSpec("ge_price",
 			"Current Grand Exchange price, buy limit, and high-alch value of an item.",
 			"item_name"));
@@ -1151,6 +1158,7 @@ public class CopilotPipeline
 		tools.put("monster_drops", args -> wiki.monsterDrops(str(args, "name")));
 		tools.put("monster_info", args -> wiki.monsterInfo(str(args, "name")));
 		tools.put("item_stats", args -> wiki.itemStats(str(args, "item_name")));
+		tools.put("quest_info", args -> wiki.questInfo(str(args, "quest_name")));
 		tools.put("ge_price", args -> wiki.gePrice(str(args, "item_name")));
 		tools.put("quest_status", args -> {
 			if (cap.questStates == null || cap.questStates.isEmpty())

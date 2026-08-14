@@ -49,7 +49,7 @@ public final class UiPreview
 	private static void render(String tag, int width, int height, boolean seedConversation)
 		throws Exception
 	{
-		CopilotPanel panel = new CopilotPanel();
+		CopilotPanel panel = new CopilotPanel(13);
 		panel.setAskHandler(q -> {
 		});
 		if (seedConversation)
