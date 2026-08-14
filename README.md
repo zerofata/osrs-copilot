@@ -55,6 +55,8 @@ normally (see [Using Jagex Accounts](https://github.com/runelite/runelite/wiki/U
 if you use a Jagex account), then open the plugin settings (wrench icon ->
 OSRS Copilot) and set:
 
+- **Enable copilot** -- off by default; nothing is sent anywhere until you
+  turn this on and accept the third-party-server warning
 - **API base URL** -- an OpenAI-compatible endpoint, e.g. `https://api.example.com/v1`
 - **API key** -- if your endpoint needs one
 - **Model** -- the model name your endpoint serves

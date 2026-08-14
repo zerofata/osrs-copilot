@@ -50,11 +50,26 @@ public interface CopilotConfig extends Config
 	// ------------------------------------------------------------------
 
 	@ConfigItem(
+		keyName = "enableCopilot",
+		name = "Enable copilot",
+		description = "Allow the copilot to send questions and game state to your configured LLM endpoint",
+		warning = "This feature submits your IP address and game state (skills, quests, "
+			+ "inventory, equipment, bank) to a 3rd-party server not controlled or "
+			+ "verified by RuneLite developers: the LLM endpoint you configure below.",
+		section = endpointSection,
+		position = 0
+	)
+	default boolean enableCopilot()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "apiBaseUrl",
 		name = "API base URL",
 		description = "OpenAI-compatible base URL, e.g. https://api.parasail.io/v1 or http://localhost:8000/v1",
 		section = endpointSection,
-		position = 0
+		position = 1
 	)
 	default String apiBaseUrl()
 	{
@@ -66,7 +81,7 @@ public interface CopilotConfig extends Config
 		name = "API key",
 		description = "Bearer token for the endpoint (leave empty if not required)",
 		section = endpointSection,
-		position = 1,
+		position = 2,
 		secret = true
 	)
 	default String apiKey()
@@ -79,7 +94,7 @@ public interface CopilotConfig extends Config
 		name = "Model",
 		description = "Model name as the endpoint expects it, e.g. deepseek-ai/DeepSeek-V4-Flash",
 		section = endpointSection,
-		position = 2
+		position = 3
 	)
 	default String model()
 	{

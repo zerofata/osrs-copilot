@@ -299,6 +299,15 @@ public class CopilotPlugin extends Plugin
 	/** Called from the Swing EDT when the player submits a question. */
 	private void askQuestion(String question)
 	{
+		// Plugin Hub contract: features that talk to a third-party server are
+		// opt-in. Nothing leaves the client until the user flips this on.
+		if (!config.enableCopilot())
+		{
+			panel.showError("Enable the copilot in the plugin settings first "
+				+ "(wrench icon -> OSRS Copilot -> Enable copilot). Your questions and "
+				+ "game state are sent only to the LLM endpoint you configure there.");
+			return;
+		}
 		Llm.Settings settings = llmSettings();
 		if (!settings.isConfigured())
 		{
