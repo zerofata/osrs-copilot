@@ -31,15 +31,26 @@ and what it cost.
 
 ## Running it
 
-Requires JDK 11 (e.g. [Adoptium Temurin 11](https://adoptium.net/)).
+**1. Install JDK 11** -- [Adoptium Temurin 11](https://adoptium.net/temurin/releases/?version=11)
+(pick the JDK `.msi` for Windows). In the installer, enable the
+**"Set JAVA_HOME variable"** feature (it's off by default) -- Gradle needs it.
+If Java is installed but you still get a `JAVA_HOME is not set` error, either
+re-run the installer and enable that feature, or set it manually to your JDK
+folder (e.g. `C:\Program Files\Eclipse Adoptium\jdk-11.x.x-hotspot`).
+
+**2. Clone and run:**
 
 ```
-git clone <this repo>
-cd probe-plugin
-./gradlew run
+git clone https://github.com/zerofata/osrs-copilot
+cd osrs-copilot
+gradlew run
 ```
 
-This launches RuneLite in developer mode with the plugin loaded. Log in
+(`gradlew run` in Command Prompt, `.\gradlew run` in PowerShell,
+`./gradlew run` on macOS/Linux.)
+
+The first run downloads dependencies and takes a few minutes; later runs are
+fast. It launches RuneLite in developer mode with the plugin loaded. Log in
 normally (see [Using Jagex Accounts](https://github.com/runelite/runelite/wiki/Using-Jagex-Accounts)
 if you use a Jagex account), then open the plugin settings (wrench icon ->
 OSRS Copilot) and set:
