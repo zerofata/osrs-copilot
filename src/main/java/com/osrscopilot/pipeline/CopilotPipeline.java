@@ -67,7 +67,14 @@ public class CopilotPipeline
 	 * banks) flow through with no code change; only a brand-new facility
 	 * type would need a line here. Gated on locational phrasing. */
 	private static final Pattern LOCATIONAL =
-		Pattern.compile("\\b(where|nearest|closest|near me|how far)\\b");
+		Pattern.compile("\\b(where|nearest|closest|closer|nearby|near me|how far)\\b");
+
+	/** Words that point back at the conversation instead of standing alone.
+	 * Their presence means the previous turn's subject is still live and its
+	 * entities should carry into this turn's retrieval. */
+	private static final Pattern ANAPHORIC = Pattern.compile(
+		"\\b(it|its|that|those|them|these|this|ones?|same|again|instead|"
+		+ "what about|how about|and if|what if)\\b");
 	private static final Object[][] FACILITY_RULES = {
 		{Pattern.compile("\\b(pray(er)?|altar)\\b"), "Altar"},
 		{Pattern.compile("\\bbank\\b"), "Bank"},
@@ -269,22 +276,20 @@ public class CopilotPipeline
 			resolver.resolveInto(String.valueOf(cap.slayerTask.get("creature")),
 				questNames, r.entities);
 		}
-		// A follow-up keeps the conversation's subject unless it names a new
-		// one. Two tiers: a question that resolves NOTHING is pure anaphora
-		// ("do i have the stats for it") and inherits everything; a question
-		// that names any new entity keeps only the monster under discussion
-		// ("what about addy darts" is still about the slayer task, but a
-		// self-contained "quickest way to get planks" must not drag pages
-		// from three questions ago into its facts).
-		if (previous != null && !r.entities.anyEntity())
+		// A follow-up inherits the conversation's subject when it points back
+		// at it -- an anaphor in the text ("what ABOUT addy darts", "which
+		// ONES are closer", "do i have the stats for IT") or nothing newly
+		// resolved. A self-contained question ("quickest way to get planks")
+		// starts clean even mid-conversation: its own entities are its
+		// subject, and stale pages from three turns ago would pollute its
+		// facts. Inherited entities are merged AFTER the question's own, so
+		// prefetch limits favor what the player just said.
+		if (previous != null && (!r.entities.anyEntity()
+			|| ANAPHORIC.matcher(question.toLowerCase(Locale.ROOT)).find()))
 		{
-			r.entities.monsters.addAll(previous.monsters);
-			r.entities.quests.addAll(previous.quests);
-			r.entities.pages.addAll(previous.pages);
-		}
-		else if (previous != null && r.entities.monsters.isEmpty())
-		{
-			r.entities.monsters.addAll(previous.monsters);
+			mergeMissing(previous.monsters, r.entities.monsters);
+			mergeMissing(previous.quests, r.entities.quests);
+			mergeMissing(previous.pages, r.entities.pages);
 		}
 		r.hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
 		r.needs = classifyNeeds(question, r.hasEvents);
@@ -302,6 +307,19 @@ public class CopilotPipeline
 			r.entities.items, r.entities.monsters, r.entities.quests, r.entities.pages,
 			r.needs, r.facilityPages, r.bankMode);
 		return r;
+	}
+
+	/** Append entries from previous that the current list doesn't already
+	 * have, preserving current-question-first order. */
+	private static void mergeMissing(List<String> previous, List<String> into)
+	{
+		for (String name : previous)
+		{
+			if (!into.contains(name))
+			{
+				into.add(name);
+			}
+		}
 	}
 
 	/**
