@@ -64,6 +64,10 @@ public class WikiApi
 		public int x;
 		public int y;
 		public int plane;
+		/** True for dungeons: their marker on the surface map is the
+		 * entrance, not the place itself -- a surface player standing on
+		 * it is NEXT TO the dungeon, never in it. */
+		public boolean entrance;
 	}
 
 	public WikiApi(Http http, Gson gson, File cacheDir)
@@ -191,7 +195,8 @@ public class WikiApi
 	{
 		if (locationIndex == null)
 		{
-			String json = cachedFetch("locations.json", () -> {
+			// v2: entrance-tagged dungeons (the old cache lacks the flag).
+			String json = cachedFetch("locations-v2.json", () -> {
 				Set<String> places = new HashSet<>();
 				JsonObject r = bucket("bucket('infobox_location').select('page_name').limit(5000).run()");
 				for (JsonElement row : r.getAsJsonArray("bucket"))
@@ -202,6 +207,7 @@ public class WikiApi
 						places.add(name.getAsString());
 					}
 				}
+				Set<String> dungeons = categoryMembers("Dungeons");
 
 				List<NamedPoint> points = new ArrayList<>();
 				Set<String> seen = new HashSet<>();
@@ -241,6 +247,7 @@ public class WikiApi
 							p.x = (int) opts.get("x").getAsDouble();
 							p.y = (int) opts.get("y").getAsDouble();
 							p.plane = opts.has("plane") ? opts.get("plane").getAsInt() : 0;
+							p.entrance = dungeons.contains(name);
 							points.add(p);
 						}
 						catch (Exception ignored)
@@ -258,6 +265,26 @@ public class WikiApi
 			locationIndex = gson.fromJson(json, new TypeToken<List<NamedPoint>>() { }.getType());
 		}
 		return locationIndex;
+	}
+
+	/** All page titles in a wiki category, following pagination. */
+	private Set<String> categoryMembers(String category) throws IOException
+	{
+		Set<String> titles = new HashSet<>();
+		String cont = null;
+		do
+		{
+			JsonObject r = http.getJson(WIKI_API + "?action=query&list=categorymembers&format=json"
+				+ "&cmtitle=" + Http.enc("Category:" + category) + "&cmlimit=500"
+				+ (cont != null ? "&cmcontinue=" + Http.enc(cont) : ""));
+			for (JsonElement e : r.getAsJsonObject("query").getAsJsonArray("categorymembers"))
+			{
+				titles.add(e.getAsJsonObject().get("title").getAsString());
+			}
+			cont = r.has("continue")
+				? r.getAsJsonObject("continue").get("cmcontinue").getAsString() : null;
+		} while (cont != null);
+		return titles;
 	}
 
 	/** Nearest named places to a world point, closest first. Empty on

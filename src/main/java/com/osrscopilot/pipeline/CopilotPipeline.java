@@ -1146,31 +1146,56 @@ public class CopilotPipeline
 		{
 			int x = ((Number) xo).intValue();
 			int y = ((Number) yo).intValue();
-			List<WikiApi.NamedPoint> near = wiki.nearestPlaces(x, y, 2);
-			if (!near.isEmpty())
+			// The primary place must be one the player can BE in. A dungeon's
+			// surface marker is its entrance, so a player standing on it is in
+			// the surrounding area, not the dungeon -- "you are in the Yanille
+			// Agility Dungeon" from a Yanille street corner came from here.
+			WikiApi.NamedPoint place = null;
+			WikiApi.NamedPoint second = null;
+			WikiApi.NamedPoint entrance = null;
+			for (WikiApi.NamedPoint p : wiki.nearestPlaces(x, y, 4))
 			{
-				WikiApi.NamedPoint p = near.get(0);
-				long dist = Math.round(Math.sqrt(WikiApi.distSq(p, x, y)));
-				// The index covers the surface map. In dungeons/instances the
-				// coordinates land far from every mapped place -- a wrong name
-				// is worse than none, so past a sanity bound say nothing.
-				if (dist <= 300)
+				if (Math.round(Math.sqrt(WikiApi.distSq(p, x, y))) > 300)
 				{
-					out.put("place", p.name + (dist <= 40 ? "" : " (~" + dist + " tiles away)"));
-					if (near.size() > 1)
-					{
-						out.put("also_near", near.get(1).name);
-					}
+					break;
 				}
-				else if (y >= 6400)
+				if (p.entrance)
 				{
-					// Deterministic fact: the coordinate plane above y=6400
-					// holds dungeons and instances, not the surface world.
-					out.put("place", "underground or instanced area (off the surface map)");
+					entrance = entrance == null ? p : entrance;
 				}
-				// Otherwise: no named place within range; say nothing rather
-				// than something wrong.
+				else if (place == null)
+				{
+					place = p;
+				}
+				else if (second == null)
+				{
+					second = p;
+				}
 			}
+			if (place != null)
+			{
+				long dist = Math.round(Math.sqrt(WikiApi.distSq(place, x, y)));
+				out.put("place", place.name + (dist <= 40 ? "" : " (~" + dist + " tiles away)"));
+				if (second != null)
+				{
+					out.put("also_near", second.name);
+				}
+			}
+			if (entrance != null)
+			{
+				long dist = Math.round(Math.sqrt(WikiApi.distSq(entrance, x, y)));
+				out.put("nearby_entrance", entrance.name
+					+ " (surface entrance ~" + dist + " tiles away; the player is NOT inside)");
+			}
+			if (place == null && entrance == null && y >= 6400)
+			{
+				// Deterministic fact: the coordinate plane above y=6400
+				// holds dungeons and instances, not the surface world. The
+				// index covers the surface map, so nothing matched here.
+				out.put("place", "underground or instanced area (off the surface map)");
+			}
+			// Otherwise: no named place within range; say nothing rather
+			// than something wrong.
 		}
 		return out;
 	}
