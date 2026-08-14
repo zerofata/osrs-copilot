@@ -9,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Entity-aware answer styling: quest names colored by the player's actual
@@ -251,6 +253,10 @@ final class AnswerDecorator
 				{
 					continue;
 				}
+				if (fragmentOfLargerName(html, end))
+				{
+					continue;
+				}
 				for (int k = i; k < end; k++)
 				{
 					offLimits[k] = true;
@@ -320,6 +326,28 @@ final class AnswerDecorator
 			}
 		}
 		return blocked;
+	}
+
+	/**
+	 * Continuation of a title-case phrase: whitespace, optional lowercase
+	 * connectors, then a capitalized word. Anything else (punctuation, tags,
+	 * ordinary lowercase prose) ends the phrase.
+	 */
+	private static final Pattern PROPER_NOUN_CONTINUES =
+		Pattern.compile("\\s+(?:(?:of|the|de)\\s+)*\\p{Lu}");
+
+	/**
+	 * True when the matched name is only a fragment of a longer proper noun
+	 * ("Bank" in "Bank of Gielinor", "Varrock" in "Varrock Teleport"). The
+	 * rule's page describes the whole name's referent, not the fragment's,
+	 * so linking the fragment would mislabel it. The longer name, if it is a
+	 * real page, is still caught by the unverified-name check.
+	 */
+	private static boolean fragmentOfLargerName(String html, int end)
+	{
+		Matcher m = PROPER_NOUN_CONTINUES.matcher(html);
+		m.region(end, html.length());
+		return m.lookingAt();
 	}
 
 	private static boolean wordBounded(String s, int start, int end)
