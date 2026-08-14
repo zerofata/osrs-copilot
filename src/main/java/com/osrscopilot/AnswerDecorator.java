@@ -97,7 +97,7 @@ final class AnswerDecorator
 		"Sailing");
 
 	static AnswerDecorator build(GameCapture cap, EntityResolver.Resolution entities,
-		List<String> tradeableNames, IconCache icons)
+		List<String[]> itemNames, IconCache icons)
 	{
 		Theme theme = Theme.active();
 		Map<String, Rule> byName = new LinkedHashMap<>();
@@ -131,12 +131,14 @@ final class AnswerDecorator
 				}
 			}
 		}
-		if (tradeableNames != null)
+		if (itemNames != null)
 		{
-			for (String name : tradeableNames)
+			// {name, page}: versioned names ("Fire cape (l)") match by name
+			// but link to their shared page; icon files are named per name.
+			for (String[] it : itemNames)
 			{
-				add(byName, name, name, theme.itemUnownedHex,
-					name + ".png", ITEM_ICON_W, ICON_SQUARE, false);
+				add(byName, it[0], it[1], theme.itemUnownedHex,
+					it[0] + ".png", ITEM_ICON_W, ICON_SQUARE, false);
 			}
 		}
 		return new AnswerDecorator(new ArrayList<>(byName.values()), icons);

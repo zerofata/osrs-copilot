@@ -96,7 +96,9 @@ public final class UiPreview
 			Map.of("name", "Neitiznot faceguard", "quantity", 1));
 		EntityResolver.Resolution ents = new EntityResolver.Resolution();
 		ents.monsters.add("Tormented Demon");
-		List<String> tradeable = List.of("Bow of Faerdhinen", "Dragon dart");
+		List<String[]> tradeable = List.of(
+			new String[]{"Bow of Faerdhinen", "Bow of Faerdhinen"},
+			new String[]{"Dragon dart", "Dragon dart"});
 
 		ask(panel, "what should i bring for tormented demons");
 		String answer = "You have **While Guthix Sleeps** done, so you can fight them. "

@@ -114,11 +114,13 @@ public class EntityResolver
 	{
 		if (itemVocab == null)
 		{
+			// GE catalogue plus untradeables, junk-filtered at the source;
+			// values are the canonical page, so versioned names ("Fire cape
+			// (l)") retrieve their shared page.
 			Map<String, String> items = new HashMap<>();
-			for (Map<String, Object> it : wiki.geMapping())
+			for (String[] it : wiki.knownItemNames())
 			{
-				String name = (String) it.get("name");
-				items.put(norm(name), name);
+				items.putIfAbsent(norm(it[0]), it[1]);
 			}
 			Map<String, String> monsters = new HashMap<>();
 			for (String name : wiki.monsterNames())
@@ -330,18 +332,21 @@ public class EntityResolver
 			{
 				return new String[]{"monsters", monsterVocab.get(candidate)};
 			}
+			// Skills outrank items: the item index contains interface
+			// pseudo-items named exactly after skills ("Smithing (interface
+			// item)"), and a bare skill name always means the skill.
+			if (SKILL_ALIASES.containsKey(candidate))
+			{
+				return new String[]{"skills", title(SKILL_ALIASES.get(candidate))};
+			}
+			if (SKILLS.contains(candidate))
+			{
+				return new String[]{"skills", title(candidate)};
+			}
 			if (itemVocab.containsKey(candidate))
 			{
 				return new String[]{"items", itemVocab.get(candidate)};
 			}
-		}
-		if (SKILL_ALIASES.containsKey(gram))
-		{
-			return new String[]{"skills", title(SKILL_ALIASES.get(gram))};
-		}
-		if (SKILLS.contains(gram))
-		{
-			return new String[]{"skills", title(gram)};
 		}
 		return null;
 	}

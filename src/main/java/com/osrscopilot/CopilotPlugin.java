@@ -396,7 +396,7 @@ public class CopilotPlugin extends Plugin
 			// here on the worker thread: it may fetch the GE catalogue.
 			String decorated = AnswerDecorator
 				.build(capture, result.route != null ? result.route.entities : null,
-					pipeline.tradeableItemNames(), iconCache)
+					pipeline.knownItemNames(), iconCache)
 				.decorate(MarkdownHtml.toHtml(result.answer));
 			SwingUtilities.invokeLater(() ->
 				panel.showAnswerDone(result.answer, decorated, result.millis / 1000.0,

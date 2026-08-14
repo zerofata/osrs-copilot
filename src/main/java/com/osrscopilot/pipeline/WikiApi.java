@@ -56,6 +56,7 @@ public class WikiApi
 	private Set<String> monsterNames;
 	private Set<String> englishWords;
 	private List<NamedPoint> locationIndex;
+	private List<String[]> itemNameIndex;
 
 	/** A named place on the world map, from the wiki's live map data. */
 	public static class NamedPoint
@@ -122,6 +123,105 @@ public class WikiApi
 			monsterNames = gson.fromJson(json, new TypeToken<Set<String>>() { }.getType());
 		}
 		return monsterNames;
+	}
+
+	/**
+	 * Every item in the game as {item name (per version), canonical page},
+	 * from the wiki's item infoboxes. The GE catalogue only covers
+	 * tradeables; this closes the gap (fire capes, void, quest items) for
+	 * the resolver and the UI decorator. Versioned names ("Fire cape (l)")
+	 * each map to their shared page. Removed content is excluded.
+	 */
+	public synchronized List<String[]> allItemNames() throws IOException
+	{
+		if (itemNameIndex == null)
+		{
+			String json = cachedFetch("items.json", () -> {
+				List<String[]> out = new ArrayList<>();
+				Set<String> seen = new HashSet<>();
+				for (int offset = 0; offset < 100_000; offset += 5000)
+				{
+					JsonObject page = bucket("bucket('infobox_item')"
+						+ ".select('page_name','item_name','removal_date')"
+						+ ".limit(5000).offset(" + offset + ").run()");
+					JsonArray rows = page.getAsJsonArray("bucket");
+					if (rows == null || rows.size() == 0)
+					{
+						break;
+					}
+					for (JsonElement e : rows)
+					{
+						JsonObject row = e.getAsJsonObject();
+						JsonElement name = row.get("item_name");
+						JsonElement removed = row.get("removal_date");
+						if (name == null || name.isJsonNull()
+							|| (removed != null && !removed.isJsonNull()))
+						{
+							continue;
+						}
+						JsonElement pg = row.get("page_name");
+						String pageName = pg != null && !pg.isJsonNull()
+							? pg.getAsString() : name.getAsString();
+						if (seen.add(name.getAsString()))
+						{
+							out.add(new String[]{name.getAsString(), pageName});
+						}
+					}
+					if (rows.size() < 5000)
+					{
+						break;
+					}
+				}
+				return gson.toJson(out);
+			});
+			itemNameIndex = gson.fromJson(json, new TypeToken<List<String[]>>() { }.getType());
+		}
+		return itemNameIndex;
+	}
+
+	/**
+	 * The one item-name list both the resolver and the UI decorator use:
+	 * the GE catalogue (authoritative for tradeables), extended with
+	 * untradeable names from the item infobox index. Infobox entries whose
+	 * name is a single common English word are excluded -- they are obscure
+	 * quest junk and interface pseudo-items ("Diary (Witch's House)",
+	 * "Prayer (interface item)", "Key", "Note") and claiming bare
+	 * dictionary words breaks real references ("Varrock diary", "prayer
+	 * level"). Same principle as the resolver's desperation rule.
+	 */
+	public synchronized List<String[]> knownItemNames() throws IOException
+	{
+		List<String[]> out = new ArrayList<>();
+		Set<String> seen = new HashSet<>();
+		for (Map<String, Object> it : geMapping())
+		{
+			String name = (String) it.get("name");
+			if (name != null && seen.add(name.toLowerCase(Locale.ROOT)))
+			{
+				out.add(new String[]{name, name});
+			}
+		}
+		try
+		{
+			Set<String> english = englishWords();
+			for (String[] it : allItemNames())
+			{
+				String name = it[0];
+				if (name.indexOf(' ') < 0 && english.contains(name.toLowerCase(Locale.ROOT)))
+				{
+					continue;
+				}
+				if (seen.add(name.toLowerCase(Locale.ROOT)))
+				{
+					out.add(it);
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			log.warn("item infobox index unavailable; untradeables resolve as pages only", e);
+		}
+		return out;
 	}
 
 	/** 10k most common English words; used by the resolver to spot slang

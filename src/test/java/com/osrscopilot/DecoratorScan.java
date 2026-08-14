@@ -37,8 +37,12 @@ public final class DecoratorScan
 		EntityResolver.Resolution entities = new EntityResolver.Resolution();
 		entities.monsters.add("Tormented Demon");
 
-		List<String> tradeable = List.of(
-			"Bow of Faerdhinen", "Diamond", "Diamond bolts", "Shark", "Emberlight");
+		List<String[]> tradeable = List.of(
+			new String[]{"Bow of Faerdhinen", "Bow of Faerdhinen"},
+			new String[]{"Diamond", "Diamond"},
+			new String[]{"Diamond bolts", "Diamond bolts"},
+			new String[]{"Shark", "Shark"},
+			new String[]{"Emberlight", "Emberlight"});
 
 		String answer = "You need **While Guthix Sleeps** done (it is) and A Kingdom Divided "
 			+ "unlocks Dark Demonbane. The Giant Dwarf is half done.\n\n"

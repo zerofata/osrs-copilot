@@ -369,23 +369,18 @@ public class CopilotPipeline
 		return q.matches(".*\\b(task|assignment)\\b.*");
 	}
 
-	/** Route and retrieve, stopping short of the model. */
-	/** Canonical tradeable item names from the GE catalogue, for UI entity
-	 * linking. Best-effort: empty when the catalogue can't be fetched. */
-	public List<String> tradeableItemNames()
+	/** Every known item as {name, wiki page} (tradeable and untradeable
+	 * alike), for UI entity linking. Best-effort: empty when the sources
+	 * can't be fetched. */
+	public List<String[]> knownItemNames()
 	{
 		try
 		{
-			List<String> names = new ArrayList<>();
-			for (Map<String, Object> it : wiki.geMapping())
-			{
-				names.add((String) it.get("name"));
-			}
-			return names;
+			return wiki.knownItemNames();
 		}
 		catch (Exception e)
 		{
-			log.debug("GE catalogue unavailable for decoration", e);
+			log.debug("item names unavailable for decoration", e);
 			return List.of();
 		}
 	}
