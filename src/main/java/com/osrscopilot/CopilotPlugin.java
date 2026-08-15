@@ -137,9 +137,26 @@ public class CopilotPlugin extends Plugin
 	// Recent gameplay events kept for question context (client thread only).
 	private final Deque<Map<String, Object>> recentEvents = new ArrayDeque<>();
 
+	/** One completed turn: the pipeline exchange (LLM history) plus what the
+	 * turn rendered. Panel rebuilds (theme/font-size changes) replay the
+	 * rendered form verbatim, so decoration and meta survive them. */
+	private static final class Turn
+	{
+		final CopilotPipeline.Exchange exchange;
+		final String decoratedHtml;
+		final String meta;
+
+		Turn(CopilotPipeline.Exchange exchange, String decoratedHtml, String meta)
+		{
+			this.exchange = exchange;
+			this.decoratedHtml = decoratedHtml;
+			this.meta = meta;
+		}
+	}
+
 	// Conversation session: completed exchanges only (errors never enter).
 	// Touched from the EDT and the executor, hence the synchronization.
-	private final List<CopilotPipeline.Exchange> conversation = new ArrayList<>();
+	private final List<Turn> conversation = new ArrayList<>();
 
 	@Override
 	protected void startUp() throws Exception
@@ -269,9 +286,12 @@ public class CopilotPlugin extends Plugin
 
 	/**
 	 * A theme is baked into every component at construction, so switching
-	 * means building a fresh panel. The conversation record replays into it
-	 * (plain markdown; entity decoration belongs to the turn that made it),
-	 * so changing themes never costs the player their chat.
+	 * means building a fresh panel. The conversation replays into it exactly
+	 * as rendered (decoration, meta line and all), so a rebuild never costs
+	 * the player their chat or its styling. After a theme switch old
+	 * messages keep the entity colors of the theme they were answered
+	 * under -- an acceptable trade against re-running decoration, which
+	 * would need the game capture of every past turn.
 	 */
 	private void applyTheme()
 	{
@@ -285,9 +305,10 @@ public class CopilotPlugin extends Plugin
 		panel = createPanel();
 		synchronized (conversation)
 		{
-			for (CopilotPipeline.Exchange exchange : conversation)
+			for (Turn turn : conversation)
 			{
-				panel.seedExchange(exchange.question, exchange.answer);
+				panel.seedExchange(turn.exchange.question, turn.exchange.answer,
+					turn.decoratedHtml, turn.meta);
 			}
 		}
 		navButton = createNavButton(panel);
@@ -374,10 +395,13 @@ public class CopilotPlugin extends Plugin
 			}
 		};
 
-		List<CopilotPipeline.Exchange> history;
+		List<CopilotPipeline.Exchange> history = new ArrayList<>();
 		synchronized (conversation)
 		{
-			history = new ArrayList<>(conversation);
+			for (Turn turn : conversation)
+			{
+				history.add(turn.exchange);
+			}
 		}
 
 		try
@@ -386,20 +410,32 @@ public class CopilotPlugin extends Plugin
 				pipeline.answer(question, history, capture, settings, maxTurns, listener);
 			log.debug("answered in {}ms, {} fact blocks, {} tool calls, {} context chars",
 				result.millis, result.factBlocks, result.toolLog.size(), result.contextChars);
-			synchronized (conversation)
-			{
-				conversation.add(new CopilotPipeline.Exchange(question, result.answer,
-					result.route != null ? result.route.entities : null));
-			}
 			String meta = answerMeta(result);
 			// Entity decoration (wiki links, quest/item state colors) runs
-			// here on the worker thread: it may fetch the GE catalogue.
-			String decorated = AnswerDecorator
-				.build(capture, result.route != null ? result.route.entities : null,
-					pipeline.knownItemNames(), iconCache)
-				.decorate(MarkdownHtml.toHtml(result.answer));
+			// here on the worker thread: it may fetch the GE catalogue. A
+			// failure costs only the styling, never the answer.
+			String decorated = null;
+			try
+			{
+				decorated = AnswerDecorator
+					.build(capture, result.route != null ? result.route.entities : null,
+						pipeline.knownItemNames(), iconCache)
+					.decorate(MarkdownHtml.toHtml(result.answer));
+			}
+			catch (Exception e)
+			{
+				log.warn("answer decoration failed", e);
+			}
+			String decoratedHtml = decorated;
+			synchronized (conversation)
+			{
+				conversation.add(new Turn(
+					new CopilotPipeline.Exchange(question, result.answer,
+						result.route != null ? result.route.entities : null),
+					decoratedHtml, meta));
+			}
 			SwingUtilities.invokeLater(() ->
-				panel.showAnswerDone(result.answer, decorated, result.millis / 1000.0,
+				panel.showAnswerDone(result.answer, decoratedHtml, result.millis / 1000.0,
 					capture.bank != null, meta));
 		}
 		catch (Exception e)

@@ -270,17 +270,19 @@ class CopilotPanel extends PluginPanel
 		}
 	}
 
-	/** Replay one completed exchange into a fresh panel (theme switches
-	 * rebuild the panel; the conversation must survive the swap). Rendered
-	 * from markdown without entity decoration or meta -- those belong to
-	 * the live turn that produced them. */
-	void seedExchange(String question, String answer)
+	/** Replay one completed exchange into a fresh panel (theme and font-size
+	 * changes rebuild the panel; the conversation must survive the swap).
+	 * The answer re-renders exactly as the turn produced it: decorated HTML
+	 * and meta line when available, markdown otherwise. */
+	void seedExchange(String question, String answer, String decoratedHtml, String meta)
 	{
 		Block q = new Block("You");
 		q.text.append(question);
 		blocks.add(q);
 		Block a = new Block("Copilot");
 		a.text.append(answer);
+		a.decoratedHtml = decoratedHtml;
+		a.meta = meta;
 		blocks.add(a);
 		restoreCount = blocks.size();
 		rebuild();
