@@ -8,10 +8,6 @@ import com.osrscopilot.pipeline.GameCapture;
 import com.osrscopilot.pipeline.HttpException;
 import com.osrscopilot.pipeline.Llm;
 import com.osrscopilot.pipeline.StreamListener;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -58,6 +54,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.ImageUtil;
 import okhttp3.OkHttpClient;
 
 /**
@@ -121,8 +118,7 @@ public class CopilotPlugin extends Plugin
 	private CopilotPanel panel;
 	private NavigationButton navButton;
 	private IconCache iconCache;
-	/** Toolbar icon: starts as a drawn placeholder, upgraded to the Wise
-	 * Old Man chathead once the icon cache has it. EDT-confined. */
+	/** Toolbar icon: the plugin's wizard-hat mark, bundled as a resource. */
 	private BufferedImage navIcon;
 	private BufferedWriter eventLog;
 
@@ -169,11 +165,10 @@ public class CopilotPlugin extends Plugin
 		iconCache = new IconCache(new File(CACHE_DIR, "icons"), okHttpClient);
 
 		Theme.setActive(Theme.byName(config.theme().key));
-		navIcon = makeIcon();
+		navIcon = ImageUtil.loadImageResource(CopilotPlugin.class, "nav-icon.png");
 		panel = createPanel();
 		navButton = createNavButton(panel);
 		clientToolbar.addNavigation(navButton);
-		executor.execute(this::upgradeNavIcon);
 
 		if (config.logEvents())
 		{
@@ -228,49 +223,6 @@ public class CopilotPlugin extends Plugin
 			.priority(7)
 			.panel(forPanel)
 			.build();
-	}
-
-	/** Runs on the executor: fetch the Wise Old Man chathead (the game's
-	 * guide archetype) and swap it in as the toolbar icon. The drawn
-	 * placeholder stays if the fetch fails -- purely cosmetic, never fatal. */
-	private void upgradeNavIcon()
-	{
-		File f = iconCache.file("Wise_Old_Man_chathead.png");
-		if (f == null)
-		{
-			return;
-		}
-		try
-		{
-			BufferedImage img = javax.imageio.ImageIO.read(f);
-			if (img == null)
-			{
-				return;
-			}
-			double scale = Math.min(24.0 / img.getWidth(), 24.0 / img.getHeight());
-			int w = (int) Math.round(img.getWidth() * scale);
-			int h = (int) Math.round(img.getHeight() * scale);
-			BufferedImage scaled = new BufferedImage(24, 24, BufferedImage.TYPE_INT_ARGB);
-			Graphics2D g = scaled.createGraphics();
-			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-				RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-			g.drawImage(img, (24 - w) / 2, (24 - h) / 2, w, h, null);
-			g.dispose();
-			SwingUtilities.invokeLater(() -> {
-				if (panel == null || navButton == null)
-				{
-					return;
-				}
-				navIcon = scaled;
-				clientToolbar.removeNavigation(navButton);
-				navButton = createNavButton(panel);
-				clientToolbar.addNavigation(navButton);
-			});
-		}
-		catch (Exception e)
-		{
-			log.debug("nav icon upgrade failed", e);
-		}
 	}
 
 	@Subscribe
@@ -854,20 +806,6 @@ public class CopilotPlugin extends Plugin
 		{
 			log.warn("Bank load failed", e);
 		}
-	}
-
-	private static BufferedImage makeIcon()
-	{
-		BufferedImage img = new BufferedImage(24, 24, BufferedImage.TYPE_INT_ARGB);
-		Graphics2D g = img.createGraphics();
-		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-		g.setColor(new Color(30, 90, 160));
-		g.fillRoundRect(1, 1, 22, 22, 8, 8);
-		g.setColor(Color.WHITE);
-		g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
-		g.drawString("AI", 5, 16);
-		g.dispose();
-		return img;
 	}
 
 	private List<Map<String, Object>> itemList(ItemContainer container)
