@@ -39,6 +39,12 @@ tasks.register('run', JavaExec) {
 	mainClass = pluginMainClass
 
 	jvmArgs "-ea"
+	// The production launcher applies the client's UI scale setting as a JVM
+	// flag; a gradle-launched dev client skips the launcher, so pass it here.
+	// gradlew run -PuiScale=2
+	if (project.hasProperty('uiScale')) {
+		jvmArgs "-Dsun.java2d.uiScale=${project.property('uiScale')}"
+	}
 	args "--developer-mode", "--debug"
 }
 
