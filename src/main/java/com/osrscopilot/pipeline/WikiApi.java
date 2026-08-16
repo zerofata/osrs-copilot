@@ -557,7 +557,8 @@ public class WikiApi
 						title, text.length(), pageBytes);
 					return wikitext(title, WIKITEXT_CHAR_LIMIT);
 				}
-				return truncate(text, charLimit > 0 ? charLimit : PAGE_CHAR_LIMIT);
+				return withQuerySections(title, text,
+					charLimit > 0 ? charLimit : PAGE_CHAR_LIMIT);
 			}
 		}
 		catch (Exception e)
@@ -628,13 +629,94 @@ public class WikiApi
 		{
 			String text = rawWikitext(title);
 			text = inlineSubpages(title, text, charLimit);
-			return truncate(text, charLimit);
+			return withQuerySections(title, text, charLimit);
 		}
 		catch (Exception e)
 		{
 			log.debug("wikitext fetch failed for {}", title, e);
 			return null;
 		}
+	}
+
+	// ------------------------------------------------------------------
+	// Render-time query sections
+	// ------------------------------------------------------------------
+
+	/** Sections whose whole body is a render-time query template are
+	 * invisible to BOTH extraction paths: the plaintext extract strips the
+	 * rendered table and the raw wikitext holds only the {{...}} stub. One
+	 * such template matters for answers -- "Used in recommended equipment",
+	 * the wiki's ranked index of which strategy pages recommend an item.
+	 * That is exactly the data a "where is X best-in-slot" question needs,
+	 * and it exists nowhere else. */
+	private static final String USED_IN_REC_EQUIP = "Used in recommended equipment";
+	private static final Pattern REC_EQUIP_HUSK = Pattern.compile(
+		"(\\{\\{Used in recommended equipment[^}]*\\}\\}|==+ *Used in recommended equipment *==+)");
+	private static final int RENDERED_SECTION_CHAR_LIMIT = 2500;
+
+	/**
+	 * Truncate page text to its budget, then re-attach any render-time query
+	 * section rendered for real. Appending AFTER truncation is deliberate:
+	 * the section sits at the tail of long pages, where a fixed budget would
+	 * silently drop the page's only unique data. The in-place husk (stub or
+	 * bare heading) is removed so the model never sees an empty section and
+	 * concludes the wiki has nothing there.
+	 */
+	private String withQuerySections(String title, String text, int charLimit)
+	{
+		boolean present = text.contains(USED_IN_REC_EQUIP);
+		String out = truncate(text, charLimit);
+		if (!present)
+		{
+			return out;
+		}
+		String rendered = renderTemplate("{{" + USED_IN_REC_EQUIP + "|" + title + "}}");
+		if (rendered == null || rendered.length() < 20)
+		{
+			return out;
+		}
+		out = REC_EQUIP_HUSK.matcher(out).replaceAll("");
+		return out + "\n\n== " + USED_IN_REC_EQUIP + " ==\n"
+			+ "(rank 1 = listed best-in-slot on that strategy page)\n"
+			+ truncate(rendered, RENDERED_SECTION_CHAR_LIMIT);
+	}
+
+	/** Render one template invocation by itself and flatten the HTML. */
+	private String renderTemplate(String wikitextCall)
+	{
+		try
+		{
+			JsonObject r = http.getJson(WIKI_API + "?action=parse&format=json&prop=text"
+				+ "&contentmodel=wikitext&text=" + Http.enc(wikitextCall));
+			return htmlToText(r.getAsJsonObject("parse").getAsJsonObject("text")
+				.get("*").getAsString());
+		}
+		catch (Exception e)
+		{
+			log.debug("template render failed for {}", wikitextCall, e);
+			return null;
+		}
+	}
+
+	/** Row-preserving HTML flattening: block closers become line breaks,
+	 * tags go, the entities that appear in game names are unescaped. */
+	private static String htmlToText(String html)
+	{
+		String text = html
+			.replaceAll("(?i)</(tr|li|p|h[1-6]|caption)>", "\n")
+			.replaceAll("<[^>]+>", " ")
+			.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"")
+			.replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ");
+		StringBuilder out = new StringBuilder();
+		for (String line : text.split("\n"))
+		{
+			String collapsed = line.replaceAll("\\s+", " ").trim();
+			if (!collapsed.isEmpty())
+			{
+				out.append(collapsed).append('\n');
+			}
+		}
+		return out.toString().trim();
 	}
 
 	private String rawWikitext(String title) throws IOException
