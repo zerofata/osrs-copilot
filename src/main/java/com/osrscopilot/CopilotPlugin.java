@@ -434,8 +434,8 @@ public class CopilotPlugin extends Plugin
 	{
 		if (e instanceof EmptyAnswerException)
 		{
-			return "The model didn't produce an answer (it kept emitting tool calls "
-				+ "or empty text) - press Enter to resubmit.";
+			return "The model didn't produce an answer: " + e.getMessage()
+				+ ". Press Enter to resubmit.";
 		}
 		if (e instanceof HttpException)
 		{

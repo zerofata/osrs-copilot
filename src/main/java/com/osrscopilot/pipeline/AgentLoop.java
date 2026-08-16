@@ -37,13 +37,22 @@ class AgentLoop
 		for (int turn = 0; turn < maxTurns; turn++)
 		{
 			result.turns = turn + 1;
+			// A model told its research budget spends the last turn answering;
+			// one that discovers the cutoff after the fact leaks tool markup
+			// instead of prose. Warn before the final turn, not after it.
+			if (turn == maxTurns - 1 && turn > 0)
+			{
+				messages.add(message("user", "Research budget nearly exhausted: any tool "
+					+ "calls in your next message are the LAST that will be executed. "
+					+ "Prefer answering now from what you have gathered."));
+			}
 			JsonObject msg = llm.chat(messages, toolSpecs, listener);
 			JsonArray toolCalls = msg.has("tool_calls") && msg.get("tool_calls").isJsonArray()
 				? msg.getAsJsonArray("tool_calls") : null;
 
 			if (toolCalls == null || toolCalls.size() == 0)
 			{
-				result.answer = ensureAnswer(llm, messages, contentOf(msg), listener);
+				result.answer = ensureAnswer(llm, messages, contentOf(msg), listener, result);
 				return result;
 			}
 
@@ -104,7 +113,7 @@ class AgentLoop
 		messages.add(message("user",
 			"Stop researching. Give your final answer now using the facts you have gathered."));
 		result.answer = ensureAnswer(llm, messages,
-			contentOf(llm.chat(messages, null, listener)), listener);
+			contentOf(llm.chat(messages, null, listener)), listener, result);
 		return result;
 	}
 
@@ -114,10 +123,11 @@ class AgentLoop
 	 * (or nothing at all) when they mean to keep researching; retry once
 	 * with an explicit corrective, then fail loudly -- the panel's error
 	 * path returns the question for resubmission, which beats rendering a
-	 * blank card as if it were an answer.
+	 * blank card as if it were an answer. The exception carries the tool
+	 * trace: an errored turn otherwise leaves nothing to diagnose with.
 	 */
 	private static String ensureAnswer(Llm llm, JsonArray messages, String answer,
-		StreamListener listener) throws IOException
+		StreamListener listener, Result result) throws IOException
 	{
 		if (!looksLikeToolMarkup(answer))
 		{
@@ -132,9 +142,25 @@ class AgentLoop
 		String retry = contentOf(llm.chat(messages, null, listener));
 		if (looksLikeToolMarkup(retry))
 		{
-			throw new EmptyAnswerException();
+			throw new EmptyAnswerException(result.turns, toolNames(result.toolLog));
 		}
 		return retry;
+	}
+
+	/** Bare tool names from the log's "name({args})" entries. */
+	private static String toolNames(List<String> toolLog)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (String entry : toolLog)
+		{
+			if (sb.length() > 0)
+			{
+				sb.append(", ");
+			}
+			int paren = entry.indexOf('(');
+			sb.append(paren > 0 ? entry.substring(0, paren) : entry);
+		}
+		return sb.toString();
 	}
 
 	private static String toolCallNames(JsonArray toolCalls)

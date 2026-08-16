@@ -137,10 +137,13 @@ public interface CopilotConfig extends Config
 		section = samplingSection,
 		position = 2
 	)
+	// Budget-and-ownership questions legitimately spend three turns on
+	// research (owned items, then prices, then a follow-up); a default that
+	// forces the answer mid-research fails the heaviest supported questions.
 	@Range(min = 1, max = 8)
 	default int maxToolTurns()
 	{
-		return 3;
+		return 4;
 	}
 
 	// ------------------------------------------------------------------

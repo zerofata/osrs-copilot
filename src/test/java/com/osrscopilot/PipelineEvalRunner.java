@@ -188,7 +188,9 @@ public class PipelineEvalRunner
 				else
 				{
 					out.println("\n=== ANSWER (streaming) ===");
-					result = pipeline.answer(item.question, history, cap, settings, 3, listener);
+					// Matches CopilotConfig.maxToolTurns() so evals exercise
+					// the same budget the plugin ships with.
+					result = pipeline.answer(item.question, history, cap, settings, 4, listener);
 					route = result.route;
 					history.add(new CopilotPipeline.Exchange(item.question, result.answer,
 						route.entities));
