@@ -34,31 +34,8 @@ import okhttp3.OkHttpClient;
 @Slf4j
 public class CopilotPipeline
 {
-	/** Prompt budget per secondary page fact (items, quests, strategy
-	 * fallbacks). Passed to WikiApi as the fetch budget -- truncation happens
-	 * once, at the content source, never re-applied here. */
-	private static final int FACT_PAGE_BUDGET = 4500;
-	/** Facility listing tables need more room: "closest X" is only answerable
-	 * if the player's region made it into the excerpt. */
-	private static final int FACILITY_CHAR_LIMIT = 9000;
-	/** Equipment sections hold one gear table per combat style; multi-style
-	 * bosses (the ones gear questions are hardest for) need them all.
-	 * Sized to fit a three-style tabber (Tormented Demons: ~11k chars). */
-	private static final int EQUIPMENT_CHAR_LIMIT = 12000;
 	private static final int HISTORY_MAX_EXCHANGES = 6;
 	private static final int HISTORY_MAX_CHARS = 8000;
-
-	/** Location and boss pages carry their travel options in a dedicated
-	 * section; matched by heading, so this works for any destination. */
-	private static final Pattern TRANSPORT_HEADING =
-		Pattern.compile("(?i)transport|getting there|travel|access");
-
-	private static final Pattern LOCATIONS_HEADING =
-		Pattern.compile("(?i)^locations?$|list of|where to find");
-
-	/** Strategy pages keep recommended gear in an equipment/setup section. */
-	private static final Pattern EQUIPMENT_HEADING =
-		Pattern.compile("(?i)\\b(equipment|gear|setups?|loadout)\\b");
 
 	private static final String SYNTH_SYSTEM =
 		"You are an OSRS copilot running inside RuneLite. Answer the player's question "
@@ -179,6 +156,7 @@ public class CopilotPipeline
 	private final EntityResolver resolver;
 	private final Hiscores hiscores;
 	private final Router router;
+	private final Prefetcher prefetcher;
 
 	public CopilotPipeline(OkHttpClient httpClient, Gson gson, File cacheDir)
 	{
@@ -188,6 +166,7 @@ public class CopilotPipeline
 		this.resolver = new EntityResolver(wiki);
 		this.hiscores = new Hiscores(http);
 		this.router = new Router(resolver);
+		this.prefetcher = new Prefetcher(wiki, gson);
 	}
 
 	/** Warm vocabulary caches (call off-thread, e.g. at plugin start). */
@@ -316,7 +295,7 @@ public class CopilotPipeline
 		p.ownedNames = Ownership.buildNames(cap);
 		p.bankInlined = !"summarized".equals(p.route.bankMode);
 
-		List<String> facts = prefetch(p.route, cap,
+		List<String> facts = prefetcher.prefetch(p.route, cap,
 			p.ownedIndex, p.ownedNames, p.bankInlined);
 		// Dedupe against pages the entity loop actually fetched: it skips
 		// pages the facility rule claimed, so those must not count here.
@@ -328,9 +307,9 @@ public class CopilotPipeline
 				fetchedPages.add(pg);
 			}
 		}
-		prefetchFacilities(p.route.facilityPages, fetchedPages, facts);
-		addFacilitiesFromFacts(question, p.route, facts);
-		Map<String, String> questFacts = relevantQuestStates(question, facts,
+		prefetcher.prefetchFacilities(p.route.facilityPages, fetchedPages, facts);
+		prefetcher.addFacilitiesFromFacts(question, p.route, facts);
+		Map<String, String> questFacts = Prefetcher.relevantQuestStates(question, facts,
 			p.route.entities, cap.questStates);
 		if (questFacts != null)
 		{
@@ -339,7 +318,7 @@ public class CopilotPipeline
 		}
 		if (!p.bankInlined)
 		{
-			addOwnershipFromFacts(facts, p.ownedIndex, p.ownedNames);
+			prefetcher.addOwnershipFromFacts(facts, p.ownedIndex, p.ownedNames);
 		}
 
 		p.factBlocks = facts.size();
@@ -432,81 +411,6 @@ public class CopilotPipeline
 		}
 	}
 
-	/**
-	 * Second pass, mirror of addOwnershipFromFacts: a sourcing answer often
-	 * hinges on a facility the question never names. "Quickest way to get
-	 * planks" retrieves the Plank page, which says "sawmill" throughout but
-	 * never says WHERE one is -- a vacuum the model once filled with an
-	 * invented Taverley sawmill. When a sourcing/locational question's facts
-	 * lean on a known facility (repeated mentions, not incidental), ground
-	 * its locations from the live wiki instead of the model's memory.
-	 */
-	private void addFacilitiesFromFacts(String question, Route route, List<String> facts)
-	{
-		// Discovery is for questions that DON'T name a facility. When one
-		// matched, its table is already in the facts -- and facility tables
-		// list nearby amenities, so scanning them "discovers" every other
-		// facility ("nearest bank" once pulled Furnace and Cooking range).
-		if (!route.facilityPages.isEmpty())
-		{
-			return;
-		}
-		String ql = question.toLowerCase(Locale.ROOT);
-		if (!route.needs.contains(Router.NEED_ITEM_SOURCES) && !Router.LOCATIONAL.matcher(ql).find())
-		{
-			return;
-		}
-		String hay = String.join("\n", facts).toLowerCase(Locale.ROOT);
-		List<String> pages = new ArrayList<>();
-		for (Object[] rule : Router.FACILITY_RULES)
-		{
-			String page = (String) rule[1];
-			// Banks are mentioned incidentally on half the wiki ("bank
-			// nearby", "withdraw from the bank") and every player knows
-			// where one is; only a question naming banks fetches that page.
-			if ("Bank".equals(page) || pages.size() >= 2)
-			{
-				continue;
-			}
-			Matcher m = ((Pattern) rule[0]).matcher(hay);
-			int hits = 0;
-			while (hits < 3 && m.find())
-			{
-				hits++;
-			}
-			if (hits >= 3)
-			{
-				pages.add(page);
-			}
-		}
-		List<String> alreadyFetched = new ArrayList<>(route.entities.pages);
-		alreadyFetched.addAll(route.facilityPages);
-		prefetchFacilities(pages, alreadyFetched, facts);
-	}
-
-	/** For facility questions, attach the wiki's canonical listing page
-	 * (its Locations section when present, else the page wikitext). */
-	private void prefetchFacilities(List<String> facilityPages, List<String> alreadyFetched,
-		List<String> facts)
-	{
-		for (String page : facilityPages)
-		{
-			// The resolver often lands on the same page the facility rule
-			// names ("nearest anvil" -> page Anvil + facility Anvil); fetching
-			// it twice only doubles the tokens.
-			if (alreadyFetched.stream().anyMatch(p -> p.equalsIgnoreCase(page)))
-			{
-				continue;
-			}
-			String text = wiki.sectionByHeading(page, LOCATIONS_HEADING, FACILITY_CHAR_LIMIT);
-			if (text == null)
-			{
-				text = wiki.wikitext(page, FACILITY_CHAR_LIMIT);
-			}
-			addFact(facts, "Facility locations: " + page, text);
-		}
-	}
-
 	/** Newest-first budget: keep the most recent exchanges within both the
 	 * exchange and character caps, preserving chronological order. */
 	private static List<Exchange> boundedHistory(List<Exchange> history)
@@ -528,260 +432,6 @@ public class CopilotPipeline
 			kept.add(0, ex);
 		}
 		return kept;
-	}
-
-	/** Cap on the ownership slice below; past this the block is noise, and
-	 * the batched search tool covers the rest. */
-	private static final int OWNERSHIP_FACT_LIMIT = 120;
-
-	/**
-	 * Ownership slice for a summarized bank: whichever owned items the
-	 * retrieved facts mention are declared up front, so gear, quest, and
-	 * training answers start with the ownership they need instead of
-	 * discovering it one tool call at a time (a diligent model once made 55
-	 * single-item searches for one gear question). Format-blind by
-	 * construction: it matches the client's own item names against fact
-	 * text, never parsing the page -- so it behaves the same for every
-	 * route and every page layout, and can't be broken by a wiki reformat.
-	 */
-	private void addOwnershipFromFacts(List<String> facts, Map<String, long[]> owned,
-		Map<String, String> names)
-	{
-		String haystack = String.join("\n", facts).toLowerCase(Locale.ROOT);
-		Map<String, Long> mentioned = new LinkedHashMap<>();
-		for (Map.Entry<String, long[]> e : owned.entrySet())
-		{
-			// Charge/dose qualifiers exist in bank names but never in prose:
-			// "Prayer potion(4)" must match a page saying "prayer potions".
-			String base = e.getKey().replaceAll("\\s*\\([^)]*\\)$", "").trim();
-			if (base.length() < 3 || !Ownership.mentionsWord(haystack, base))
-			{
-				continue;
-			}
-			String display = names.get(e.getKey()).replaceAll("\\s*\\([^)]*\\)$", "").trim();
-			mentioned.merge(display, e.getValue()[0], Long::sum);
-		}
-		if (mentioned.isEmpty())
-		{
-			return;
-		}
-		StringBuilder sb = new StringBuilder();
-		int n = 0;
-		for (Map.Entry<String, Long> e : mentioned.entrySet())
-		{
-			if (n >= OWNERSHIP_FACT_LIMIT)
-			{
-				sb.append(", ...");
-				break;
-			}
-			sb.append(n++ > 0 ? ", " : "").append(e.getKey());
-			if (e.getValue() > 1)
-			{
-				sb.append(" x").append(e.getValue());
-			}
-		}
-		addFact(facts, "You own (of the items mentioned in these facts; "
-			+ "anything not listed was absent at capture)", sb.toString());
-	}
-
-	// ------------------------------------------------------------------
-	// Deterministic prefetch
-	// ------------------------------------------------------------------
-
-	private List<String> prefetch(Route route,
-		GameCapture cap, Map<String, long[]> owned, Map<String, String> ownedNames, boolean bankInlined)
-	{
-		EntityResolver.Resolution ents = route.entities;
-		List<String> facts = new ArrayList<>();
-		Set<String> needs = new TreeSet<>(route.needs);
-
-		// Core bundle: monster info always; extras per needs.
-		for (String monster : limit(ents.monsters, 3))
-		{
-			addFact(facts, "Monster info: " + monster, wiki.monsterInfo(monster));
-			if (needs.contains(Router.NEED_DROP_TABLE) || needs.contains(Router.NEED_PRICES))
-			{
-				addFact(facts, "Drop table: " + monster, wiki.monsterDrops(monster));
-			}
-			if (needs.contains(Router.NEED_STRATEGY) || needs.contains(Router.NEED_MECHANICS))
-			{
-				String strategyPage = monster + "/Strategies";
-				String text = wiki.page(strategyPage);
-				String label = "Strategy: " + monster;
-				if (text == null)
-				{
-					strategyPage = monster;
-					text = wiki.page(monster, FACT_PAGE_BUDGET);
-					label = "Page: " + monster;
-				}
-				addFact(facts, label, text);
-				// Recommended gear lives in equipment tables, which plaintext
-				// extracts strip without tripping the husk detector (the rest
-				// of the page is prose). Same mechanism as transport: fetch
-				// the section by heading, as table-preserving wikitext.
-				addFact(facts, "Recommended equipment: " + monster,
-					wiki.sectionByHeading(strategyPage, EQUIPMENT_HEADING, EQUIPMENT_CHAR_LIMIT));
-			}
-			if (needs.contains(Router.NEED_TRANSPORT))
-			{
-				String section = wiki.sectionByHeading(monster, TRANSPORT_HEADING, FACT_PAGE_BUDGET);
-				addFact(facts, "Getting there: " + monster, section);
-			}
-		}
-
-		// Core bundle: item page always (recipes/requirements live there).
-		// Ownership fact only when the bank couldn't be inlined into the state.
-		for (String item : limit(ents.items, 4))
-		{
-			addFact(facts, "Item page: " + item, wiki.page(item, FACT_PAGE_BUDGET));
-			// Combat bonuses live in the infobox, which no text fetch ever
-			// carries. Non-equipment returns a not-found that addFact skips.
-			addFact(facts, "Equipment stats: " + item, wiki.itemStats(item));
-			if (!bankInlined)
-			{
-				addFact(facts, "Ownership: " + item, Ownership.check(owned, ownedNames, item));
-			}
-			if (needs.contains(Router.NEED_ITEM_SOURCES) || needs.contains(Router.NEED_DROP_TABLE))
-			{
-				addFact(facts, "How to obtain: " + item, wiki.itemDropSources(item));
-			}
-			if (needs.contains(Router.NEED_PRICES))
-			{
-				addFact(facts, "GE price: " + item, wiki.gePrice(item));
-			}
-		}
-
-		// Core bundle: quest page always.
-		for (String quest : limit(ents.quests, 2))
-		{
-			addFact(facts, "Quest page: " + quest, wiki.page(quest, FACT_PAGE_BUDGET));
-			// Requirements live in the {{Quest details}} template, which no
-			// text fetch carries. The prerequisite names in this fact also
-			// pull the player's progress for each via relevantQuestStates.
-			addFact(facts, "Quest requirements: " + quest, wiki.questInfo(quest));
-		}
-
-		// Other resolved pages (locations, guides, diaries...). wiki.page()
-		// serves wikitext automatically for table-heavy page categories.
-		// Three, matching monsters: comparison questions legitimately name
-		// three subjects ("blowpipe vs demon bow vs bowfa") and dropping the
-		// third silently guts the comparison.
-		for (String page : limit(ents.pages, 3))
-		{
-			// When the resolver and a facility rule land on the same page
-			// ("nearest bank" -> page Bank + facility Bank), the facility
-			// fetch wins: it targets the Locations section, which is the
-			// part a locational question needs; the generic article on top
-			// would only double the tokens.
-			if (route.facilityPages.stream().anyMatch(p -> p.equalsIgnoreCase(page)))
-			{
-				continue;
-			}
-			// A named diary tier replaces the whole-page fetch: the tier's
-			// section (task table + rewards, as table-preserving wikitext)
-			// is the answer; the other three tiers are pure noise.
-			if (route.diaryTier != null && Router.isDiaryPage(page))
-			{
-				String tierHeading = "^" + route.diaryTier + "$";
-				String section = wiki.sectionByHeading(page,
-					Pattern.compile(tierHeading, Pattern.CASE_INSENSITIVE), FACILITY_CHAR_LIMIT);
-				if (section != null)
-				{
-					addFact(facts, "Diary tasks (" + route.diaryTier + "): " + page, section);
-					continue;
-				}
-			}
-			addFact(facts, "Page: " + page, wiki.page(page));
-			// Untradeable equipment (Arclight, Emberlight, barrows gloves...)
-			// resolves as a page, not an item -- it still has an infobox.
-			addFact(facts, "Equipment stats: " + page, wiki.itemStats(page));
-			if (needs.contains(Router.NEED_TRANSPORT))
-			{
-				// Travel options live in a dedicated section that the
-				// truncated extract usually cuts off; fetch it by heading.
-				String section = wiki.sectionByHeading(page, TRANSPORT_HEADING, FACT_PAGE_BUDGET);
-				addFact(facts, "Getting there: " + page, section);
-			}
-		}
-
-		// "<Skill> training" is a universal wiki convention -- a page or a
-		// redirect to the canonical guide for every skill -- so one rule
-		// covers all of them and new skills arrive without a code change.
-		if (needs.contains(Router.NEED_TRAINING))
-		{
-			for (String skill : limit(ents.skills, 2))
-			{
-				addFact(facts, "Training guide: " + skill, wiki.page(skill + " training"));
-			}
-		}
-
-		if (needs.contains(Router.NEED_XP_MATH) && cap.skillXp != null)
-		{
-			for (String skill : limit(ents.skills, 2))
-			{
-				Integer xp = cap.skillXp.get(skill);
-				if (xp != null)
-				{
-					int[] next = XpTable.toNextLevel(xp);
-					Map<String, Object> math = new LinkedHashMap<>();
-					math.put("current_xp", xp);
-					math.put("current_level", next[0]);
-					math.put("next_level", next[1]);
-					math.put("xp_needed_for_next_level", next[2]);
-					addFact(facts, "XP math: " + skill, math);
-				}
-			}
-		}
-		return facts;
-	}
-
-	/** A failed lookup is not a fact. Content methods signal failure with
-	 * null; the structured lookups (prices, drops, monster info) return
-	 * error maps because the LLM tool boundary wants the message -- prefetch
-	 * wants neither, so both shapes are skipped here, uniformly. */
-	private void addFact(List<String> facts, String label, Object payload)
-	{
-		if (payload == null || (payload instanceof Map && ((Map<?, ?>) payload).containsKey("error")))
-		{
-			log.debug("prefetch: {} -> nothing found, skipped", label);
-			return;
-		}
-		String text = payload instanceof String ? (String) payload : gson.toJson(payload);
-		facts.add("### " + label + "\n" + text);
-		log.debug("prefetch: {} ({}B)", label, text.length());
-	}
-
-	/** Attach the player's progress for every quest the question or facts
-	 * mention, so quest gates arrive pre-verified. */
-	private static Map<String, String> relevantQuestStates(String question, List<String> facts,
-		EntityResolver.Resolution ents, Map<String, String> questStates)
-	{
-		if (questStates == null || questStates.isEmpty())
-		{
-			return null;
-		}
-		String hay = (question + " " + String.join(" ", facts)).toLowerCase(Locale.ROOT);
-		Map<String, String> rel = new LinkedHashMap<>();
-		for (String q : ents.quests)
-		{
-			if (questStates.containsKey(q))
-			{
-				rel.put(q, questStates.get(q));
-			}
-		}
-		for (Map.Entry<String, String> e : questStates.entrySet())
-		{
-			if (rel.size() >= 15)
-			{
-				break;
-			}
-			if (!rel.containsKey(e.getKey()) && e.getKey().length() >= 6
-				&& hay.contains(e.getKey().toLowerCase(Locale.ROOT)))
-			{
-				rel.put(e.getKey(), e.getValue());
-			}
-		}
-		return rel.isEmpty() ? null : rel;
 	}
 
 	// ------------------------------------------------------------------
