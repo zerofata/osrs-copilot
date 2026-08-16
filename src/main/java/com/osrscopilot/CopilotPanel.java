@@ -13,15 +13,12 @@ import java.awt.RenderingHints;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JEditorPane;
-import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollBar;
@@ -31,16 +28,13 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.HyperlinkEvent;
 import javax.swing.event.HyperlinkListener;
-import javax.swing.plaf.basic.BasicScrollBarUI;
-import javax.swing.text.html.HTMLEditorKit;
-import javax.swing.text.html.StyleSheet;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.LinkBrowser;
 
 /**
- * Sidebar chat panel. Pure view: collects questions, renders answers.
- * All methods must be called on the Swing EDT.
+ * Sidebar chat panel. Pure view: collects questions, renders answers from a
+ * {@link TranscriptModel}. All methods must be called on the Swing EDT.
  *
  * The conversation is a stack of real Swing message cards (custom-painted)
  * rather than one big HTML document: Swing's HTML renderer is stuck in HTML
@@ -56,37 +50,18 @@ class CopilotPanel extends PluginPanel
 
 	private final Theme theme = Theme.active();
 
-	private static class Block
-	{
-		final String who;
-		final StringBuilder text = new StringBuilder();
-		/** Dim disclosure line under an answer: what the model was given. */
-		String meta;
-		/** Interim activity (tool-call preamble, "Looking up ..." lines),
-		 * shown dim above the text so the model's work stays visible
-		 * instead of vanishing; cleared when the final answer arrives. */
-		final List<String> working = new ArrayList<>();
-		/** Finished answers arrive pre-rendered and entity-decorated (wiki
-		 * links, quest/item state colors); streaming text renders live from
-		 * markdown until then. */
-		String decoratedHtml;
-		/** The card currently displaying this block, if built. */
-		MessageCard card;
+	private final TranscriptModel model = new TranscriptModel();
+	/** The card currently displaying each block; rebuilt on structural
+	 * changes, patched in place while streaming. */
+	private final Map<TranscriptModel.Block, MessageCard> cards = new HashMap<>();
 
-		Block(String who)
-		{
-			this.who = who;
-		}
-	}
-
-	private final List<Block> blocks = new ArrayList<>();
 	private final JPanel messageList = new ScrollableStack();
 	private final JScrollPane scroll;
 	private final JTextField input;
 	private final JButton send;
 	private final JButton clear;
 	private final JButton popOut;
-	private final JLabel status = smoothLabel(" ");
+	private final JLabel status = SwingUtil.smoothLabel(" ");
 	private final Timer renderTimer;
 	private final Timer pulseTimer;
 	private int pulse;
@@ -103,17 +78,10 @@ class CopilotPanel extends PluginPanel
 	private boolean busy;
 	private String statusBase = " ";
 
-	// The copilot block currently receiving streamed text, if any.
-	private Block answerBlock;
-	// On error the block list rolls back to this size and the question
-	// returns to the input box, so failures never pollute the conversation.
-	private int restoreCount;
-	private String pendingQuestion;
-
 	// Pop-out support: the chat UI sits on `content`, which lives either in
 	// this sidebar panel or in a free-floating resizable frame.
 	private final JPanel content = new JPanel(new BorderLayout(0, 8));
-	private JFrame popOutFrame;
+	private final PopOutManager popOutManager;
 
 	/** Base pixel size for message text; everything HTML scales from it. */
 	private final int bodyFontPx;
@@ -129,6 +97,7 @@ class CopilotPanel extends PluginPanel
 		send = new FlatButton("Ask", theme, true);
 		clear = new FlatButton("New chat", theme, false);
 		popOut = new FlatButton("Pop out", theme, false);
+		popOutManager = new PopOutManager(this, content, popOut, input, theme);
 
 		messageList.setBackground(theme.surface);
 		messageList.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -139,7 +108,7 @@ class CopilotPanel extends PluginPanel
 		scroll.getViewport().setBackground(theme.surface);
 		scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
 		scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-		styleScrollBar(scroll.getVerticalScrollBar(), theme);
+		SwingUtil.styleScrollBar(scroll.getVerticalScrollBar(), theme);
 
 		input.setToolTipText("Ask about gear, quests, drops, prices, training...");
 
@@ -158,7 +127,7 @@ class CopilotPanel extends PluginPanel
 		south.add(inputRow, BorderLayout.CENTER);
 		south.add(status, BorderLayout.SOUTH);
 
-		JLabel wordmark = smoothLabel("COPILOT");
+		JLabel wordmark = SwingUtil.smoothLabel("COPILOT");
 		wordmark.setForeground(theme.accent);
 		wordmark.setFont(theme.chromeFont != null ? theme.chromeFont.deriveFont(16f)
 			: wordmark.getFont().deriveFont(Font.BOLD, 12f));
@@ -188,7 +157,7 @@ class CopilotPanel extends PluginPanel
 		content.add(south, BorderLayout.SOUTH);
 		add(content, BorderLayout.CENTER);
 
-		popOut.addActionListener(e -> togglePopOut());
+		popOut.addActionListener(e -> popOutManager.toggle());
 
 		renderTimer = new Timer(RENDER_THROTTLE_MS, e -> render());
 		renderTimer.setRepeats(false);
@@ -207,67 +176,10 @@ class CopilotPanel extends PluginPanel
 		rebuild();
 	}
 
-	private void togglePopOut()
-	{
-		if (popOutFrame == null)
-		{
-			openPopOut();
-		}
-		else
-		{
-			popOutFrame.dispose();
-		}
-	}
-
-	private void openPopOut()
-	{
-		remove(content);
-		JLabel placeholder = new JLabel("Chat is open in its own window", JLabel.CENTER);
-		placeholder.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		add(placeholder, BorderLayout.CENTER);
-		revalidate();
-		repaint();
-
-		popOutFrame = new JFrame("OSRS Copilot");
-		popOutFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-		popOutFrame.getContentPane().setBackground(theme.chromeBg);
-		popOutFrame.add(content);
-		popOutFrame.setSize(560, 720);
-		popOutFrame.setLocationByPlatform(true);
-		// Closing the window (by any path) docks the chat back into the
-		// sidebar; the conversation is untouched since the UI just moves.
-		popOutFrame.addWindowListener(new WindowAdapter()
-		{
-			@Override
-			public void windowClosed(WindowEvent e)
-			{
-				dockBack(placeholder);
-			}
-		});
-		popOut.setText("Dock");
-		popOut.setToolTipText("Return the chat to the sidebar");
-		popOutFrame.setVisible(true);
-		input.requestFocusInWindow();
-	}
-
-	private void dockBack(JLabel placeholder)
-	{
-		popOutFrame = null;
-		remove(placeholder);
-		add(content, BorderLayout.CENTER);
-		popOut.setText("Pop out");
-		popOut.setToolTipText("Open the chat in its own resizable window");
-		revalidate();
-		repaint();
-	}
-
 	/** Plugin shutdown: a floating chat window must not outlive the plugin. */
 	void closePopOut()
 	{
-		if (popOutFrame != null)
-		{
-			popOutFrame.dispose();
-		}
+		popOutManager.close();
 	}
 
 	/** Replay one completed exchange into a fresh panel (theme and font-size
@@ -276,15 +188,7 @@ class CopilotPanel extends PluginPanel
 	 * and meta line when available, markdown otherwise. */
 	void seedExchange(String question, String answer, String decoratedHtml, String meta)
 	{
-		Block q = new Block("You");
-		q.text.append(question);
-		blocks.add(q);
-		Block a = new Block("Copilot");
-		a.text.append(answer);
-		a.decoratedHtml = decoratedHtml;
-		a.meta = meta;
-		blocks.add(a);
-		restoreCount = blocks.size();
+		model.seedExchange(question, answer, decoratedHtml, meta);
 		rebuild();
 	}
 
@@ -305,11 +209,7 @@ class CopilotPanel extends PluginPanel
 		{
 			return;
 		}
-		restoreCount = blocks.size();
-		pendingQuestion = question;
-		Block block = new Block("You");
-		block.text.append(question);
-		blocks.add(block);
+		model.beginQuestion(question);
 		rebuild();
 		input.setText("");
 		setBusy(true);
@@ -322,9 +222,7 @@ class CopilotPanel extends PluginPanel
 		{
 			return;
 		}
-		blocks.clear();
-		answerBlock = null;
-		restoreCount = 0;
+		model.clear();
 		rebuild();
 		setStatusBase(" ");
 		status.setToolTipText(null);
@@ -338,25 +236,19 @@ class CopilotPanel extends PluginPanel
 	/** A fragment of the streamed answer arrived. */
 	void appendDelta(String text)
 	{
-		ensureAnswerBlock();
-		answerBlock.text.append(text);
+		if (model.appendDelta(text))
+		{
+			rebuild();
+		}
 		scheduleRender();
 	}
 
-	/** Streamed text turned out not to be the answer (tool-call preamble).
-	 * Keep it on screen as a dim working note -- text that appears and then
-	 * vanishes reads as a glitch -- but move it out of the answer text so
-	 * the real answer streams in clean below it. */
+	/** Streamed text turned out not to be the answer (tool-call preamble);
+	 * the model keeps it as a dim working note. */
 	void discardPartial()
 	{
-		if (answerBlock != null)
+		if (model.discardPartial())
 		{
-			String partial = answerBlock.text.toString().trim();
-			if (!partial.isEmpty())
-			{
-				answerBlock.working.add(partial);
-			}
-			answerBlock.text.setLength(0);
 			scheduleRender();
 		}
 	}
@@ -366,8 +258,10 @@ class CopilotPanel extends PluginPanel
 	 * status line. */
 	void showWorking(String note)
 	{
-		ensureAnswerBlock();
-		answerBlock.working.add(note);
+		if (model.addWorkingNote(note))
+		{
+			rebuild();
+		}
 		setStatusBase(note);
 		scheduleRender();
 	}
@@ -375,18 +269,15 @@ class CopilotPanel extends PluginPanel
 	void showAnswerDone(String answer, String decoratedHtml, double seconds,
 		boolean bankSeen, String meta)
 	{
-		ensureAnswerBlock();
-		// Canonicalize: the block ends up exactly the final answer; interim
-		// working notes have served their purpose (the meta line keeps the
-		// factual record of what ran).
-		Block block = answerBlock;
-		answerBlock = null;
-		block.working.clear();
-		block.text.setLength(0);
-		block.text.append(answer);
-		block.decoratedHtml = decoratedHtml;
-		block.meta = meta;
-		syncCard(block);
+		TranscriptModel.Block done = model.completeAnswer(answer, decoratedHtml, meta);
+		if (cards.get(done) == null)
+		{
+			rebuild();
+		}
+		else
+		{
+			syncCard(done);
+		}
 		setBusy(false);
 		if (bankSeen)
 		{
@@ -408,31 +299,17 @@ class CopilotPanel extends PluginPanel
 	 * question text back in the input box so the player can resubmit. */
 	void showError(String message)
 	{
-		while (blocks.size() > restoreCount)
-		{
-			blocks.remove(blocks.size() - 1);
-		}
-		answerBlock = null;
+		String question = model.rollback();
 		rebuild();
-		if (pendingQuestion != null)
+		if (question != null)
 		{
-			input.setText(pendingQuestion);
+			input.setText(question);
 		}
 		setBusy(false);
 		setStatusBase("Error - press Enter to retry (hover for details)");
-		status.setToolTipText("<html><body style='width:280px'>" + escapeHtml(message)
+		status.setToolTipText("<html><body style='width:280px'>" + SwingUtil.escapeHtml(message)
 			+ "</body></html>");
 		status.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
-	}
-
-	private void ensureAnswerBlock()
-	{
-		if (answerBlock == null)
-		{
-			answerBlock = new Block("Copilot");
-			blocks.add(answerBlock);
-			rebuild();
-		}
 	}
 
 	private void setBusy(boolean b)
@@ -494,44 +371,46 @@ class CopilotPanel extends PluginPanel
 	/** Streaming refresh: only the live block's card re-renders. */
 	private void render()
 	{
-		if (answerBlock != null)
+		if (model.answerBlock() != null)
 		{
-			syncCard(answerBlock);
+			syncCard(model.answerBlock());
 		}
 	}
 
-	/** Rebuild the card stack from the block list. Structural changes only
+	/** Rebuild the card stack from the model. Structural changes only
 	 * (new turn, rollback, clear); streaming goes through syncCard. */
 	private void rebuild()
 	{
 		messageList.removeAll();
-		if (blocks.isEmpty())
+		cards.clear();
+		if (model.isEmpty())
 		{
 			messageList.add(welcomePane());
 		}
-		for (Block block : blocks)
+		for (TranscriptModel.Block block : model.blocks())
 		{
-			block.card = new MessageCard(theme, "You".equals(block.who), linkOpener, bodyFontPx);
+			MessageCard card = new MessageCard(theme, block.isUser(), linkOpener, bodyFontPx);
+			cards.put(block, card);
 			syncCard(block);
-			messageList.add(block.card);
+			messageList.add(card);
 		}
 		messageList.revalidate();
 		messageList.repaint();
 		scrollToBottom();
 	}
 
-	private void syncCard(Block block)
+	private void syncCard(TranscriptModel.Block block)
 	{
-		if (block.card == null)
+		MessageCard card = cards.get(block);
+		if (card == null)
 		{
 			return;
 		}
-		boolean you = "You".equals(block.who);
 		// Secondary text stays at HTML size 3 (size 2 maps to ~10px in
 		// Swing's renderer -- unreadable); the dim color alone carries the
 		// visual hierarchy.
 		StringBuilder html = new StringBuilder();
-		if (you && theme.userAsChatLine)
+		if (block.isUser() && theme.userAsChatLine)
 		{
 			// Game-native: a question is something you said, not a document.
 			html.append("<font color='").append(theme.userPrefixHex)
@@ -540,11 +419,11 @@ class CopilotPanel extends PluginPanel
 		for (String note : block.working)
 		{
 			html.append("<font size='3' color='").append(theme.noteHex).append("'><i>")
-				.append(escapeHtml(note)).append("</i></font><br>");
+				.append(SwingUtil.escapeHtml(note)).append("</i></font><br>");
 		}
 		html.append(block.decoratedHtml != null ? block.decoratedHtml
 			: MarkdownHtml.toHtml(block.text.toString()));
-		if (block == answerBlock)
+		if (model.isStreaming(block))
 		{
 			// Streaming: a caret keeps the block visibly alive.
 			html.append("<font color='").append(theme.caretHex)
@@ -553,9 +432,9 @@ class CopilotPanel extends PluginPanel
 		if (block.meta != null && !block.meta.isEmpty())
 		{
 			html.append("<br><font size='3' color='").append(theme.metaHex).append("'>")
-				.append(escapeHtml(block.meta)).append("</font>");
+				.append(SwingUtil.escapeHtml(block.meta)).append("</font>");
 		}
-		block.card.setBodyHtml(html.toString());
+		card.setBodyHtml(html.toString());
 		scrollToBottom();
 	}
 
@@ -569,7 +448,7 @@ class CopilotPanel extends PluginPanel
 
 	private JEditorPane welcomePane()
 	{
-		JEditorPane pane = newHtmlPane(linkOpener, bodyFontPx);
+		JEditorPane pane = SwingUtil.newHtmlPane(linkOpener, bodyFontPx);
 		pane.setText("<html><body><br><br><center>"
 			+ "<font size='4' color='" + Theme.hex(theme.accent) + "'><b>OSRS Copilot</b></font><br>"
 			+ "<font color='" + theme.welcomeTextHex + "'>"
@@ -580,118 +459,6 @@ class CopilotPanel extends PluginPanel
 			+ "\u201cwhere do i get addy bars\u201d<br>"
 			+ "\u201cis my slayer task worth doing\u201d</font></center></body></html>");
 		return pane;
-	}
-
-	/** HTML pane tuned for card bodies: transparent, non-editable, entity
-	 * links colored but not underlined (color carries the state; underlining
-	 * every known name turns dense answers into noise). */
-	private static JEditorPane newHtmlPane(HyperlinkListener links, int fontPx)
-	{
-		JEditorPane pane = new JEditorPane()
-		{
-			@Override
-			protected void paintComponent(Graphics g)
-			{
-				smooth(g);
-				super.paintComponent(g);
-			}
-		};
-		HTMLEditorKit kit = new HTMLEditorKit();
-		StyleSheet sheet = new StyleSheet();
-		sheet.addStyleSheet(kit.getStyleSheet());
-		sheet.addRule("a { text-decoration: none; }");
-		kit.setStyleSheet(sheet);
-		pane.setEditorKit(kit);
-		pane.setEditable(false);
-		pane.setOpaque(false);
-		pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
-		pane.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, fontPx));
-		pane.addHyperlinkListener(links);
-		return pane;
-	}
-
-	private static void styleScrollBar(JScrollBar bar, Theme theme)
-	{
-		bar.setPreferredSize(new Dimension(8, 0));
-		bar.setUI(new BasicScrollBarUI()
-		{
-			@Override
-			protected void configureScrollBarColors()
-			{
-				thumbColor = theme.scrollThumb;
-				trackColor = theme.surface;
-			}
-
-			@Override
-			protected JButton createDecreaseButton(int orientation)
-			{
-				return zeroButton();
-			}
-
-			@Override
-			protected JButton createIncreaseButton(int orientation)
-			{
-				return zeroButton();
-			}
-
-			@Override
-			protected void paintThumb(Graphics g, javax.swing.JComponent c, java.awt.Rectangle r)
-			{
-				Graphics2D g2 = (Graphics2D) g.create();
-				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-					RenderingHints.VALUE_ANTIALIAS_ON);
-				g2.setColor(thumbColor);
-				g2.fillRoundRect(r.x + 1, r.y, r.width - 2, r.height, 6, 6);
-				g2.dispose();
-			}
-
-			private JButton zeroButton()
-			{
-				JButton b = new JButton();
-				b.setPreferredSize(new Dimension(0, 0));
-				return b;
-			}
-		});
-	}
-
-	private static String escapeHtml(String s)
-	{
-		return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-	}
-
-	/** The OS's font smoothing settings (subpixel AA on Windows). Custom
-	 * painting starts from a bare Graphics2D with no text hints at all, so
-	 * every text-drawing component here must opt in or small text renders
-	 * with hard pixel stairsteps. */
-	private static final Object DESKTOP_FONT_HINTS =
-		java.awt.Toolkit.getDefaultToolkit().getDesktopProperty("awt.font.desktophints");
-
-	private static void smooth(Graphics g)
-	{
-		Graphics2D g2 = (Graphics2D) g;
-		if (DESKTOP_FONT_HINTS instanceof java.util.Map)
-		{
-			g2.addRenderingHints((java.util.Map<?, ?>) DESKTOP_FONT_HINTS);
-		}
-		else
-		{
-			g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-				RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
-		}
-	}
-
-	/** JLabel that honors the desktop's text antialiasing. */
-	private static JLabel smoothLabel(String text)
-	{
-		return new JLabel(text)
-		{
-			@Override
-			protected void paintComponent(Graphics g)
-			{
-				smooth(g);
-				super.paintComponent(g);
-			}
-		};
 	}
 
 	// ------------------------------------------------------------------
@@ -852,14 +619,14 @@ class CopilotPanel extends PluginPanel
 
 			if (!chatLine)
 			{
-				JLabel label = smoothLabel(you ? "YOU" : "COPILOT");
+				JLabel label = SwingUtil.smoothLabel(you ? "YOU" : "COPILOT");
 				label.setForeground(you ? theme.userLabelFg : theme.botLabelFg);
 				label.setFont(theme.chromeFont != null ? theme.chromeFont.deriveFont(16f)
 					: label.getFont().deriveFont(Font.BOLD, 11f));
 				add(label, BorderLayout.NORTH);
 			}
 
-			body = newHtmlPane(links, fontPx);
+			body = SwingUtil.newHtmlPane(links, fontPx);
 			add(body, BorderLayout.CENTER);
 		}
 
@@ -952,7 +719,7 @@ class CopilotPanel extends PluginPanel
 			g2.setColor(!isEnabled() ? bgDisabled : hover ? bgHover : bg);
 			g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
 			g2.dispose();
-			smooth(g);
+			SwingUtil.smooth(g);
 			super.paintComponent(g);
 		}
 	}
@@ -983,7 +750,7 @@ class CopilotPanel extends PluginPanel
 			g2.setColor(hasFocus() ? theme.inputFocusEdge : theme.inputEdge);
 			g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, theme.arc, theme.arc);
 			g2.dispose();
-			smooth(g);
+			SwingUtil.smooth(g);
 			super.paintComponent(g);
 		}
 	}
