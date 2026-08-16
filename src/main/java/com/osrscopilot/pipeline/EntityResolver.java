@@ -195,10 +195,15 @@ public class EntityResolver
 				String[] hit = lookup(gram, questVocab);
 				if (hit != null)
 				{
-					List<String> list = result.byKind(hit[0]);
-					if (!list.contains(hit[1]))
+					// A negated mention is consumed (no sub-span may retry
+					// it) but resolves to nothing.
+					if (!negated(tokens, i))
 					{
-						list.add(hit[1]);
+						List<String> list = result.byKind(hit[0]);
+						if (!list.contains(hit[1]))
+						{
+							list.add(hit[1]);
+						}
 					}
 					Arrays.fill(used, i, i + size, true);
 				}
@@ -224,7 +229,7 @@ public class EntityResolver
 				continue;
 			}
 			String[] gramTokens = Arrays.copyOfRange(tokens, span[0], span[0] + span[1]);
-			if (spansFunctionWord(gramTokens))
+			if (spansFunctionWord(gramTokens) || negated(tokens, span[0]))
 			{
 				continue;
 			}
@@ -274,6 +279,37 @@ public class EntityResolver
 			return allNames.stream().anyMatch(other -> !pl.equals(other) && other.contains(pl));
 		});
 		return result;
+	}
+
+	/** Exclusion cues. "not" covers "not on X" / "not X"; the rest are the
+	 * prepositions of exclusion. Deliberately NOT "don't/haven't": "I don't
+	 * have the armor" is a statement about the armor, and the armor's facts
+	 * are exactly what the answer needs. */
+	private static final Set<String> NEGATIONS = new HashSet<>(Arrays.asList(
+		"not", "without", "excluding", "except", "besides", "minus", "ignoring"));
+
+	/**
+	 * True when the span sits under a negation ("not on consumables",
+	 * "except for the amulet"): the player is excluding the thing, so it
+	 * must not drive prefetch. Only function words may intervene between the
+	 * cue and the mention; a content word ("don't HAVE the armor") breaks
+	 * the chain, so absence-talk still resolves its entity.
+	 */
+	private static boolean negated(String[] tokens, int start)
+	{
+		for (int back = 1; back <= 3 && start - back >= 0; back++)
+		{
+			String t = tokens[start - back];
+			if (NEGATIONS.contains(t))
+			{
+				return true;
+			}
+			if (!GRAMMAR.contains(t))
+			{
+				return false;
+			}
+		}
+		return false;
 	}
 
 	/**

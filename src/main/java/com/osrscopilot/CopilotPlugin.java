@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
 import com.osrscopilot.pipeline.CopilotPipeline;
+import com.osrscopilot.pipeline.EmptyAnswerException;
 import com.osrscopilot.pipeline.GameCapture;
 import com.osrscopilot.pipeline.HttpException;
 import com.osrscopilot.pipeline.Llm;
@@ -431,6 +432,11 @@ public class CopilotPlugin extends Plugin
 	 * the server's own message as the detail. No per-endpoint cases. */
 	private static String friendlyError(Exception e)
 	{
+		if (e instanceof EmptyAnswerException)
+		{
+			return "The model didn't produce an answer (it kept emitting tool calls "
+				+ "or empty text) - press Enter to resubmit.";
+		}
 		if (e instanceof HttpException)
 		{
 			HttpException he = (HttpException) e;

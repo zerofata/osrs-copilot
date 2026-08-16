@@ -43,7 +43,7 @@ class AgentLoop
 
 			if (toolCalls == null || toolCalls.size() == 0)
 			{
-				result.answer = contentOf(msg);
+				result.answer = ensureAnswer(llm, messages, contentOf(msg), listener);
 				return result;
 			}
 
@@ -103,21 +103,38 @@ class AgentLoop
 		// Turn budget exhausted: force a final answer without tools.
 		messages.add(message("user",
 			"Stop researching. Give your final answer now using the facts you have gathered."));
-		result.answer = contentOf(llm.chat(messages, null, listener));
-
-		// Models trained on native tool tokens sometimes leak tool-call markup
-		// as text when forced to answer without tools. Retry once.
-		if (looksLikeToolMarkup(result.answer))
-		{
-			if (listener != null)
-			{
-				listener.onTurnDiscarded();
-			}
-			messages.add(message("user", "Tools are no longer available. Do NOT emit "
-				+ "tool-call syntax. Write your final answer as plain prose now."));
-			result.answer = contentOf(llm.chat(messages, null, listener));
-		}
+		result.answer = ensureAnswer(llm, messages,
+			contentOf(llm.chat(messages, null, listener)), listener);
 		return result;
+	}
+
+	/**
+	 * An empty or tool-markup "answer" is a failure, not a result. Models
+	 * trained on native tool tokens sometimes leak tool-call markup as text
+	 * (or nothing at all) when they mean to keep researching; retry once
+	 * with an explicit corrective, then fail loudly -- the panel's error
+	 * path returns the question for resubmission, which beats rendering a
+	 * blank card as if it were an answer.
+	 */
+	private static String ensureAnswer(Llm llm, JsonArray messages, String answer,
+		StreamListener listener) throws IOException
+	{
+		if (!looksLikeToolMarkup(answer))
+		{
+			return answer;
+		}
+		if (listener != null)
+		{
+			listener.onTurnDiscarded();
+		}
+		messages.add(message("user", "Tools are no longer available. Do NOT emit "
+			+ "tool-call syntax. Write your final answer as plain prose now."));
+		String retry = contentOf(llm.chat(messages, null, listener));
+		if (looksLikeToolMarkup(retry))
+		{
+			throw new EmptyAnswerException();
+		}
+		return retry;
 	}
 
 	private static String toolCallNames(JsonArray toolCalls)

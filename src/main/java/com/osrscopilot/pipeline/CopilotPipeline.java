@@ -1264,9 +1264,14 @@ public class CopilotPipeline
 		specs.add(toolSpec("quest_info",
 			"Get a quest's requirements (skill levels and prerequisite quests), "
 				+ "items required, and start point.", "quest_name"));
+		// Batched for the same reason as search_owned_items: budget questions
+		// legitimately price a whole shortlist, and that should cost one
+		// round trip, not one each.
 		specs.add(toolSpec("ge_price",
-			"Current Grand Exchange price, buy limit, and high-alch value of an item.",
-			"item_name"));
+			"Current Grand Exchange price, buy limit, and high-alch value. Takes a LIST "
+				+ "of item names and returns the price of each -- price all candidate "
+				+ "items in one call, never one call per item.",
+			"item_names", arrayOf("string")));
 		specs.add(toolSpec("quest_status",
 			"Check whether the player has finished, started, or not started a specific quest.",
 			"quest_name"));
@@ -1342,7 +1347,19 @@ public class CopilotPipeline
 		tools.put("monster_info", args -> wiki.monsterInfo(str(args, "name")));
 		tools.put("item_stats", args -> wiki.itemStats(str(args, "item_name")));
 		tools.put("quest_info", args -> wiki.questInfo(str(args, "quest_name")));
-		tools.put("ge_price", args -> wiki.gePrice(str(args, "item_name")));
+		tools.put("ge_price", args -> {
+			List<String> names = strList(args, "item_names", "item_name");
+			if (names.isEmpty())
+			{
+				return Map.of("error", "provide 'item_names': a list of items to price");
+			}
+			Map<String, Object> result = new LinkedHashMap<>();
+			for (String name : names)
+			{
+				result.put(name, wiki.gePrice(name));
+			}
+			return result;
+		});
 		tools.put("quest_status", args -> {
 			if (cap.questStates == null || cap.questStates.isEmpty())
 			{
@@ -1371,24 +1388,7 @@ public class CopilotPipeline
 		if (!bankInlined)
 		{
 			tools.put("search_owned_items", args -> {
-				// The spec says a list; a model sending one bare string
-				// still gets an answer (LLM output is a system boundary).
-				List<String> queries = new ArrayList<>();
-				if (args.has("queries") && args.get("queries").isJsonArray())
-				{
-					for (JsonElement q : args.getAsJsonArray("queries"))
-					{
-						queries.add(q.getAsString());
-					}
-				}
-				else
-				{
-					String single = args.has("query") ? str(args, "query") : str(args, "queries");
-					if (!single.isEmpty())
-					{
-						queries.add(single);
-					}
-				}
+				List<String> queries = strList(args, "queries", "query");
 				if (queries.isEmpty())
 				{
 					return Map.of("error", "provide 'queries': a list of item names to look for");
@@ -1420,6 +1420,30 @@ public class CopilotPipeline
 	private static String str(JsonObject args, String key)
 	{
 		return args.has(key) && !args.get(key).isJsonNull() ? args.get(key).getAsString() : "";
+	}
+
+	/** List argument for a batched tool. The spec says a list; a model
+	 * sending one bare string (under either the list key or its singular
+	 * cousin) still gets an answer -- LLM output is a system boundary. */
+	private static List<String> strList(JsonObject args, String listKey, String singleKey)
+	{
+		List<String> values = new ArrayList<>();
+		if (args.has(listKey) && args.get(listKey).isJsonArray())
+		{
+			for (JsonElement v : args.getAsJsonArray(listKey))
+			{
+				values.add(v.getAsString());
+			}
+		}
+		else
+		{
+			String single = args.has(singleKey) ? str(args, singleKey) : str(args, listKey);
+			if (!single.isEmpty())
+			{
+				values.add(single);
+			}
+		}
+		return values;
 	}
 
 	private static <T> List<T> limit(List<T> list, int n)
