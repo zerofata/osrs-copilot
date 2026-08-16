@@ -45,7 +45,6 @@ public class CopilotPipeline
 	 * bosses (the ones gear questions are hardest for) need them all.
 	 * Sized to fit a three-style tabber (Tormented Demons: ~11k chars). */
 	private static final int EQUIPMENT_CHAR_LIMIT = 12000;
-	private static final int BANK_INLINE_LIMIT = 200;
 	private static final int HISTORY_MAX_EXCHANGES = 6;
 	private static final int HISTORY_MAX_CHARS = 8000;
 
@@ -60,38 +59,6 @@ public class CopilotPipeline
 	/** Strategy pages keep recommended gear in an equipment/setup section. */
 	private static final Pattern EQUIPMENT_HEADING =
 		Pattern.compile("(?i)\\b(equipment|gear|setups?|loadout)\\b");
-
-	/** Facility questions ("where can I pray/bank/smelt") map a small closed
-	 * vocabulary of intents to the wiki's canonical listing pages. The page
-	 * CONTENT is live from the wiki, so game updates (new altars, moved
-	 * banks) flow through with no code change; only a brand-new facility
-	 * type would need a line here. Gated on locational phrasing. */
-	private static final Pattern LOCATIONAL =
-		Pattern.compile("\\b(where|nearest|closest|closer|nearby|near me|how far)\\b");
-
-	/** Words that point back at the conversation instead of standing alone.
-	 * Their presence means the previous turn's subject is still live and its
-	 * entities should carry into this turn's retrieval. */
-	private static final Pattern ANAPHORIC = Pattern.compile(
-		"\\b(it|its|that|those|them|these|this|ones?|same|again|instead|"
-		+ "what about|how about|and if|what if)\\b");
-	/** Diary tiers are a closed vocabulary; the match only applies when a
-	 * resolved page is a diary, so "hard" in other questions is inert. */
-	private static final Pattern DIARY_TIER =
-		Pattern.compile("\\b(easy|medium|hard|elite)\\b", Pattern.CASE_INSENSITIVE);
-
-	private static final Object[][] FACILITY_RULES = {
-		{Pattern.compile("\\b(pray(er)?|altar)\\b"), "Altar"},
-		{Pattern.compile("\\bbank\\b"), "Bank"},
-		{Pattern.compile("\\b(furnace|smelt)\\b"), "Furnace"},
-		{Pattern.compile("\\b(anvil|smith)\\b"), "Anvil"},
-		{Pattern.compile("\\b(cook|range|stove)\\b"), "Cooking range"},
-		{Pattern.compile("\\bfairy ring\\b"), "Fairy ring"},
-		{Pattern.compile("\\bspirit tree\\b"), "Spirit tree"},
-		{Pattern.compile("\\b(farm(ing)? patch|allotment)\\b"), "Farming patch"},
-		{Pattern.compile("\\bwater(fill| source)?\\b"), "Water source"},
-		{Pattern.compile("\\bsaw ?mill\\b"), "Sawmill"},
-	};
 
 	private static final String SYNTH_SYSTEM =
 		"You are an OSRS copilot running inside RuneLite. Answer the player's question "
@@ -120,36 +87,6 @@ public class CopilotPipeline
 		+ "question and reflect the current moment; earlier answers may describe older state.\n"
 		+ "- Be concrete and concise; recommend rather than exhaustively enumerate, but use "
 		+ "steps or lists when the question calls for them.";
-
-	// The needs vocabulary: retrieval extras a question can switch on.
-	// Declared once so the rules below and their consumers in prefetch/route
-	// can't drift apart on a typo (a misspelled need silently no-ops).
-	static final String NEED_PRICES = "prices";
-	static final String NEED_DROP_TABLE = "drop_table";
-	static final String NEED_STRATEGY = "strategy";
-	static final String NEED_MECHANICS = "mechanics";
-	static final String NEED_ITEM_SOURCES = "item_sources";
-	static final String NEED_XP_MATH = "xp_math";
-	static final String NEED_TRAINING = "training";
-	static final String NEED_TRANSPORT = "transport";
-	static final String NEED_RECENT_EVENTS = "recent_events";
-
-	/** Needs are EXTRAS on top of each entity's core bundle, never the only
-	 * path to essential facts. */
-	private static final Object[][] NEED_RULES = {
-		{Pattern.compile("\\b(price|cost|how much|value|alch|sell)\\b"), new String[]{NEED_PRICES}},
-		{Pattern.compile("\\bworth (doing|it|killing|farming)\\b"), new String[]{NEED_DROP_TABLE, NEED_PRICES, NEED_STRATEGY}},
-		{Pattern.compile("\\b(where|how) (do|can|to|i)\\b.*\\b(get|find|make|obtain|farm)\\b"), new String[]{NEED_ITEM_SOURCES}},
-		{Pattern.compile("\\b(quickest|fastest|easiest|best) way\\b.*\\b(get|make|obtain)\\b"), new String[]{NEED_ITEM_SOURCES}},
-		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring))\\b"), new String[]{NEED_STRATEGY}},
-		{Pattern.compile("\\b(strategy|safespot|(how|best way) to (kill|beat|fight))\\b"), new String[]{NEED_STRATEGY, NEED_MECHANICS}},
-		{Pattern.compile("\\b(afk|aggro|mechanic|spawn|attack style|weakness)\\b"), new String[]{NEED_MECHANICS}},
-		{Pattern.compile("\\b(level|xp|experience)\\b"), new String[]{NEED_XP_MATH}},
-		{Pattern.compile("\\btrain(ing)?\\b|\\blevell?ing\\b"), new String[]{NEED_TRAINING}},
-		{Pattern.compile("\\b(drop|dropped|loot)\\b"), new String[]{NEED_DROP_TABLE}},
-		{Pattern.compile("\\b(fastest|quickest|best) way\\b|\\bhow (do i|to|can i) (get|travel) to\\b|\\broute to\\b"),
-			new String[]{NEED_TRANSPORT}},
-	};
 
 	/** One completed question/answer pair from earlier in the session. */
 	public static class Exchange
@@ -241,6 +178,7 @@ public class CopilotPipeline
 	private final WikiApi wiki;
 	private final EntityResolver resolver;
 	private final Hiscores hiscores;
+	private final Router router;
 
 	public CopilotPipeline(OkHttpClient httpClient, Gson gson, File cacheDir)
 	{
@@ -249,6 +187,7 @@ public class CopilotPipeline
 		this.wiki = new WikiApi(http, gson, cacheDir);
 		this.resolver = new EntityResolver(wiki);
 		this.hiscores = new Hiscores(http);
+		this.router = new Router(resolver);
 	}
 
 	/** Warm vocabulary caches (call off-thread, e.g. at plugin start). */
@@ -280,79 +219,7 @@ public class CopilotPipeline
 	public Route route(String question, GameCapture cap, EntityResolver.Resolution previous)
 		throws IOException
 	{
-		Route r = new Route();
-		Set<String> questNames = cap.questStates != null ? cap.questStates.keySet() : Set.of();
-		r.entities = resolver.resolve(question, questNames,
-			previous != null && previous.anyEntity());
-		// "my task" names an entity the player never types: resolve the task
-		// creature from game state so it retrieves like any other monster.
-		if (cap.slayerTask != null && cap.slayerTask.get("creature") != null
-			&& referencesSlayerTask(question, r.entities))
-		{
-			resolver.resolveInto(String.valueOf(cap.slayerTask.get("creature")),
-				questNames, r.entities);
-		}
-		// A follow-up inherits the conversation's subject when it points back
-		// at it -- an anaphor in the text ("what ABOUT addy darts", "which
-		// ONES are closer", "do i have the stats for IT") or nothing newly
-		// resolved. A self-contained question ("quickest way to get planks")
-		// starts clean even mid-conversation: its own entities are its
-		// subject, and stale pages from three turns ago would pollute its
-		// facts. Inherited entities are merged AFTER the question's own, so
-		// prefetch limits favor what the player just said.
-		if (previous != null && (!r.entities.anyEntity()
-			|| ANAPHORIC.matcher(question.toLowerCase(Locale.ROOT)).find()))
-		{
-			mergeMissing(previous.items, r.entities.items);
-			mergeMissing(previous.monsters, r.entities.monsters);
-			mergeMissing(previous.quests, r.entities.quests);
-			mergeMissing(previous.pages, r.entities.pages);
-		}
-		r.hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
-		r.needs = classifyNeeds(question, r.hasEvents);
-		// Cross-check needs against entities: transport means "how do I get
-		// THERE" and is meaningless without a resolved destination ("best way
-		// to train smithing" must not route as travel).
-		if (r.entities.pages.isEmpty() && r.entities.monsters.isEmpty())
-		{
-			r.needs.remove(NEED_TRANSPORT);
-		}
-		r.facilityPages = facilityPages(question);
-		// A diary page holds all four tiers' task tables -- far past any
-		// page budget, so a whole-page fetch truncates mid-Easy. Every
-		// diary shares the wiki's Easy/Medium/Hard/Elite section structure
-		// and tiers are a closed four-word vocabulary, so a named tier
-		// routes to exactly its section.
-		if (r.entities.pages.stream().anyMatch(CopilotPipeline::isDiaryPage))
-		{
-			Matcher tier = DIARY_TIER.matcher(question);
-			if (tier.find())
-			{
-				r.diaryTier = tier.group(1).toLowerCase(Locale.ROOT);
-				// The diary rule has claimed the tier word; without this it
-				// also resolves as a junk standalone page ("Medium").
-				r.entities.pages.removeIf(p -> p.equalsIgnoreCase(r.diaryTier));
-			}
-		}
-		r.bankMode = cap.bank == null ? "unknown"
-			: cap.bank.size() <= BANK_INLINE_LIMIT ? "complete" : "summarized";
-		log.debug("route: items={} monsters={} quests={} pages={} needs={} facilities={} bank={}",
-			r.entities.items, r.entities.monsters, r.entities.quests, r.entities.pages,
-			r.needs, r.facilityPages, r.bankMode);
-		return r;
-	}
-
-	/** Append entries from previous that the current list doesn't already
-	 * have, preserving current-question-first order. */
-	private static void mergeMissing(List<String> previous, List<String> into)
-	{
-		for (String name : previous)
-		{
-			if (!into.contains(name))
-			{
-				into.add(name);
-			}
-		}
+		return router.route(question, cap, previous);
 	}
 
 	/** The subject usually opens the answer ("Here's how to make your
@@ -417,28 +284,6 @@ public class CopilotPipeline
 				added++;
 			}
 		}
-	}
-
-	/** Every achievement diary page ends in " Diary" ("Varrock Diary",
-	 * "Lumbridge & Draynor Diary"); tier names redirect to these. */
-	private static boolean isDiaryPage(String page)
-	{
-		return page.endsWith(" Diary");
-	}
-
-	/**
-	 * True when the player refers to their Slayer task instead of naming the
-	 * creature, and the client knows what that task is. A monster resolved
-	 * from the question wins -- they may be asking about something else.
-	 */
-	private static boolean referencesSlayerTask(String question, EntityResolver.Resolution entities)
-	{
-		if (!entities.monsters.isEmpty())
-		{
-			return false;
-		}
-		String q = question.toLowerCase(Locale.ROOT);
-		return q.matches(".*\\b(task|assignment)\\b.*");
 	}
 
 	/** Every known item as {name, wiki page} (tradeable and untradeable
@@ -587,25 +432,6 @@ public class CopilotPipeline
 		}
 	}
 
-	/** Facility intents matched in the question (routing only, no fetching). */
-	private static List<String> facilityPages(String question)
-	{
-		List<String> pages = new ArrayList<>();
-		String ql = question.toLowerCase(Locale.ROOT);
-		if (!LOCATIONAL.matcher(ql).find())
-		{
-			return pages;
-		}
-		for (Object[] rule : FACILITY_RULES)
-		{
-			if (((Pattern) rule[0]).matcher(ql).find())
-			{
-				pages.add((String) rule[1]);
-			}
-		}
-		return pages;
-	}
-
 	/**
 	 * Second pass, mirror of addOwnershipFromFacts: a sourcing answer often
 	 * hinges on a facility the question never names. "Quickest way to get
@@ -626,13 +452,13 @@ public class CopilotPipeline
 			return;
 		}
 		String ql = question.toLowerCase(Locale.ROOT);
-		if (!route.needs.contains(NEED_ITEM_SOURCES) && !LOCATIONAL.matcher(ql).find())
+		if (!route.needs.contains(Router.NEED_ITEM_SOURCES) && !Router.LOCATIONAL.matcher(ql).find())
 		{
 			return;
 		}
 		String hay = String.join("\n", facts).toLowerCase(Locale.ROOT);
 		List<String> pages = new ArrayList<>();
-		for (Object[] rule : FACILITY_RULES)
+		for (Object[] rule : Router.FACILITY_RULES)
 		{
 			String page = (String) rule[1];
 			// Banks are mentioned incidentally on half the wiki ("bank
@@ -702,35 +528,6 @@ public class CopilotPipeline
 			kept.add(0, ex);
 		}
 		return kept;
-	}
-
-	// ------------------------------------------------------------------
-	// Needs classification (rule-based)
-	// ------------------------------------------------------------------
-
-	private static List<String> classifyNeeds(String question, boolean hasEvents)
-	{
-		String ql = question.toLowerCase(Locale.ROOT);
-		List<String> needs = new ArrayList<>();
-		for (Object[] rule : NEED_RULES)
-		{
-			if (((Pattern) rule[0]).matcher(ql).find())
-			{
-				for (String n : (String[]) rule[1])
-				{
-					if (!needs.contains(n))
-					{
-						needs.add(n);
-					}
-				}
-			}
-		}
-		if (hasEvents && (Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b")
-			.matcher(ql).find() || ql.contains("whats this") || ql.contains("what's this")))
-		{
-			needs.add(NEED_RECENT_EVENTS);
-		}
-		return needs;
 	}
 
 	// ------------------------------------------------------------------
@@ -900,11 +697,11 @@ public class CopilotPipeline
 		for (String monster : limit(ents.monsters, 3))
 		{
 			addFact(facts, "Monster info: " + monster, wiki.monsterInfo(monster));
-			if (needs.contains(NEED_DROP_TABLE) || needs.contains(NEED_PRICES))
+			if (needs.contains(Router.NEED_DROP_TABLE) || needs.contains(Router.NEED_PRICES))
 			{
 				addFact(facts, "Drop table: " + monster, wiki.monsterDrops(monster));
 			}
-			if (needs.contains(NEED_STRATEGY) || needs.contains(NEED_MECHANICS))
+			if (needs.contains(Router.NEED_STRATEGY) || needs.contains(Router.NEED_MECHANICS))
 			{
 				String strategyPage = monster + "/Strategies";
 				String text = wiki.page(strategyPage);
@@ -923,7 +720,7 @@ public class CopilotPipeline
 				addFact(facts, "Recommended equipment: " + monster,
 					wiki.sectionByHeading(strategyPage, EQUIPMENT_HEADING, EQUIPMENT_CHAR_LIMIT));
 			}
-			if (needs.contains(NEED_TRANSPORT))
+			if (needs.contains(Router.NEED_TRANSPORT))
 			{
 				String section = wiki.sectionByHeading(monster, TRANSPORT_HEADING, FACT_PAGE_BUDGET);
 				addFact(facts, "Getting there: " + monster, section);
@@ -942,11 +739,11 @@ public class CopilotPipeline
 			{
 				addFact(facts, "Ownership: " + item, checkOwnership(owned, ownedNames, item));
 			}
-			if (needs.contains(NEED_ITEM_SOURCES) || needs.contains(NEED_DROP_TABLE))
+			if (needs.contains(Router.NEED_ITEM_SOURCES) || needs.contains(Router.NEED_DROP_TABLE))
 			{
 				addFact(facts, "How to obtain: " + item, wiki.itemDropSources(item));
 			}
-			if (needs.contains(NEED_PRICES))
+			if (needs.contains(Router.NEED_PRICES))
 			{
 				addFact(facts, "GE price: " + item, wiki.gePrice(item));
 			}
@@ -981,7 +778,7 @@ public class CopilotPipeline
 			// A named diary tier replaces the whole-page fetch: the tier's
 			// section (task table + rewards, as table-preserving wikitext)
 			// is the answer; the other three tiers are pure noise.
-			if (route.diaryTier != null && isDiaryPage(page))
+			if (route.diaryTier != null && Router.isDiaryPage(page))
 			{
 				String tierHeading = "^" + route.diaryTier + "$";
 				String section = wiki.sectionByHeading(page,
@@ -996,7 +793,7 @@ public class CopilotPipeline
 			// Untradeable equipment (Arclight, Emberlight, barrows gloves...)
 			// resolves as a page, not an item -- it still has an infobox.
 			addFact(facts, "Equipment stats: " + page, wiki.itemStats(page));
-			if (needs.contains(NEED_TRANSPORT))
+			if (needs.contains(Router.NEED_TRANSPORT))
 			{
 				// Travel options live in a dedicated section that the
 				// truncated extract usually cuts off; fetch it by heading.
@@ -1008,7 +805,7 @@ public class CopilotPipeline
 		// "<Skill> training" is a universal wiki convention -- a page or a
 		// redirect to the canonical guide for every skill -- so one rule
 		// covers all of them and new skills arrive without a code change.
-		if (needs.contains(NEED_TRAINING))
+		if (needs.contains(Router.NEED_TRAINING))
 		{
 			for (String skill : limit(ents.skills, 2))
 			{
@@ -1016,7 +813,7 @@ public class CopilotPipeline
 			}
 		}
 
-		if (needs.contains(NEED_XP_MATH) && cap.skillXp != null)
+		if (needs.contains(Router.NEED_XP_MATH) && cap.skillXp != null)
 		{
 			for (String skill : limit(ents.skills, 2))
 			{
