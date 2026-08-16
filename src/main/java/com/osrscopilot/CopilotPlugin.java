@@ -383,8 +383,7 @@ public class CopilotPlugin extends Plugin
 			synchronized (conversation)
 			{
 				conversation.add(new Turn(
-					new CopilotPipeline.Exchange(question, result.answer,
-						result.route != null ? result.route.entities : null),
+					new CopilotPipeline.Exchange(question, result.answer, result.subject),
 					decoratedHtml, meta));
 			}
 			SwingUtilities.invokeLater(() ->

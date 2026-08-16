@@ -210,6 +210,13 @@ public class CopilotPipeline
 		 * ("Anachronia -> Fossil Island"). Empty is the expected case.
 		 */
 		public List<String> suspectNames = List.of();
+		/**
+		 * The turn's inheritable subject -- question entities plus what the
+		 * answer's opening introduced (see subjectOf). Store THIS in the
+		 * Exchange, not route.entities, so follow-ups can point at things
+		 * the answer brought up.
+		 */
+		public EntityResolver.Resolution subject;
 	}
 
 	/**
@@ -296,6 +303,7 @@ public class CopilotPipeline
 		if (previous != null && (!r.entities.anyEntity()
 			|| ANAPHORIC.matcher(question.toLowerCase(Locale.ROOT)).find()))
 		{
+			mergeMissing(previous.items, r.entities.items);
 			mergeMissing(previous.monsters, r.entities.monsters);
 			mergeMissing(previous.quests, r.entities.quests);
 			mergeMissing(previous.pages, r.entities.pages);
@@ -343,6 +351,70 @@ public class CopilotPipeline
 			if (!into.contains(name))
 			{
 				into.add(name);
+			}
+		}
+	}
+
+	/** The subject usually opens the answer ("Here's how to make your
+	 * Scorching bow: ..."); scanning further mostly picks up supporting
+	 * cast (teleports, side quests, alternatives). */
+	private static final int SUBJECT_SCAN_CHARS = 600;
+	/** Per kind, at most this many answer-introduced names join the
+	 * subject. Question entities always come first, and prefetch budgets
+	 * (3-4 per kind) mean anything past a few inherited names is dead
+	 * weight anyway. */
+	private static final int SUBJECT_ADDITIONS = 3;
+
+	/**
+	 * The inheritable subject of a completed turn. A question can hand the
+	 * subject to its answer: "take me through making the bow" resolves the
+	 * Tormented synapse, the answer replies in terms of the Scorching bow,
+	 * and "what arrows can I use with this bow" then points at the bow --
+	 * which the question's entities alone can't provide. So the subject is
+	 * the question's entities plus the leading names the answer introduced.
+	 * Best-effort: inheritance is an enrichment, never worth failing an
+	 * already-delivered answer over.
+	 */
+	public EntityResolver.Resolution subjectOf(EntityResolver.Resolution question,
+		String answer, GameCapture cap)
+	{
+		EntityResolver.Resolution subject = new EntityResolver.Resolution();
+		subject.items.addAll(question.items);
+		subject.monsters.addAll(question.monsters);
+		subject.quests.addAll(question.quests);
+		subject.skills.addAll(question.skills);
+		subject.pages.addAll(question.pages);
+		try
+		{
+			String opening = answer.length() > SUBJECT_SCAN_CHARS
+				? answer.substring(0, SUBJECT_SCAN_CHARS) : answer;
+			EntityResolver.Resolution named = resolver.resolve(opening,
+				cap.questStates != null ? cap.questStates.keySet() : Set.of(), true);
+			appendCapped(named.items, subject.items);
+			appendCapped(named.monsters, subject.monsters);
+			appendCapped(named.quests, subject.quests);
+			appendCapped(named.pages, subject.pages);
+		}
+		catch (Exception e)
+		{
+			log.debug("subject resolution from answer failed", e);
+		}
+		return subject;
+	}
+
+	private static void appendCapped(List<String> from, List<String> into)
+	{
+		int added = 0;
+		for (String name : from)
+		{
+			if (added == SUBJECT_ADDITIONS)
+			{
+				return;
+			}
+			if (!into.contains(name))
+			{
+				into.add(name);
+				added++;
 			}
 		}
 	}
@@ -479,6 +551,7 @@ public class CopilotPipeline
 		result.prompt = userMessage;
 		result.usage = llm.usage();
 		result.suspectNames = suspectNames(agent.answer, userMessage);
+		result.subject = subjectOf(route.entities, agent.answer, cap);
 		result.millis = System.currentTimeMillis() - t0;
 		return result;
 	}

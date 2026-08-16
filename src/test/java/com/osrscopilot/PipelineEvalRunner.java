@@ -34,7 +34,11 @@ import okhttp3.OkHttpClient;
  *                     "&gt; " prefix = follow-up in the same conversation;
  *                     "EVENT {json}" attaches a recent game event to the next
  *                     question; "ASSERT {json}" checks the previous question's
- *                     route; # comments and blank lines skipped)
+ *                     route; "ANSWER text" seeds the previous question's
+ *                     answer so routeOnly/promptOnly runs exercise
+ *                     answer-derived subject inheritance (full runs use the
+ *                     model's real answer and ignore the seed);
+ *                     # comments and blank lines skipped)
  *   --routeOnly true  run only the deterministic router + assertions -- no
  *                     LLM calls, free, fast route regression check
  *   --model NAME      model name (default deepseek-ai/DeepSeek-V4-Flash)
@@ -173,7 +177,9 @@ public class PipelineEvalRunner
 				if (routeOnly)
 				{
 					route = pipeline.route(item.question, cap, prev);
-					history.add(new CopilotPipeline.Exchange(item.question, "", route.entities));
+					history.add(new CopilotPipeline.Exchange(item.question,
+						item.answer != null ? item.answer : "",
+						seededSubject(pipeline, route, item, cap)));
 				}
 				else if (promptOnly)
 				{
@@ -181,7 +187,9 @@ public class PipelineEvalRunner
 					// would be given, at zero LLM cost.
 					CopilotPipeline.Prepared prepared = pipeline.prepare(item.question, cap, prev);
 					route = prepared.route;
-					history.add(new CopilotPipeline.Exchange(item.question, "", route.entities));
+					history.add(new CopilotPipeline.Exchange(item.question,
+						item.answer != null ? item.answer : "",
+						seededSubject(pipeline, route, item, cap)));
 					out.println("\n=== BUILT PROMPT ===\n" + prepared.prompt + "\n=== END PROMPT ===");
 					promptDump.put(item.question, prepared.prompt);
 				}
@@ -193,7 +201,7 @@ public class PipelineEvalRunner
 					result = pipeline.answer(item.question, history, cap, settings, 4, listener);
 					route = result.route;
 					history.add(new CopilotPipeline.Exchange(item.question, result.answer,
-						route.entities));
+						result.subject));
 					out.println();
 				}
 			}
@@ -289,6 +297,15 @@ public class PipelineEvalRunner
 		System.exit(failures.isEmpty() ? 0 : 1);
 	}
 
+	/** LLM-free modes have no real answer; an ANSWER-seeded one stands in so
+	 * the follow-up inheritance path (question + answer subject) still runs. */
+	private static EntityResolver.Resolution seededSubject(CopilotPipeline pipeline,
+		CopilotPipeline.Route route, BatteryItem item, GameCapture cap)
+	{
+		return item.answer != null
+			? pipeline.subjectOf(route.entities, item.answer, cap) : route.entities;
+	}
+
 	private static void writeRecord(java.io.PrintWriter artifact, Gson gson, JsonObject rec)
 	{
 		if (artifact != null)
@@ -348,6 +365,7 @@ public class PipelineEvalRunner
 		final boolean followUp;
 		final List<Map<String, Object>> events;
 		JsonObject asserts;
+		String answer;
 
 		BatteryItem(String question, boolean followUp, List<Map<String, Object>> events)
 		{
@@ -382,6 +400,15 @@ public class PipelineEvalRunner
 					throw new IllegalArgumentException("ASSERT before any question");
 				}
 				items.get(items.size() - 1).asserts = gson.fromJson(line.substring(7), JsonObject.class);
+				continue;
+			}
+			if (line.startsWith("ANSWER "))
+			{
+				if (items.isEmpty())
+				{
+					throw new IllegalArgumentException("ANSWER before any question");
+				}
+				items.get(items.size() - 1).answer = line.substring(7);
 				continue;
 			}
 			boolean followUp = line.startsWith("> ");
