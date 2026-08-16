@@ -126,6 +126,19 @@ class Http
 		}
 	}
 
+	byte[] getBytes(String url) throws IOException
+	{
+		Request req = new Request.Builder().url(url).build();
+		try (Response resp = client.newCall(req).execute())
+		{
+			if (!resp.isSuccessful() || resp.body() == null)
+			{
+				throw new IOException("HTTP " + resp.code() + " from " + req.url());
+			}
+			return resp.body().bytes();
+		}
+	}
+
 	static String enc(String s)
 	{
 		try

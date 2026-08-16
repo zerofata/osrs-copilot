@@ -65,6 +65,15 @@ tasks.register('evalRun', JavaExec) {
 	}
 }
 
+// Compiles the bulk vocabulary snapshots the plugin downloads at runtime.
+// Run weekly by .github/workflows/vocab-snapshot.yml -- the only thing that
+// ever executes the wiki's bulk queries. Clients never build these.
+tasks.register('vocabSnapshot', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.osrscopilot.pipeline.VocabSnapshotTool'
+	args layout.buildDirectory.dir('vocab').get().asFile.absolutePath
+}
+
 // Renders the chat panel offscreen to PNGs for UI review.
 // gradlew uiPreview -PpreviewTag=before
 tasks.register('uiPreview', JavaExec) {

@@ -34,8 +34,19 @@ public class WikiApi
 {
 	private static final String WIKI_API = "https://oldschool.runescape.wiki/api.php";
 	private static final String PRICES_API = "https://prices.runescape.wiki/api";
-	private static final String WORDLIST_URL =
-		"https://raw.githubusercontent.com/first20hours/google-10000-english/master/google-10000-english.txt";
+
+	/**
+	 * Bulk vocabularies (every item, monster, place...) are identical for
+	 * every install, so no client may compute them: a scheduled job in our
+	 * repo (VocabSnapshotTool, run weekly by CI) does the wiki's expensive
+	 * bulk queries ONCE and publishes gzipped snapshots to this branch.
+	 * Clients only ever download the published result from GitHub's CDN.
+	 * There is deliberately NO fallback to building from the wiki: if our
+	 * snapshot pipeline breaks, our resolver degrades and the failure is
+	 * ours to notice -- the wiki never absorbs it.
+	 */
+	private static final String SNAPSHOT_BASE =
+		"https://raw.githubusercontent.com/zerofata/osrs-copilot/vocab-data/";
 
 	/** Extract-to-page-size ratio below which the plaintext extract has lost
 	 * the page's substance to table stripping; see isHusk. */
@@ -44,8 +55,8 @@ public class WikiApi
 	private static final int PAGE_CHAR_LIMIT = 7000;
 	private static final int WIKITEXT_CHAR_LIMIT = 12000;
 
-	/** Vocab caches refresh after this age, so game/wiki changes flow in
-	 * without a code update. */
+	/** Snapshots re-download after this age, matching the weekly publish
+	 * cadence, so game/wiki changes flow in without a code update. */
 	private static final long CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000;
 
 	private final Http http;
@@ -86,9 +97,7 @@ public class WikiApi
 	{
 		if (geMapping == null)
 		{
-			String json = cachedFetch("ge_mapping.json",
-				() -> http.getText(PRICES_API + "/v2/osrs/mapping"));
-			geMapping = gson.fromJson(json,
+			geMapping = gson.fromJson(snapshot("ge_mapping.json"),
 				new TypeToken<List<Map<String, Object>>>() { }.getType());
 		}
 		return geMapping;
@@ -98,29 +107,8 @@ public class WikiApi
 	{
 		if (monsterNames == null)
 		{
-			// Prefer page_name over the infobox name: it is the exact wiki
-			// title, so strategy subpages and dropsline page_name queries
-			// match without casing surprises.
-			String json = cachedFetch("monsters_v2.json", () -> {
-				JsonObject r = bucket("bucket('infobox_monster').select('name','page_name').limit(5000).run()");
-				Set<String> names = new TreeSet<>();
-				for (JsonElement row : r.getAsJsonArray("bucket"))
-				{
-					JsonObject o = row.getAsJsonObject();
-					JsonElement page = o.get("page_name");
-					JsonElement name = o.get("name");
-					if (page != null && !page.isJsonNull())
-					{
-						names.add(page.getAsString());
-					}
-					else if (name != null && !name.isJsonNull())
-					{
-						names.add(name.getAsString());
-					}
-				}
-				return gson.toJson(names);
-			});
-			monsterNames = gson.fromJson(json, new TypeToken<Set<String>>() { }.getType());
+			monsterNames = gson.fromJson(snapshot("monsters_v2.json"),
+				new TypeToken<Set<String>>() { }.getType());
 		}
 		return monsterNames;
 	}
@@ -136,45 +124,8 @@ public class WikiApi
 	{
 		if (itemNameIndex == null)
 		{
-			String json = cachedFetch("items.json", () -> {
-				List<String[]> out = new ArrayList<>();
-				Set<String> seen = new HashSet<>();
-				for (int offset = 0; offset < 100_000; offset += 5000)
-				{
-					JsonObject page = bucket("bucket('infobox_item')"
-						+ ".select('page_name','item_name','removal_date')"
-						+ ".limit(5000).offset(" + offset + ").run()");
-					JsonArray rows = page.getAsJsonArray("bucket");
-					if (rows == null || rows.size() == 0)
-					{
-						break;
-					}
-					for (JsonElement e : rows)
-					{
-						JsonObject row = e.getAsJsonObject();
-						JsonElement name = row.get("item_name");
-						JsonElement removed = row.get("removal_date");
-						if (name == null || name.isJsonNull()
-							|| (removed != null && !removed.isJsonNull()))
-						{
-							continue;
-						}
-						JsonElement pg = row.get("page_name");
-						String pageName = pg != null && !pg.isJsonNull()
-							? pg.getAsString() : name.getAsString();
-						if (seen.add(name.getAsString()))
-						{
-							out.add(new String[]{name.getAsString(), pageName});
-						}
-					}
-					if (rows.size() < 5000)
-					{
-						break;
-					}
-				}
-				return gson.toJson(out);
-			});
-			itemNameIndex = gson.fromJson(json, new TypeToken<List<String[]>>() { }.getType());
+			itemNameIndex = gson.fromJson(snapshot("items.json"),
+				new TypeToken<List<String[]>>() { }.getType());
 		}
 		return itemNameIndex;
 	}
@@ -233,7 +184,7 @@ public class WikiApi
 		{
 			try
 			{
-				String text = cachedFetch("english_10k.txt", () -> http.getText(WORDLIST_URL));
+				String text = snapshot("english_10k.txt");
 				englishWords = new HashSet<>();
 				for (String w : text.split("\n"))
 				{
@@ -252,7 +203,13 @@ public class WikiApi
 		return englishWords;
 	}
 
-	private String cachedFetch(String filename, Fetcher fetcher) throws IOException
+	/**
+	 * A vocabulary snapshot: fresh disk copy, else download from our
+	 * published vocab-data branch, else stale disk copy (stale beats
+	 * broken). Building the dataset from the wiki is deliberately not in
+	 * this chain -- see SNAPSHOT_BASE.
+	 */
+	private String snapshot(String filename) throws IOException
 	{
 		File f = new File(cacheDir, filename);
 		boolean fresh = f.exists()
@@ -263,7 +220,7 @@ public class WikiApi
 		}
 		try
 		{
-			String content = fetcher.fetch();
+			String content = gunzip(http.getBytes(SNAPSHOT_BASE + filename + ".gz"));
 			cacheDir.mkdirs();
 			Files.write(f.toPath(), content.getBytes(StandardCharsets.UTF_8));
 			return content;
@@ -273,118 +230,42 @@ public class WikiApi
 			// Refresh failed but a stale copy exists: stale beats broken.
 			if (f.exists())
 			{
-				log.warn("cache refresh failed for {}, using stale copy", filename, e);
+				log.warn("snapshot refresh failed for {}, using stale copy", filename, e);
 				return new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
 			}
 			throw e;
 		}
 	}
 
-	private interface Fetcher
+	private static String gunzip(byte[] compressed) throws IOException
 	{
-		String fetch() throws IOException;
+		try (java.util.zip.GZIPInputStream in = new java.util.zip.GZIPInputStream(
+			new java.io.ByteArrayInputStream(compressed)))
+		{
+			java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+			byte[] buf = new byte[8192];
+			int n;
+			while ((n = in.read(buf)) > 0)
+			{
+				out.write(buf, 0, n);
+			}
+			return new String(out.toByteArray(), StandardCharsets.UTF_8);
+		}
 	}
 
 	/**
-	 * Named places with world coordinates, built by joining two live wiki
-	 * datasets: pages with a location infobox (what counts as a place) and
-	 * the map bucket (where each page's map is centered). Entirely
-	 * wiki-maintained -- new areas appear on cache refresh, no code changes.
+	 * Named places with world coordinates, joined from the wiki's location
+	 * infoboxes and map bucket by the snapshot job. Entirely wiki-maintained
+	 * -- new areas appear on the next published snapshot, no code changes.
 	 */
 	synchronized List<NamedPoint> locationIndex() throws IOException
 	{
 		if (locationIndex == null)
 		{
-			// v2: entrance-tagged dungeons (the old cache lacks the flag).
-			String json = cachedFetch("locations-v2.json", () -> {
-				Set<String> places = new HashSet<>();
-				JsonObject r = bucket("bucket('infobox_location').select('page_name').limit(5000).run()");
-				for (JsonElement row : r.getAsJsonArray("bucket"))
-				{
-					JsonElement name = row.getAsJsonObject().get("page_name");
-					if (name != null && !name.isJsonNull())
-					{
-						places.add(name.getAsString());
-					}
-				}
-				Set<String> dungeons = categoryMembers("Dungeons");
-
-				List<NamedPoint> points = new ArrayList<>();
-				Set<String> seen = new HashSet<>();
-				for (int offset = 0; offset < 100_000; offset += 5000)
-				{
-					JsonObject page = bucket("bucket('map').select('page_name','options')"
-						+ ".limit(5000).offset(" + offset + ").run()");
-					JsonArray rows = page.getAsJsonArray("bucket");
-					if (rows == null || rows.size() == 0)
-					{
-						break;
-					}
-					for (JsonElement e : rows)
-					{
-						JsonObject row = e.getAsJsonObject();
-						if (!row.has("page_name") || row.get("page_name").isJsonNull()
-							|| !row.has("options") || row.get("options").isJsonNull())
-						{
-							continue;
-						}
-						String name = row.get("page_name").getAsString();
-						if (!places.contains(name) || !seen.add(name))
-						{
-							continue;
-						}
-						try
-						{
-							JsonObject opts = gson.fromJson(row.get("options").getAsString(), JsonObject.class);
-							// mapID 0 = the main game world surface map.
-							if (opts.has("mapID") && opts.get("mapID").getAsInt() != 0)
-							{
-								seen.remove(name);
-								continue;
-							}
-							NamedPoint p = new NamedPoint();
-							p.name = name;
-							p.x = (int) opts.get("x").getAsDouble();
-							p.y = (int) opts.get("y").getAsDouble();
-							p.plane = opts.has("plane") ? opts.get("plane").getAsInt() : 0;
-							p.entrance = dungeons.contains(name);
-							points.add(p);
-						}
-						catch (Exception ignored)
-						{
-							seen.remove(name);
-						}
-					}
-					if (rows.size() < 5000)
-					{
-						break;
-					}
-				}
-				return gson.toJson(points);
-			});
-			locationIndex = gson.fromJson(json, new TypeToken<List<NamedPoint>>() { }.getType());
+			locationIndex = gson.fromJson(snapshot("locations-v2.json"),
+				new TypeToken<List<NamedPoint>>() { }.getType());
 		}
 		return locationIndex;
-	}
-
-	/** All page titles in a wiki category, following pagination. */
-	private Set<String> categoryMembers(String category) throws IOException
-	{
-		Set<String> titles = new HashSet<>();
-		String cont = null;
-		do
-		{
-			JsonObject r = http.getJson(WIKI_API + "?action=query&list=categorymembers&format=json"
-				+ "&cmtitle=" + Http.enc("Category:" + category) + "&cmlimit=500"
-				+ (cont != null ? "&cmcontinue=" + Http.enc(cont) : ""));
-			for (JsonElement e : r.getAsJsonObject("query").getAsJsonArray("categorymembers"))
-			{
-				titles.add(e.getAsJsonObject().get("title").getAsString());
-			}
-			cont = r.has("continue")
-				? r.getAsJsonObject("continue").get("cmcontinue").getAsString() : null;
-		} while (cont != null);
-		return titles;
 	}
 
 	/** Nearest named places to a world point, closest first. Empty on

@@ -1,0 +1,53 @@
+# Weekly vocabulary snapshot: runs the wiki's bulk queries ONCE, here,
+# and publishes gzipped snapshots to the vocab-data branch that every
+# installed client downloads from GitHub's CDN. This is the entire reason
+# no user's machine ever executes those queries itself.
+#
+# Failure policy: the snapshot tool refuses to emit a dataset below its
+# minimum record count, so a wiki API change fails this job loudly (GitHub
+# emails the maintainer) and the previous good snapshot stays published.
+# Clients meanwhile keep using their disk copy: stale beats broken, and the
+# wiki never absorbs our failure.
+#
+# The force-push each week also counts as repository activity, which keeps
+# GitHub from suspending the schedule under its 60-day idle rule.
+name: vocab-snapshot
+
+on:
+  schedule:
+    # Weekly, Tuesday 03:17 UTC. Odd minute on purpose: top-of-the-hour
+    # crons are the busiest slot on GitHub's schedulers.
+    - cron: "17 3 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - name: Build snapshots
+        run: ./gradlew vocabSnapshot --console=plain
+
+      - name: Publish to vocab-data branch
+        run: |
+          cd build/vocab
+          git init -b vocab-data
+          git config user.name "vocab-snapshot[bot]"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "vocab snapshot $(date -u +%Y-%m-%d)"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Single-commit branch, force-pushed: the branch is a publishing
+          # slot, not history. Old blobs get garbage-collected by GitHub.
+          git push --force origin vocab-data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
