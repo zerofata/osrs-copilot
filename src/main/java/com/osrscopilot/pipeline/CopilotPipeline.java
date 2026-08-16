@@ -157,6 +157,7 @@ public class CopilotPipeline
 	private final Hiscores hiscores;
 	private final Router router;
 	private final Prefetcher prefetcher;
+	private final ToolRegistry toolRegistry;
 
 	public CopilotPipeline(OkHttpClient httpClient, Gson gson, File cacheDir)
 	{
@@ -167,6 +168,7 @@ public class CopilotPipeline
 		this.hiscores = new Hiscores(http);
 		this.router = new Router(resolver);
 		this.prefetcher = new Prefetcher(wiki, gson);
+		this.toolRegistry = new ToolRegistry(wiki);
 	}
 
 	/** Warm vocabulary caches (call off-thread, e.g. at plugin start). */
@@ -358,8 +360,8 @@ public class CopilotPipeline
 		}
 		messages.add(AgentLoop.message("user", userMessage));
 
-		JsonArray toolSpecs = buildToolSpecs(bankInlined);
-		Map<String, AgentLoop.Tool> tools = buildTools(cap, prepared.ownedIndex,
+		JsonArray toolSpecs = toolRegistry.buildToolSpecs(bankInlined);
+		Map<String, AgentLoop.Tool> tools = toolRegistry.buildTools(cap, prepared.ownedIndex,
 			prepared.ownedNames, bankInlined);
 
 		AgentLoop.Result agent = AgentLoop.run(llm, gson, messages,
@@ -659,217 +661,4 @@ public class CopilotPipeline
 		return out;
 	}
 
-	// ------------------------------------------------------------------
-	// Tools offered to the synth model
-	// ------------------------------------------------------------------
-
-	private JsonArray buildToolSpecs(boolean bankInlined)
-	{
-		JsonArray specs = new JsonArray();
-		specs.add(toolSpec("wiki_search",
-			"Search the OSRS Wiki for pages. Returns page titles and short snippets ONLY, "
-				+ "not page content -- follow up with wiki_page to read a page.",
-			"query"));
-		specs.add(toolSpec("wiki_page",
-			"Get the text of an OSRS Wiki page (item, monster, quest, guide).", "title"));
-		specs.add(toolSpec("item_drop_sources",
-			"List monsters and activities that drop an item, with quantities and drop rarity.",
-			"item_name"));
-		specs.add(toolSpec("monster_drops",
-			"Full drop table of a monster with quantities and drop rarities.", "name"));
-		specs.add(toolSpec("monster_info",
-			"Get a monster's full combat profile: levels, defensive bonuses per style, "
-				+ "attributes, attack style/speed, and immunities.", "name"));
-		specs.add(toolSpec("item_stats",
-			"Get a wearable item's combat bonuses: attack and defence by style, "
-				+ "strength, ranged strength, magic damage, and prayer.", "item_name"));
-		specs.add(toolSpec("quest_info",
-			"Get a quest's requirements (skill levels and prerequisite quests), "
-				+ "items required, and start point.", "quest_name"));
-		// Batched for the same reason as search_owned_items: budget questions
-		// legitimately price a whole shortlist, and that should cost one
-		// round trip, not one each.
-		specs.add(toolSpec("ge_price",
-			"Current Grand Exchange price, buy limit, and high-alch value. Takes a LIST "
-				+ "of item names and returns the price of each -- price all candidate "
-				+ "items in one call, never one call per item.",
-			"item_names", arrayOf("string")));
-		specs.add(toolSpec("quest_status",
-			"Check whether the player has finished, started, or not started a specific quest.",
-			"quest_name"));
-		// Only offered when the full owned list is NOT already in context --
-		// a tool over visible data invites redundant lookups. Batched: a
-		// gear recommendation legitimately needs dozens of ownership checks,
-		// and they should cost one round trip, not one each.
-		if (!bankInlined)
-		{
-			specs.add(toolSpec("search_owned_items",
-				"Search the player's bank, inventory, and equipment. Takes a LIST of item-name "
-					+ "queries and returns the matches for each -- check all candidate items "
-					+ "in one call, never one call per item.",
-				"queries", arrayOf("string")));
-		}
-		return specs;
-	}
-
-	private static JsonObject toolSpec(String name, String description, String param)
-	{
-		return toolSpec(name, description, param, singleType("string"));
-	}
-
-	private static JsonObject toolSpec(String name, String description, String param,
-		JsonObject paramSchema)
-	{
-		JsonObject prop = new JsonObject();
-		prop.add(param, paramSchema);
-		JsonObject params = new JsonObject();
-		params.addProperty("type", "object");
-		params.add("properties", prop);
-		JsonArray required = new JsonArray();
-		required.add(param);
-		params.add("required", required);
-		JsonObject fn = new JsonObject();
-		fn.addProperty("name", name);
-		fn.addProperty("description", description);
-		fn.add("parameters", params);
-		JsonObject spec = new JsonObject();
-		spec.addProperty("type", "function");
-		spec.add("function", fn);
-		return spec;
-	}
-
-	private static JsonObject arrayOf(String type)
-	{
-		JsonObject o = new JsonObject();
-		o.addProperty("type", "array");
-		o.add("items", singleType(type));
-		return o;
-	}
-
-	private static JsonObject singleType(String type)
-	{
-		JsonObject o = new JsonObject();
-		o.addProperty("type", type);
-		return o;
-	}
-
-	private Map<String, AgentLoop.Tool> buildTools(GameCapture cap, Map<String, long[]> owned,
-		Map<String, String> ownedNames, boolean bankInlined)
-	{
-		Map<String, AgentLoop.Tool> tools = new LinkedHashMap<>();
-		tools.put("wiki_search", args -> wiki.search(str(args, "query")));
-		tools.put("wiki_page", args -> {
-			String title = str(args, "title");
-			String text = wiki.page(title);
-			return text != null ? text
-				: Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
-		});
-		tools.put("item_drop_sources", args -> wiki.itemDropSources(str(args, "item_name")));
-		tools.put("monster_drops", args -> wiki.monsterDrops(str(args, "name")));
-		tools.put("monster_info", args -> wiki.monsterInfo(str(args, "name")));
-		tools.put("item_stats", args -> wiki.itemStats(str(args, "item_name")));
-		tools.put("quest_info", args -> wiki.questInfo(str(args, "quest_name")));
-		tools.put("ge_price", args -> {
-			List<String> names = strList(args, "item_names", "item_name");
-			if (names.isEmpty())
-			{
-				return Map.of("error", "provide 'item_names': a list of items to price");
-			}
-			Map<String, Object> result = new LinkedHashMap<>();
-			for (String name : names)
-			{
-				result.put(name, wiki.gePrice(name));
-			}
-			return result;
-		});
-		tools.put("quest_status", args -> {
-			if (cap.questStates == null || cap.questStates.isEmpty())
-			{
-				return Map.of("error", "quest states not available this session");
-			}
-			String ql = str(args, "quest_name").toLowerCase(Locale.ROOT);
-			for (Map.Entry<String, String> e : cap.questStates.entrySet())
-			{
-				if (e.getKey().toLowerCase(Locale.ROOT).equals(ql))
-				{
-					return Map.of("quest", e.getKey(), "status", e.getValue());
-				}
-			}
-			Map<String, String> partial = new LinkedHashMap<>();
-			for (Map.Entry<String, String> e : cap.questStates.entrySet())
-			{
-				if (e.getKey().toLowerCase(Locale.ROOT).contains(ql))
-				{
-					partial.put(e.getKey(), e.getValue());
-				}
-			}
-			return partial.isEmpty()
-				? Map.of("error", "no quest matching '" + str(args, "quest_name") + "'")
-				: partial;
-		});
-		if (!bankInlined)
-		{
-			tools.put("search_owned_items", args -> {
-				List<String> queries = strList(args, "queries", "query");
-				if (queries.isEmpty())
-				{
-					return Map.of("error", "provide 'queries': a list of item names to look for");
-				}
-				Map<String, Object> result = new LinkedHashMap<>();
-				for (String query : queries)
-				{
-					String ql = query.toLowerCase(Locale.ROOT);
-					List<Map<String, Object>> hits = new ArrayList<>();
-					for (Map.Entry<String, long[]> e : owned.entrySet())
-					{
-						if (e.getKey().contains(ql) && hits.size() < 20)
-						{
-							Map<String, Object> hit = new LinkedHashMap<>();
-							hit.put("item", ownedNames.get(e.getKey()));
-							hit.put("quantity", e.getValue()[0]);
-							hits.add(hit);
-						}
-					}
-					result.put(query, hits.isEmpty()
-						? "no match in bank/inventory/equipment" : hits);
-				}
-				return result;
-			});
-		}
-		return tools;
-	}
-
-	private static String str(JsonObject args, String key)
-	{
-		return args.has(key) && !args.get(key).isJsonNull() ? args.get(key).getAsString() : "";
-	}
-
-	/** List argument for a batched tool. The spec says a list; a model
-	 * sending one bare string (under either the list key or its singular
-	 * cousin) still gets an answer -- LLM output is a system boundary. */
-	private static List<String> strList(JsonObject args, String listKey, String singleKey)
-	{
-		List<String> values = new ArrayList<>();
-		if (args.has(listKey) && args.get(listKey).isJsonArray())
-		{
-			for (JsonElement v : args.getAsJsonArray(listKey))
-			{
-				values.add(v.getAsString());
-			}
-		}
-		else
-		{
-			String single = args.has(singleKey) ? str(args, singleKey) : str(args, listKey);
-			if (!single.isEmpty())
-			{
-				values.add(single);
-			}
-		}
-		return values;
-	}
-
-	private static <T> List<T> limit(List<T> list, int n)
-	{
-		return list.subList(0, Math.min(n, list.size()));
-	}
 }
