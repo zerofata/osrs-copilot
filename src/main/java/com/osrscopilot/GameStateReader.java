@@ -97,6 +97,7 @@ class GameStateReader
 		cap.questStates = questStates;
 		cap.diaries = diaryCompletion();
 		cap.slayerTask = slayerTask();
+		cap.unlocks = unlocks();
 
 		cap.inventory = itemList(client.getItemContainer(INV_ID));
 		cap.equipment = itemList(client.getItemContainer(WORN_ID));
@@ -154,6 +155,31 @@ class GameStateReader
 			}
 			out.put(area.getKey(), done);
 		}
+		return out;
+	}
+
+	/**
+	 * Spellbook and prayer-scroll unlocks, straight from varbits. The model
+	 * kept verifying these through the item search tool (which can only say
+	 * "0 owned" for a consumed scroll -- actively misleading); stating them
+	 * here answers the question before it is asked. Piety/Chivalry are
+	 * deliberately absent: their gate (Knight Waves) has no varbit we can
+	 * read with confidence, and a false unlock claim is worse than the
+	 * model checking the King's Ransom quest state.
+	 */
+	private Map<String, Object> unlocks()
+	{
+		Map<String, Object> out = new LinkedHashMap<>();
+		String[] books = {"standard", "ancient magicks", "lunar", "arceuus"};
+		int book = client.getVarbitValue(VarbitID.SPELLBOOK);
+		out.put("active_spellbook", book >= 0 && book < books.length
+			? books[book] : "unknown");
+		out.put("rigour_unlocked",
+			client.getVarbitValue(VarbitID.PRAYER_RIGOUR_UNLOCKED) == 1);
+		out.put("augury_unlocked",
+			client.getVarbitValue(VarbitID.PRAYER_AUGURY_UNLOCKED) == 1);
+		out.put("preserve_unlocked",
+			client.getVarbitValue(VarbitID.PRAYER_PRESERVE_UNLOCKED) == 1);
 		return out;
 	}
 

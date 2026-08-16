@@ -511,6 +511,11 @@ public class PipelineEvalRunner
 			cap.slayerTask = gson.fromJson(root.get("slayerTask"),
 				new TypeToken<Map<String, Object>>() { }.getType());
 		}
+		if (root.has("unlocks"))
+		{
+			cap.unlocks = gson.fromJson(root.get("unlocks"),
+				new TypeToken<Map<String, Object>>() { }.getType());
+		}
 		return cap;
 	}
 

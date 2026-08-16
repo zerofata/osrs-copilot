@@ -109,6 +109,11 @@ public class CopilotPipeline
 		private Map<String, long[]> ownedIndex;
 		private Map<String, String> ownedNames;
 		private boolean bankInlined;
+		/** Ownership is fully in context (inlined bank, or an ownership
+		 * fact complete for everything the facts mention): the owned-item
+		 * search tool would only invite redundant lookups, so it is
+		 * withheld. */
+		private boolean offerOwnedSearch;
 	}
 
 	private final Http http;
@@ -296,10 +301,12 @@ public class CopilotPipeline
 			facts.add("### Quest progress (authoritative, from the game client)\n"
 				+ gson.toJson(questFacts));
 		}
+		boolean ownershipComplete = false;
 		if (!p.bankInlined)
 		{
-			prefetcher.addOwnershipFromFacts(facts, p.ownedIndex, p.ownedNames);
+			ownershipComplete = prefetcher.addOwnershipFromFacts(facts, p.ownedIndex, p.ownedNames);
 		}
+		p.offerOwnedSearch = !p.bankInlined && !ownershipComplete;
 
 		p.factBlocks = facts.size();
 		p.factTitles = new ArrayList<>();
@@ -309,7 +316,8 @@ public class CopilotPipeline
 			p.factTitles.add((nl > 0 ? fact.substring(0, nl) : fact)
 				.replaceFirst("^#+\\s*", ""));
 		}
-		p.prompt = promptBuilder.buildUserMessage(question, cap, facts, p.bankInlined);
+		p.prompt = promptBuilder.buildUserMessage(question, cap, facts,
+			p.bankInlined, ownershipComplete);
 		return p;
 	}
 
@@ -323,7 +331,6 @@ public class CopilotPipeline
 			? history.get(history.size() - 1) : null;
 		Prepared prepared = prepare(question, cap, last != null ? last.entities : null);
 		Route route = prepared.route;
-		boolean bankInlined = prepared.bankInlined;
 		String userMessage = prepared.prompt;
 
 		// History enters as real chat messages: prior turns carry only the
@@ -338,9 +345,9 @@ public class CopilotPipeline
 		}
 		messages.add(AgentLoop.message("user", userMessage));
 
-		JsonArray toolSpecs = toolRegistry.buildToolSpecs(bankInlined);
+		JsonArray toolSpecs = toolRegistry.buildToolSpecs(prepared.offerOwnedSearch);
 		Map<String, AgentLoop.Tool> tools = toolRegistry.buildTools(cap, prepared.ownedIndex,
-			prepared.ownedNames, bankInlined);
+			prepared.ownedNames, prepared.offerOwnedSearch);
 
 		AgentLoop.Result agent = AgentLoop.run(llm, gson, messages,
 			toolSpecs, tools, maxTurns, listener);

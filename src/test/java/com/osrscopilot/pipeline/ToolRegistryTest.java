@@ -27,7 +27,7 @@ public class ToolRegistryTest
 	@Test
 	public void everySpecIsAWellFormedFunctionDeclaration()
 	{
-		for (JsonElement e : registry.buildToolSpecs(false))
+		for (JsonElement e : registry.buildToolSpecs(true))
 		{
 			JsonObject spec = e.getAsJsonObject();
 			assertEquals("function", spec.get("type").getAsString());
@@ -42,22 +42,25 @@ public class ToolRegistryTest
 	}
 
 	@Test
-	public void ownedItemSearchOnlyOfferedWhenBankNotInlined()
+	public void ownedItemSearchOnlyOfferedWhenOwnershipIsNotAlreadyInContext()
 	{
-		assertTrue(names(registry.buildToolSpecs(false)).contains("search_owned_items"));
-		assertFalse(names(registry.buildToolSpecs(true)).contains("search_owned_items"));
+		// Offered only when neither the inlined bank nor a complete
+		// ownership fact already answers it: a tool over visible data
+		// invites redundant lookups.
+		assertTrue(names(registry.buildToolSpecs(true)).contains("search_owned_items"));
+		assertFalse(names(registry.buildToolSpecs(false)).contains("search_owned_items"));
 	}
 
 	@Test
 	public void specsAndImplementationsStayInLockstep()
 	{
 		GameCapture cap = new GameCapture();
-		for (boolean bankInlined : new boolean[]{true, false})
+		for (boolean offerOwnedSearch : new boolean[]{true, false})
 		{
-			List<String> specNames = names(registry.buildToolSpecs(bankInlined));
+			List<String> specNames = names(registry.buildToolSpecs(offerOwnedSearch));
 			assertEquals(specNames.size(),
-				registry.buildTools(cap, java.util.Map.of(), java.util.Map.of(), bankInlined).size());
-			assertTrue(registry.buildTools(cap, java.util.Map.of(), java.util.Map.of(), bankInlined)
+				registry.buildTools(cap, java.util.Map.of(), java.util.Map.of(), offerOwnedSearch).size());
+			assertTrue(registry.buildTools(cap, java.util.Map.of(), java.util.Map.of(), offerOwnedSearch)
 				.keySet().containsAll(specNames));
 		}
 	}

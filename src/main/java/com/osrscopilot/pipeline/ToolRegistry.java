@@ -24,7 +24,7 @@ class ToolRegistry
 		this.wiki = wiki;
 	}
 
-	JsonArray buildToolSpecs(boolean bankInlined)
+	JsonArray buildToolSpecs(boolean offerOwnedSearch)
 	{
 		JsonArray specs = new JsonArray();
 		specs.add(toolSpec("wiki_search",
@@ -58,11 +58,14 @@ class ToolRegistry
 		specs.add(toolSpec("quest_status",
 			"Check whether the player has finished, started, or not started a specific quest.",
 			"quest_name"));
-		// Only offered when the full owned list is NOT already in context --
-		// a tool over visible data invites redundant lookups. Batched: a
-		// gear recommendation legitimately needs dozens of ownership checks,
+		// Only offered when ownership is NOT already fully in context (bank
+		// inlined, or the ownership fact complete for everything the facts
+		// mention) -- a tool over visible data invites redundant lookups:
+		// models re-verified dozens of already-answered items per question
+		// whenever this tool was within reach. Batched: a gear
+		// recommendation legitimately needs dozens of ownership checks,
 		// and they should cost one round trip, not one each.
-		if (!bankInlined)
+		if (offerOwnedSearch)
 		{
 			specs.add(toolSpec("search_owned_items",
 				"Search the player's bank, inventory, and equipment. Takes a LIST of item-name "
@@ -115,7 +118,7 @@ class ToolRegistry
 	}
 
 	Map<String, AgentLoop.Tool> buildTools(GameCapture cap, Map<String, long[]> owned,
-		Map<String, String> ownedNames, boolean bankInlined)
+		Map<String, String> ownedNames, boolean offerOwnedSearch)
 	{
 		Map<String, AgentLoop.Tool> tools = new LinkedHashMap<>();
 		tools.put("wiki_search", args -> wiki.search(str(args, "query")));
@@ -168,7 +171,7 @@ class ToolRegistry
 				? Map.of("error", "no quest matching '" + str(args, "quest_name") + "'")
 				: partial;
 		});
-		if (!bankInlined)
+		if (offerOwnedSearch)
 		{
 			tools.put("search_owned_items", args -> {
 				List<String> queries = strList(args, "queries", "query");

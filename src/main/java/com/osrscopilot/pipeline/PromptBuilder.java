@@ -19,8 +19,9 @@ class PromptBuilder
 	static final String SYNTH_SYSTEM =
 		"You are an OSRS copilot running inside RuneLite. Answer the player's question "
 		+ "using their live game state and the retrieved facts provided. Principles:\n"
-		+ "- PLAYER STATE is what the client observes. A field marked \"complete\" is "
-		+ "exhaustive (absence there means not owned). Everything else not shown is UNKNOWN, "
+		+ "- PLAYER STATE is what the client observes. A field or fact block marked "
+		+ "\"complete\" is exhaustive (absence there means not owned -- never search or "
+		+ "guess for what it already rules out). Everything else not shown is UNKNOWN, "
 		+ "not absent: never infer missing items, progress, or experience from absence -- say "
 		+ "what you can't see and give conditional advice ('if you have X, otherwise Y') where "
 		+ "it matters.\n"
@@ -56,7 +57,7 @@ class PromptBuilder
 	}
 
 	String buildUserMessage(String question, GameCapture cap, List<String> facts,
-		boolean bankInlined)
+		boolean bankInlined, boolean ownershipComplete)
 	{
 		Map<String, Object> state = new LinkedHashMap<>();
 		state.put("player", cap.playerName);
@@ -93,6 +94,10 @@ class PromptBuilder
 		{
 			state.put("slayer_task", cap.slayerTask);
 		}
+		if (cap.unlocks != null)
+		{
+			state.put("unlocks", cap.unlocks);
+		}
 		state.put("inventory", itemStrings(cap.inventory));
 		state.put("equipment", itemNamesOnly(cap.equipment));
 		// Self-describing: data plus status/provenance, no embedded instructions.
@@ -116,8 +121,15 @@ class PromptBuilder
 			else
 			{
 				bank.put("item_count", cap.bank.size());
-				bank.put("access", "ownership of items the facts mention is in RETRIEVED FACTS; "
-					+ "for anything else use ONE search_owned_items call with all queries batched");
+				// The access note must match the tools actually offered:
+				// referencing a withheld tool would send the model chasing it.
+				bank.put("access", ownershipComplete
+					? "the Ownership fact in RETRIEVED FACTS is the definitive bank "
+						+ "answer for every item the facts mention; treat items it "
+						+ "doesn't cover as unverified and advise conditionally"
+					: "ownership of items the facts mention is in RETRIEVED FACTS; "
+						+ "for anything else use ONE search_owned_items call with "
+						+ "all queries batched");
 			}
 		}
 		state.put("bank", bank);
