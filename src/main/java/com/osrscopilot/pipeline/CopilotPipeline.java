@@ -312,8 +312,8 @@ public class CopilotPipeline
 	{
 		Prepared p = new Prepared();
 		p.route = route(question, cap, previous);
-		p.ownedIndex = buildOwnedIndex(cap);
-		p.ownedNames = buildOwnedNames(cap);
+		p.ownedIndex = Ownership.buildIndex(cap);
+		p.ownedNames = Ownership.buildNames(cap);
 		p.bankInlined = !"summarized".equals(p.route.bankMode);
 
 		List<String> facts = prefetch(p.route, cap,
@@ -530,51 +530,6 @@ public class CopilotPipeline
 		return kept;
 	}
 
-	// ------------------------------------------------------------------
-	// Ownership index (bank + inventory + equipment)
-	// ------------------------------------------------------------------
-
-	private static Map<String, long[]> buildOwnedIndex(GameCapture cap)
-	{
-		Map<String, long[]> owned = new LinkedHashMap<>();
-		for (List<Map<String, Object>> container :
-			Arrays.asList(cap.bank, cap.inventory, cap.equipment))
-		{
-			if (container == null)
-			{
-				continue;
-			}
-			for (Map<String, Object> item : container)
-			{
-				String name = String.valueOf(item.get("name"));
-				long qty = item.get("quantity") instanceof Number
-					? ((Number) item.get("quantity")).longValue() : 1;
-				owned.merge(name.toLowerCase(Locale.ROOT), new long[]{qty},
-					(a, b) -> new long[]{a[0] + b[0]});
-			}
-		}
-		return owned;
-	}
-
-	private static Map<String, String> buildOwnedNames(GameCapture cap)
-	{
-		Map<String, String> names = new LinkedHashMap<>();
-		for (List<Map<String, Object>> container :
-			Arrays.asList(cap.bank, cap.inventory, cap.equipment))
-		{
-			if (container == null)
-			{
-				continue;
-			}
-			for (Map<String, Object> item : container)
-			{
-				String name = String.valueOf(item.get("name"));
-				names.putIfAbsent(name.toLowerCase(Locale.ROOT), name);
-			}
-		}
-		return names;
-	}
-
 	/** Cap on the ownership slice below; past this the block is noise, and
 	 * the batched search tool covers the rest. */
 	private static final int OWNERSHIP_FACT_LIMIT = 120;
@@ -599,7 +554,7 @@ public class CopilotPipeline
 			// Charge/dose qualifiers exist in bank names but never in prose:
 			// "Prayer potion(4)" must match a page saying "prayer potions".
 			String base = e.getKey().replaceAll("\\s*\\([^)]*\\)$", "").trim();
-			if (base.length() < 3 || !mentionsWord(haystack, base))
+			if (base.length() < 3 || !Ownership.mentionsWord(haystack, base))
 			{
 				continue;
 			}
@@ -627,59 +582,6 @@ public class CopilotPipeline
 		}
 		addFact(facts, "You own (of the items mentioned in these facts; "
 			+ "anything not listed was absent at capture)", sb.toString());
-	}
-
-	/** Case-folded whole-word containment, tolerating a plural "s" on the
-	 * fact side. Plain substring would let "bow" claim "blowpipe". */
-	private static boolean mentionsWord(String haystack, String needle)
-	{
-		int from = 0;
-		int i;
-		while ((i = haystack.indexOf(needle, from)) >= 0)
-		{
-			int end = i + needle.length();
-			if (end < haystack.length() && haystack.charAt(end) == 's')
-			{
-				end++;
-			}
-			boolean startOk = i == 0 || !Character.isLetterOrDigit(haystack.charAt(i - 1));
-			boolean endOk = end >= haystack.length() || !Character.isLetterOrDigit(haystack.charAt(end));
-			if (startOk && endOk)
-			{
-				return true;
-			}
-			from = i + 1;
-		}
-		return false;
-	}
-
-	private Object checkOwnership(Map<String, long[]> owned, Map<String, String> names, String itemName)
-	{
-		String key = itemName.toLowerCase(Locale.ROOT);
-		if (owned.containsKey(key))
-		{
-			return Map.of("item", names.get(key), "owned", owned.get(key)[0]);
-		}
-		List<Map<String, Object>> partial = new ArrayList<>();
-		for (Map.Entry<String, long[]> e : owned.entrySet())
-		{
-			if ((e.getKey().contains(key) || key.contains(e.getKey())) && partial.size() < 5)
-			{
-				Map<String, Object> hit = new LinkedHashMap<>();
-				hit.put("item", names.get(e.getKey()));
-				hit.put("owned", e.getValue()[0]);
-				partial.add(hit);
-			}
-		}
-		if (!partial.isEmpty())
-		{
-			Map<String, Object> out = new LinkedHashMap<>();
-			out.put("item", itemName);
-			out.put("exact_match", false);
-			out.put("similar_owned", partial);
-			return out;
-		}
-		return Map.of("item", itemName, "owned", 0);
 	}
 
 	// ------------------------------------------------------------------
@@ -737,7 +639,7 @@ public class CopilotPipeline
 			addFact(facts, "Equipment stats: " + item, wiki.itemStats(item));
 			if (!bankInlined)
 			{
-				addFact(facts, "Ownership: " + item, checkOwnership(owned, ownedNames, item));
+				addFact(facts, "Ownership: " + item, Ownership.check(owned, ownedNames, item));
 			}
 			if (needs.contains(Router.NEED_ITEM_SOURCES) || needs.contains(Router.NEED_DROP_TABLE))
 			{
