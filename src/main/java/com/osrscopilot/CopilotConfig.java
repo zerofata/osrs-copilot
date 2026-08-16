@@ -120,14 +120,16 @@ public interface CopilotConfig extends Config
 	@ConfigItem(
 		keyName = "maxTokens",
 		name = "Max tokens",
-		description = "Per-response token cap sent to the endpoint",
+		description = "Per-response token cap sent to the endpoint. Reasoning models "
+			+ "spend their thinking from this budget too; if answers come back "
+			+ "empty with a token-limit error, raise this.",
 		section = samplingSection,
 		position = 1
 	)
 	@Range(min = 256, max = 32768)
 	default int maxTokens()
 	{
-		return 4096;
+		return 8192;
 	}
 
 	@ConfigItem(

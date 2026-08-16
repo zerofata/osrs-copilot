@@ -9,9 +9,13 @@ import java.io.IOException;
  * diagnose with. */
 public class EmptyAnswerException extends IOException
 {
-	public EmptyAnswerException(int turns, String toolNames)
+	public EmptyAnswerException(int turns, String toolNames, boolean truncatedByLength)
 	{
 		super("no answer text after " + turns + " tool turn" + (turns == 1 ? "" : "s")
-			+ (toolNames.isEmpty() ? "" : " (" + toolNames + ")"));
+			+ (toolNames.isEmpty() ? "" : " (" + toolNames + ")")
+			+ (truncatedByLength
+				? " -- the response hit the max-token limit before any answer text; "
+					+ "raising Max tokens in the copilot settings gives the model room"
+				: ""));
 	}
 }

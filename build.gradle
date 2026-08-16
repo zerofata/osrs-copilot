@@ -58,7 +58,7 @@ tasks.register('evalRun', JavaExec) {
 	[env: 'evalEnv', snapshot: 'evalSnapshot', question: 'evalQuestion',
 	 question2: 'evalQuestion2', model: 'evalModel', showPrompt: 'evalShowPrompt',
 	 battery: 'evalBattery', routeOnly: 'evalRouteOnly',
-	 promptOnly: 'evalPromptOnly'].each { arg, prop ->
+	 promptOnly: 'evalPromptOnly', maxTokens: 'evalMaxTokens'].each { arg, prop ->
 		if (project.hasProperty(prop)) {
 			args "--${arg}", project.property(prop)
 		}

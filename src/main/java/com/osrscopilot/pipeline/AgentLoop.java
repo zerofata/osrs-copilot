@@ -52,7 +52,7 @@ class AgentLoop
 
 			if (toolCalls == null || toolCalls.size() == 0)
 			{
-				result.answer = ensureAnswer(llm, messages, contentOf(msg), listener, result);
+				result.answer = ensureAnswer(llm, messages, msg, listener, result);
 				return result;
 			}
 
@@ -113,22 +113,27 @@ class AgentLoop
 		messages.add(message("user",
 			"Stop researching. Give your final answer now using the facts you have gathered."));
 		result.answer = ensureAnswer(llm, messages,
-			contentOf(llm.chat(messages, null, listener)), listener, result);
+			llm.chat(messages, null, listener), listener, result);
 		return result;
 	}
 
 	/**
-	 * An empty or tool-markup "answer" is a failure, not a result. Models
-	 * trained on native tool tokens sometimes leak tool-call markup as text
-	 * (or nothing at all) when they mean to keep researching; retry once
-	 * with an explicit corrective, then fail loudly -- the panel's error
-	 * path returns the question for resubmission, which beats rendering a
-	 * blank card as if it were an answer. The exception carries the tool
-	 * trace: an errored turn otherwise leaves nothing to diagnose with.
+	 * An empty or tool-markup "answer" is a failure, not a result. Two known
+	 * causes, each needing its own corrective: reasoning models can burn the
+	 * whole completion budget thinking and stream no visible text at all
+	 * (finish_reason=length -- telling that model "don't emit tool syntax"
+	 * just makes it reason itself off the same cliff), and models trained on
+	 * native tool tokens sometimes leak tool-call markup as text when they
+	 * mean to keep researching. Retry once with the matching corrective,
+	 * then fail loudly -- the panel's error path returns the question for
+	 * resubmission, which beats rendering a blank card as if it were an
+	 * answer. The exception carries the tool trace and the truncation
+	 * diagnosis: an errored turn otherwise leaves nothing to diagnose with.
 	 */
-	private static String ensureAnswer(Llm llm, JsonArray messages, String answer,
+	private static String ensureAnswer(Llm llm, JsonArray messages, JsonObject msg,
 		StreamListener listener, Result result) throws IOException
 	{
+		String answer = contentOf(msg);
 		if (!looksLikeToolMarkup(answer))
 		{
 			return answer;
@@ -137,14 +142,27 @@ class AgentLoop
 		{
 			listener.onTurnDiscarded();
 		}
-		messages.add(message("user", "Tools are no longer available. Do NOT emit "
-			+ "tool-call syntax. Write your final answer as plain prose now."));
-		String retry = contentOf(llm.chat(messages, null, listener));
+		boolean truncated = truncatedByLength(msg);
+		messages.add(message("user", truncated
+			? "Your previous response hit the token limit before any answer text "
+				+ "appeared. Answer now in plain prose. Be brief: a compact answer "
+				+ "beats a complete one that gets cut off again."
+			: "Tools are no longer available. Do NOT emit tool-call syntax. "
+				+ "Write your final answer as plain prose now."));
+		JsonObject retryMsg = llm.chat(messages, null, listener);
+		String retry = contentOf(retryMsg);
 		if (looksLikeToolMarkup(retry))
 		{
-			throw new EmptyAnswerException(result.turns, toolNames(result.toolLog));
+			throw new EmptyAnswerException(result.turns, toolNames(result.toolLog),
+				truncated || truncatedByLength(retryMsg));
 		}
 		return retry;
+	}
+
+	private static boolean truncatedByLength(JsonObject msg)
+	{
+		return msg.has("finish_reason") && !msg.get("finish_reason").isJsonNull()
+			&& "length".equals(msg.get("finish_reason").getAsString());
 	}
 
 	/** Bare tool names from the log's "name({args})" entries. */

@@ -7,11 +7,13 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.Map;
 import java.util.TreeMap;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.Response;
 import okio.BufferedSource;
 
 /** OpenAI-compatible chat-completions client. Endpoint, key, model, and
  * sampling all come from user settings -- nothing is hardcoded. */
+@Slf4j
 public class Llm
 {
 	/** User-configured connection + sampling settings, captured per request. */
@@ -128,8 +130,15 @@ public class Llm
 		{
 			JsonObject resp = http.postJson(url, body, headers);
 			recordUsage(resp.getAsJsonObject("usage"));
-			return resp.getAsJsonArray("choices").get(0).getAsJsonObject()
-				.getAsJsonObject("message");
+			JsonObject choice = resp.getAsJsonArray("choices").get(0).getAsJsonObject();
+			JsonObject msg = choice.getAsJsonObject("message");
+			// Carried on the message so the agent loop can tell a token-limit
+			// truncation from a genuinely empty answer.
+			if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull())
+			{
+				msg.addProperty("finish_reason", choice.get("finish_reason").getAsString());
+			}
+			return msg;
 		}
 
 		body.addProperty("stream", true);
@@ -147,6 +156,7 @@ public class Llm
 	{
 		StringBuilder content = new StringBuilder();
 		Map<Integer, JsonObject> toolCalls = new TreeMap<>();
+		String finishReason = null;
 
 		String line;
 		while ((line = source.readUtf8Line()) != null)
@@ -170,7 +180,12 @@ public class Llm
 			{
 				continue;
 			}
-			JsonObject delta = choices.get(0).getAsJsonObject().getAsJsonObject("delta");
+			JsonObject choice = choices.get(0).getAsJsonObject();
+			if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull())
+			{
+				finishReason = choice.get("finish_reason").getAsString();
+			}
+			JsonObject delta = choice.getAsJsonObject("delta");
 			if (delta == null)
 			{
 				continue;
@@ -197,12 +212,18 @@ public class Llm
 		JsonObject msg = new JsonObject();
 		msg.addProperty("role", "assistant");
 		msg.addProperty("content", content.toString());
+		if (finishReason != null)
+		{
+			msg.addProperty("finish_reason", finishReason);
+		}
 		if (!toolCalls.isEmpty())
 		{
 			JsonArray arr = new JsonArray();
 			toolCalls.values().forEach(arr::add);
 			msg.add("tool_calls", arr);
 		}
+		log.debug("llm call: finish={} contentChars={} toolCalls={}",
+			finishReason, content.length(), toolCalls.size());
 		return msg;
 	}
 

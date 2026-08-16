@@ -42,6 +42,8 @@ import okhttp3.OkHttpClient;
  *   --routeOnly true  run only the deterministic router + assertions -- no
  *                     LLM calls, free, fast route regression check
  *   --model NAME      model name (default deepseek-ai/DeepSeek-V4-Flash)
+ *   --maxTokens N     per-response completion cap (default 4096; lower it to
+ *                     reproduce reasoning-burn truncation deterministically)
  *
  * ASSERT keys: items/monsters/quests/pages/skills/needs/facilities require
  * those entries in the route (case-insensitive); a "not_" prefix requires
@@ -74,7 +76,8 @@ public class PipelineEvalRunner
 		String baseUrl = env.getOrDefault("PARASAIL_BASE_URL", env.getOrDefault("OPENAI_BASE_URL", ""));
 		String apiKey = env.getOrDefault("PARASAIL_API_KEY", env.getOrDefault("OPENAI_API_KEY", ""));
 		String model = opts.getOrDefault("model", "deepseek-ai/DeepSeek-V4-Flash");
-		Llm.Settings settings = new Llm.Settings(baseUrl, apiKey, model, 0.2, 4096);
+		int maxTokens = Integer.parseInt(opts.getOrDefault("maxTokens", "4096"));
+		Llm.Settings settings = new Llm.Settings(baseUrl, apiKey, model, 0.2, maxTokens);
 		if (!settings.isConfigured())
 		{
 			out.println("No endpoint configured: set PARASAIL_BASE_URL/PARASAIL_API_KEY or pass --env FILE");
