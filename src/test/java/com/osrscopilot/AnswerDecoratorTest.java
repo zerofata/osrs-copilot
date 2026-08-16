@@ -3,6 +3,7 @@ package com.osrscopilot;
 import com.osrscopilot.pipeline.EntityResolver;
 import com.osrscopilot.pipeline.GameCapture;
 import java.util.List;
+import java.util.Map;
 import org.junit.Test;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -13,7 +14,7 @@ public class AnswerDecoratorTest
 	{
 		EntityResolver.Resolution entities = new EntityResolver.Resolution();
 		entities.pages.add("Bank");
-		return AnswerDecorator.build(new GameCapture(), entities, List.of(), null);
+		return AnswerDecorator.build(new GameCapture(), entities, List.of(), Map.of(), null);
 	}
 
 	@Test

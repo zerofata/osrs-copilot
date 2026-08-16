@@ -246,6 +246,21 @@ public class CopilotPipeline
 		}
 	}
 
+	/** Lowercase tradeable name to item ID, for rendering item sprites from
+	 * the client's game cache. Best-effort: empty when unavailable. */
+	public Map<String, Integer> knownItemIds()
+	{
+		try
+		{
+			return wiki.itemIdsByName();
+		}
+		catch (Exception e)
+		{
+			log.debug("item ids unavailable for decoration", e);
+			return Map.of();
+		}
+	}
+
 	public Prepared prepare(String question, GameCapture cap) throws IOException
 	{
 		return prepare(question, cap, null);

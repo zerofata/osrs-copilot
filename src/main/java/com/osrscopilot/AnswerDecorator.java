@@ -36,12 +36,15 @@ final class AnswerDecorator
 		final String lowerName;
 		final String title;
 		final String color;
-		/** Wiki image filename rendered before the name; null = no icon.
-		 * State color already says finished/in-progress/missing, so no
-		 * glyphs. Stored as a filename, not a URL: the vocabulary holds
-		 * thousands of rules (the whole GE catalogue) and only names that
-		 * actually appear in an answer may cost a fetch. */
-		final String iconFile;
+		/** Pre-resolved icon file URL (skill and quest icons, written to
+		 * disk at startup); null = none or item-sprite icon. State color
+		 * already says finished/in-progress/missing, so no glyphs. */
+		final String iconUrl;
+		/** Item ID whose inventory sprite decorates the name; -1 = none.
+		 * Stored as an ID, not an image: the vocabulary holds thousands of
+		 * rules (the whole GE catalogue) and only names that actually
+		 * appear in an answer may cost a sprite render. */
+		final int iconItemId;
 		final int iconW;
 		final int iconH;
 		/** Skill names are everyday words ("attack the demon", "a ranged
@@ -53,13 +56,14 @@ final class AnswerDecorator
 		 * mithril ore", the ore the player already owns says so inline. */
 		final String badge;
 
-		Rule(String lowerName, String title, String color, String iconFile,
-			int iconW, int iconH, boolean capitalizedOnly, String badge)
+		Rule(String lowerName, String title, String color, String iconUrl,
+			int iconItemId, int iconW, int iconH, boolean capitalizedOnly, String badge)
 		{
 			this.lowerName = lowerName;
 			this.title = title;
 			this.color = color;
-			this.iconFile = iconFile;
+			this.iconUrl = iconUrl;
+			this.iconItemId = iconItemId;
 			this.iconW = iconW;
 			this.iconH = iconH;
 			this.capitalizedOnly = capitalizedOnly;
@@ -68,9 +72,9 @@ final class AnswerDecorator
 	}
 
 	private final List<Rule> rules;
-	private final IconCache icons;
+	private final IconStore icons;
 
-	private AnswerDecorator(List<Rule> rules, IconCache icons)
+	private AnswerDecorator(List<Rule> rules, IconStore icons)
 	{
 		// Longest name first, so "Diamond bolts" wins over "Diamond".
 		rules.sort((a, b) -> b.lowerName.length() - a.lowerName.length());
@@ -78,19 +82,12 @@ final class AnswerDecorator
 		this.icons = icons;
 	}
 
-	/**
-	 * Assemble the name vocabularies in precedence order: a name known
-	 * several ways keeps its richest meaning (quest state over item over
-	 * plain page link).
-	 */
-	/** The in-game quest point icon, shared by every quest rule. */
-	private static final String QUEST_ICON_FILE = "Quest_point_icon.png";
-
 	/** Inventory sprites are 36x31-ish; near-square icons stay square. */
 	private static final int ICON_SQUARE = 14;
 	private static final int ITEM_ICON_W = 16;
 
-	/** All 24 skills; every "<Skill>_icon.png" file exists on the wiki. */
+	/** All 24 skills. Their icons come from RuneLite's own SkillIconManager,
+	 * so the set is exactly what the client knows. */
 	private static final List<String> SKILLS = List.of(
 		"Attack", "Strength", "Defence", "Ranged", "Prayer", "Magic",
 		"Runecraft", "Hitpoints", "Crafting", "Mining", "Smithing", "Fishing",
@@ -98,20 +95,28 @@ final class AnswerDecorator
 		"Thieving", "Fletching", "Slayer", "Farming", "Construction", "Hunter",
 		"Sailing");
 
+	/**
+	 * Assemble the name vocabularies in precedence order: a name known
+	 * several ways keeps its richest meaning (quest state over item over
+	 * plain page link). itemIds maps lowercase tradeable names to item IDs
+	 * so unowned items can carry their sprite; owned items bring their IDs
+	 * from the capture itself.
+	 */
 	static AnswerDecorator build(GameCapture cap, EntityResolver.Resolution entities,
-		List<String[]> itemNames, IconCache icons)
+		List<String[]> itemNames, Map<String, Integer> itemIds, IconStore icons)
 	{
 		Theme theme = Theme.active();
 		Map<String, Rule> byName = new LinkedHashMap<>();
 		if (cap != null && cap.questStates != null)
 		{
+			String questIcon = icons != null ? icons.questIconUrl() : null;
 			for (Map.Entry<String, String> e : cap.questStates.entrySet())
 			{
 				String color = "FINISHED".equals(e.getValue()) ? theme.questDoneHex
 					: "IN_PROGRESS".equals(e.getValue()) ? theme.questProgressHex
 					: theme.questNotStartedHex;
 				add(byName, e.getKey(), e.getKey(), color,
-					QUEST_ICON_FILE, ICON_SQUARE, ICON_SQUARE, false);
+					questIcon, -1, ICON_SQUARE, ICON_SQUARE, false, null);
 			}
 		}
 		if (cap != null)
@@ -121,7 +126,8 @@ final class AnswerDecorator
 		for (String skill : SKILLS)
 		{
 			add(byName, skill, skill, theme.plainLinkHex,
-				skill + "_icon.png", ICON_SQUARE, ICON_SQUARE, true);
+				icons != null ? icons.skillIconUrl(skill) : null,
+				-1, ICON_SQUARE, ICON_SQUARE, true, null);
 		}
 		if (entities != null)
 		{
@@ -129,18 +135,21 @@ final class AnswerDecorator
 			{
 				for (String name : kind)
 				{
-					add(byName, name, name, theme.plainLinkHex, null, 0, 0, false);
+					add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null);
 				}
 			}
 		}
 		if (itemNames != null)
 		{
 			// {name, page}: versioned names ("Fire cape (l)") match by name
-			// but link to their shared page; icon files are named per name.
+			// but link to their shared page. Untradeables without a mapped
+			// ID render iconless rather than with a guessed image.
 			for (String[] it : itemNames)
 			{
+				Integer id = itemIds != null
+					? itemIds.get(it[0].toLowerCase(Locale.ROOT)) : null;
 				add(byName, it[0], it[1], theme.itemUnownedHex,
-					it[0] + ".png", ITEM_ICON_W, ICON_SQUARE, false);
+					null, id != null ? id : -1, ITEM_ICON_W, ICON_SQUARE, false, null);
 			}
 		}
 		return new AnswerDecorator(new ArrayList<>(byName.values()), icons);
@@ -153,10 +162,10 @@ final class AnswerDecorator
 	private static void addOwnedItems(Map<String, Rule> byName, GameCapture cap, Theme theme)
 	{
 		Map<String, long[]> counts = new LinkedHashMap<>(); // {carried, equipped, banked}
-		Map<String, String> iconName = new LinkedHashMap<>();
-		accumulate(counts, iconName, cap.inventory, 0);
-		accumulate(counts, iconName, cap.equipment, 1);
-		accumulate(counts, iconName, cap.bank, 2);
+		Map<String, Integer> iconId = new LinkedHashMap<>();
+		accumulate(counts, iconId, cap.inventory, 0);
+		accumulate(counts, iconId, cap.equipment, 1);
+		accumulate(counts, iconId, cap.bank, 2);
 		for (Map.Entry<String, long[]> e : counts.entrySet())
 		{
 			long[] c = e.getValue();
@@ -174,14 +183,15 @@ final class AnswerDecorator
 			{
 				parts.add(String.format("×%,d banked", c[2]));
 			}
+			Integer id = iconId.get(e.getKey());
 			add(byName, e.getKey(), e.getKey(),
 				carried ? theme.itemCarriedHex : theme.itemBankedHex,
-				iconName.get(e.getKey()) + ".png", ITEM_ICON_W, ICON_SQUARE, false,
+				null, id != null ? id : -1, ITEM_ICON_W, ICON_SQUARE, false,
 				String.join(", ", parts));
 		}
 	}
 
-	private static void accumulate(Map<String, long[]> counts, Map<String, String> iconName,
+	private static void accumulate(Map<String, long[]> counts, Map<String, Integer> iconId,
 		List<Map<String, Object>> container, int slot)
 	{
 		if (container == null)
@@ -193,25 +203,23 @@ final class AnswerDecorator
 			String name = String.valueOf(item.get("name"));
 			// Charge/dose qualifiers exist in item names but never in prose:
 			// "Prayer potion(4)" must match an answer saying "prayer potion".
-			// The icon file keeps the exact name -- that is what the wiki's
-			// sprite files are named after.
+			// The icon keeps the exact variant's ID -- the sprite the player
+			// actually owns.
 			String base = name.replaceAll("\\s*\\([^)]*\\)$", "").trim();
 			Object q = item.get("quantity");
 			long qty = q instanceof Number ? ((Number) q).longValue() : 1;
 			counts.computeIfAbsent(base, k -> new long[3])[slot] += qty;
-			iconName.putIfAbsent(base, name);
+			Object id = item.get("id");
+			if (id instanceof Number)
+			{
+				iconId.putIfAbsent(base, ((Number) id).intValue());
+			}
 		}
 	}
 
 	private static void add(Map<String, Rule> byName, String name, String title,
-		String color, String iconFile, int iconW, int iconH, boolean capitalizedOnly)
-	{
-		add(byName, name, title, color, iconFile, iconW, iconH, capitalizedOnly, null);
-	}
-
-	private static void add(Map<String, Rule> byName, String name, String title,
-		String color, String iconFile, int iconW, int iconH, boolean capitalizedOnly,
-		String badge)
+		String color, String iconUrl, int iconItemId, int iconW, int iconH,
+		boolean capitalizedOnly, String badge)
 	{
 		if (name == null || name.length() < MIN_NAME_LENGTH)
 		{
@@ -219,7 +227,7 @@ final class AnswerDecorator
 		}
 		byName.putIfAbsent(name.toLowerCase(Locale.ROOT),
 			new Rule(name.toLowerCase(Locale.ROOT), title, color,
-				iconFile, iconW, iconH, capitalizedOnly, badge));
+				iconUrl, iconItemId, iconW, iconH, capitalizedOnly, badge));
 	}
 
 	/**
@@ -278,10 +286,11 @@ final class AnswerDecorator
 			Rule rule = rules.get(m[2]);
 			out.append(html, pos, m[0])
 				.append("<a href='").append(wikiUrl(rule.title)).append("'>");
-			// Icons resolve lazily, here, for matched names only: the rule
-			// vocabulary is thousands strong, an answer mentions a handful.
-			String iconUrl = rule.iconFile != null && icons != null
-				? icons.fileUrl(rule.iconFile) : null;
+			// Item sprites render lazily, here, for matched names only: the
+			// rule vocabulary is thousands strong, an answer mentions a few.
+			String iconUrl = rule.iconUrl != null ? rule.iconUrl
+				: rule.iconItemId >= 0 && icons != null
+				? icons.itemIconUrl(rule.iconItemId) : null;
 			if (iconUrl != null)
 			{
 				// border=0: linked images otherwise get the ancient

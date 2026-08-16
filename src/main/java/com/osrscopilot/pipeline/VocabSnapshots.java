@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -46,6 +47,7 @@ class VocabSnapshots
 	private Set<String> englishWords;
 	private List<WikiApi.NamedPoint> locationIndex;
 	private List<String[]> itemNameIndex;
+	private Map<String, Integer> itemIdsByName;
 
 	VocabSnapshots(Http http, Gson gson, File cacheDir)
 	{
@@ -62,6 +64,27 @@ class VocabSnapshots
 				new TypeToken<List<Map<String, Object>>>() { }.getType());
 		}
 		return geMapping;
+	}
+
+	/** Lowercase tradeable name to item ID, from the GE catalogue. The UI
+	 * uses IDs to render item sprites from the client's own game cache. */
+	synchronized Map<String, Integer> itemIdsByName() throws IOException
+	{
+		if (itemIdsByName == null)
+		{
+			Map<String, Integer> out = new HashMap<>();
+			for (Map<String, Object> it : geMapping())
+			{
+				String name = (String) it.get("name");
+				Object id = it.get("id");
+				if (name != null && id instanceof Number)
+				{
+					out.putIfAbsent(name.toLowerCase(Locale.ROOT), ((Number) id).intValue());
+				}
+			}
+			itemIdsByName = out;
+		}
+		return itemIdsByName;
 	}
 
 	synchronized Set<String> monsterNames() throws IOException

@@ -76,6 +76,11 @@ public class WikiApi
 		return vocab.knownItemNames();
 	}
 
+	public Map<String, Integer> itemIdsByName() throws IOException
+	{
+		return vocab.itemIdsByName();
+	}
+
 	Set<String> englishWords()
 	{
 		return vocab.englishWords();

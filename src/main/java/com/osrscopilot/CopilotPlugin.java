@@ -38,7 +38,10 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.NpcLootReceived;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
+import net.runelite.client.game.SkillIconManager;
+import net.runelite.client.game.SpriteManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -83,6 +86,15 @@ public class CopilotPlugin extends Plugin
 	@Inject
 	private ConfigManager configManager;
 
+	@Inject
+	private ItemManager itemManager;
+
+	@Inject
+	private SpriteManager spriteManager;
+
+	@Inject
+	private SkillIconManager skillIconManager;
+
 	/**
 	 * Our own worker for the pipeline. RuneLite's injected executor is a
 	 * SINGLE shared thread that also runs every plugin's scheduled tasks,
@@ -95,7 +107,7 @@ public class CopilotPlugin extends Plugin
 	private CopilotPipeline pipeline;
 	private CopilotPanel panel;
 	private NavigationButton navButton;
-	private IconCache iconCache;
+	private IconStore iconStore;
 	/** Toolbar icon: the plugin's wizard-hat mark, bundled as a resource. */
 	private BufferedImage navIcon;
 
@@ -144,7 +156,8 @@ public class CopilotPlugin extends Plugin
 		});
 		pipeline = new CopilotPipeline(okHttpClient, gson, CACHE_DIR);
 		pipelineExecutor.execute(pipeline::warmCaches);
-		iconCache = new IconCache(new File(CACHE_DIR, "icons"), okHttpClient);
+		iconStore = new IconStore(new File(CACHE_DIR, "icons"),
+			itemManager, spriteManager, skillIconManager);
 
 		Theme.setActive(Theme.byName(config.theme().key));
 		navIcon = ImageUtil.loadImageResource(CopilotPlugin.class, "nav-icon.png");
@@ -362,7 +375,7 @@ public class CopilotPlugin extends Plugin
 			{
 				decorated = AnswerDecorator
 					.build(capture, result.route != null ? result.route.entities : null,
-						pipeline.knownItemNames(), iconCache)
+						pipeline.knownItemNames(), pipeline.knownItemIds(), iconStore)
 					.decorate(MarkdownHtml.toHtml(result.answer));
 			}
 			catch (Exception e)

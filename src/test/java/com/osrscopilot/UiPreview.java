@@ -111,11 +111,11 @@ public final class UiPreview
 			+ "- Bring prayer potions and a ranged switch\n"
 			+ "- Bow of Faerdhinen only helps with the crystal set\n"
 			+ "- At 93 Ranged your accuracy is fine either way\n";
-		// Real icon download (cached under eval/) so previews show the
-		// decorated answer exactly as the client renders it.
-		IconCache icons = new IconCache(new java.io.File("eval/icon-cache"),
-			new okhttp3.OkHttpClient());
-		String decorated = AnswerDecorator.build(cap, ents, tradeable, icons)
+		// No client here, so no sprite rendering: the store serves whatever
+		// a previous dev-client session left on disk, else no icons.
+		IconStore icons = new IconStore(new java.io.File("eval/icon-cache"),
+			null, null, null);
+		String decorated = AnswerDecorator.build(cap, ents, tradeable, Map.of(), icons)
 			.decorate(MarkdownHtml.toHtml(answer));
 		panel.showAnswerDone(answer, decorated, 12.4, true,
 			"facts: Monster info: Tormented Demon; Strategy: Tormented Demon; "
