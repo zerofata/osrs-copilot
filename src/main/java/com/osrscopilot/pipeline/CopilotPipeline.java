@@ -2,20 +2,12 @@ package com.osrscopilot.pipeline;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 
@@ -34,37 +26,6 @@ import okhttp3.OkHttpClient;
 @Slf4j
 public class CopilotPipeline
 {
-	private static final int HISTORY_MAX_EXCHANGES = 6;
-	private static final int HISTORY_MAX_CHARS = 8000;
-
-	private static final String SYNTH_SYSTEM =
-		"You are an OSRS copilot running inside RuneLite. Answer the player's question "
-		+ "using their live game state and the retrieved facts provided. Principles:\n"
-		+ "- PLAYER STATE is what the client observes. A field marked \"complete\" is "
-		+ "exhaustive (absence there means not owned). Everything else not shown is UNKNOWN, "
-		+ "not absent: never infer missing items, progress, or experience from absence -- say "
-		+ "what you can't see and give conditional advice ('if you have X, otherwise Y') where "
-		+ "it matters.\n"
-		+ "- Respect the player's account type (an IRONMAN cannot use the Grand Exchange).\n"
-		+ "- Retrieved facts were fetched from the OSRS Wiki just now and are authoritative. "
-		+ "Prefer them over memory, and don't assert game facts from memory that they don't "
-		+ "support. Use tools if something essential is missing.\n"
-		+ "- Personalize: check requirements against the player's actual levels, quest progress, "
-		+ "kill counts (boss_kc_and_activity_scores; a missing boss means few kills, not "
-		+ "exactly zero), and owned items.\n"
-		+ "- Quest progress shown in the facts is authoritative. For any quest not shown, verify "
-		+ "with the quest_status tool before advising quest-gated content.\n"
-		+ "- If the question is ambiguous, state the interpretation you chose in one short sentence.\n"
-		+ "- If the facts don't answer the question, say so honestly rather than guessing.\n"
-		+ "- When comparing or ranking options, ground the verdict in retrieved numbers "
-		+ "(defensive stats, requirements, mechanics) or a retrieved recommendation. If nothing "
-		+ "retrieved settles it, present the trade-offs and say the data doesn't settle it -- "
-		+ "never manufacture a confident winner.\n"
-		+ "- In an ongoing conversation, PLAYER STATE and RETRIEVED FACTS accompany the latest "
-		+ "question and reflect the current moment; earlier answers may describe older state.\n"
-		+ "- Be concrete and concise; recommend rather than exhaustively enumerate, but use "
-		+ "steps or lists when the question calls for them.";
-
 	/** One completed question/answer pair from earlier in the session. */
 	public static class Exchange
 	{
@@ -158,6 +119,7 @@ public class CopilotPipeline
 	private final Router router;
 	private final Prefetcher prefetcher;
 	private final ToolRegistry toolRegistry;
+	private final PromptBuilder promptBuilder;
 
 	public CopilotPipeline(OkHttpClient httpClient, Gson gson, File cacheDir)
 	{
@@ -169,6 +131,7 @@ public class CopilotPipeline
 		this.router = new Router(resolver);
 		this.prefetcher = new Prefetcher(wiki, gson);
 		this.toolRegistry = new ToolRegistry(wiki);
+		this.promptBuilder = new PromptBuilder(gson, wiki, hiscores);
 	}
 
 	/** Warm vocabulary caches (call off-thread, e.g. at plugin start). */
@@ -331,7 +294,7 @@ public class CopilotPipeline
 			p.factTitles.add((nl > 0 ? fact.substring(0, nl) : fact)
 				.replaceFirst("^#+\\s*", ""));
 		}
-		p.prompt = buildUserMessage(question, cap, facts, p.bankInlined);
+		p.prompt = promptBuilder.buildUserMessage(question, cap, facts, p.bankInlined);
 		return p;
 	}
 
@@ -352,8 +315,8 @@ public class CopilotPipeline
 		// question and the distilled answer; state and facts always accompany
 		// the latest turn (retrieval context is transient, answers persist).
 		JsonArray messages = new JsonArray();
-		messages.add(AgentLoop.message("system", SYNTH_SYSTEM));
-		for (Exchange ex : boundedHistory(history))
+		messages.add(AgentLoop.message("system", PromptBuilder.SYNTH_SYSTEM));
+		for (Exchange ex : PromptBuilder.boundedHistory(history))
 		{
 			messages.add(AgentLoop.message("user", ex.question));
 			messages.add(AgentLoop.message("assistant", ex.answer));
@@ -411,254 +374,6 @@ public class CopilotPipeline
 			log.debug("grounding check failed", e);
 			return List.of();
 		}
-	}
-
-	/** Newest-first budget: keep the most recent exchanges within both the
-	 * exchange and character caps, preserving chronological order. */
-	private static List<Exchange> boundedHistory(List<Exchange> history)
-	{
-		List<Exchange> kept = new ArrayList<>();
-		if (history == null)
-		{
-			return kept;
-		}
-		int chars = 0;
-		for (int i = history.size() - 1; i >= 0 && kept.size() < HISTORY_MAX_EXCHANGES; i--)
-		{
-			Exchange ex = history.get(i);
-			chars += ex.question.length() + ex.answer.length();
-			if (chars > HISTORY_MAX_CHARS && !kept.isEmpty())
-			{
-				break;
-			}
-			kept.add(0, ex);
-		}
-		return kept;
-	}
-
-	// ------------------------------------------------------------------
-	// Prompt assembly
-	// ------------------------------------------------------------------
-
-	private String buildUserMessage(String question, GameCapture cap, List<String> facts,
-		boolean bankInlined)
-	{
-		Map<String, Object> state = new LinkedHashMap<>();
-		state.put("player", cap.playerName);
-		state.put("account_type", cap.accountTypeName());
-		state.put("combat_level", cap.combatLevel);
-		state.put("location", groundedLocation(cap));
-		state.put("skills", cap.skills);
-		// Kill counts are server-side state the client can't see; without
-		// them the model assumes "beginner", which is the failure mode.
-		Map<String, Long> scores = hiscores.rankedActivities(cap.playerName);
-		if (scores != null)
-		{
-			state.put("boss_kc_and_activity_scores", scores);
-		}
-		if (cap.boostsOrDrains != null && !cap.boostsOrDrains.isEmpty())
-		{
-			state.put("boosts_or_drains", cap.boostsOrDrains);
-		}
-		if (cap.questStates != null)
-		{
-			long finished = cap.questStates.values().stream()
-				.filter("FINISHED"::equals).count();
-			state.put("quests_finished", finished);
-			List<String> inProgress = new ArrayList<>();
-			cap.questStates.forEach((q, s) -> {
-				if ("IN_PROGRESS".equals(s))
-				{
-					inProgress.add(q);
-				}
-			});
-			state.put("quests_in_progress", inProgress);
-		}
-		if (cap.slayerTask != null)
-		{
-			state.put("slayer_task", cap.slayerTask);
-		}
-		state.put("inventory", itemStrings(cap.inventory));
-		state.put("equipment", itemNamesOnly(cap.equipment));
-		// Self-describing: data plus status/provenance, no embedded instructions.
-		// The system prompt defines the semantics of "complete"/"unknown" once.
-		Map<String, Object> bank = new LinkedHashMap<>();
-		if (cap.bank == null)
-		{
-			bank.put("status", "unknown");
-		}
-		else
-		{
-			bank.put("status", bankInlined ? "complete" : "summarized");
-			if (cap.bankCapturedAtMs != null)
-			{
-				bank.put("captured", ago(cap.bankCapturedAtMs));
-			}
-			if (bankInlined)
-			{
-				bank.put("items", itemStrings(cap.bank));
-			}
-			else
-			{
-				bank.put("item_count", cap.bank.size());
-				bank.put("access", "ownership of items the facts mention is in RETRIEVED FACTS; "
-					+ "for anything else use ONE search_owned_items call with all queries batched");
-			}
-		}
-		state.put("bank", bank);
-		if (cap.diaries != null && !cap.diaries.isEmpty())
-		{
-			// Self-describing, like the bank field: bare per-area lists left
-			// the model guessing what "[]" meant. Only areas with completed
-			// tiers are listed; the note carries the semantics for the rest.
-			Map<String, Object> completed = new LinkedHashMap<>();
-			for (Map.Entry<String, Object> e : cap.diaries.entrySet())
-			{
-				if (e.getValue() instanceof List && !((List<?>) e.getValue()).isEmpty())
-				{
-					completed.put(e.getKey(), e.getValue());
-				}
-			}
-			Map<String, Object> diaries = new LinkedHashMap<>();
-			diaries.put("status", "authoritative, from the game client");
-			diaries.put("completed_tiers", completed);
-			diaries.put("note", "any area or tier not listed here is NOT complete. "
-				+ "Per-task progress inside an incomplete tier is not visible: present its "
-				+ "tasks as a checklist, never claim which individual tasks are done");
-			state.put("achievement_diaries", diaries);
-		}
-
-		StringBuilder sb = new StringBuilder();
-		sb.append("QUESTION: ").append(question).append("\n\n");
-		sb.append("PLAYER STATE:\n").append(gson.toJson(state));
-		if (cap.recentEvents != null && !cap.recentEvents.isEmpty())
-		{
-			sb.append("\n\nRECENT SESSION EVENTS (newest last):\n")
-				.append(gson.toJson(cap.recentEvents));
-		}
-		if (!facts.isEmpty())
-		{
-			sb.append("\n\nRETRIEVED FACTS (fetched from OSRS Wiki / GE just now):\n\n")
-				.append(String.join("\n", facts));
-		}
-		return sb.toString();
-	}
-
-	/**
-	 * Raw coordinates mean nothing to a model; resolve them to named places
-	 * from the wiki's live location index. Coordinates stay in as
-	 * supplementary data (retrieved facts quote exact tiles).
-	 */
-	private Map<String, Object> groundedLocation(GameCapture cap)
-	{
-		if (cap.location == null)
-		{
-			return null;
-		}
-		// JSON round-trips turn ints into doubles ("y":3220.0); tidy them.
-		Map<String, Object> out = new LinkedHashMap<>();
-		cap.location.forEach((k, v) ->
-			out.put(k, v instanceof Number ? ((Number) v).longValue() : v));
-		Object xo = cap.location.get("x");
-		Object yo = cap.location.get("y");
-		if (xo instanceof Number && yo instanceof Number)
-		{
-			int x = ((Number) xo).intValue();
-			int y = ((Number) yo).intValue();
-			// The primary place must be one the player can BE in. A dungeon's
-			// surface marker is its entrance, so a player standing on it is in
-			// the surrounding area, not the dungeon -- "you are in the Yanille
-			// Agility Dungeon" from a Yanille street corner came from here.
-			WikiApi.NamedPoint place = null;
-			WikiApi.NamedPoint second = null;
-			WikiApi.NamedPoint entrance = null;
-			for (WikiApi.NamedPoint p : wiki.nearestPlaces(x, y, 4))
-			{
-				if (Math.round(Math.sqrt(WikiApi.distSq(p, x, y))) > 300)
-				{
-					break;
-				}
-				if (p.entrance)
-				{
-					entrance = entrance == null ? p : entrance;
-				}
-				else if (place == null)
-				{
-					place = p;
-				}
-				else if (second == null)
-				{
-					second = p;
-				}
-			}
-			if (place != null)
-			{
-				long dist = Math.round(Math.sqrt(WikiApi.distSq(place, x, y)));
-				out.put("place", place.name + (dist <= 40 ? "" : " (~" + dist + " tiles away)"));
-				if (second != null)
-				{
-					out.put("also_near", second.name);
-				}
-			}
-			if (entrance != null)
-			{
-				long dist = Math.round(Math.sqrt(WikiApi.distSq(entrance, x, y)));
-				out.put("nearby_entrance", entrance.name
-					+ " (surface entrance ~" + dist + " tiles away; the player is NOT inside)");
-			}
-			if (place == null && entrance == null && y >= 6400)
-			{
-				// Deterministic fact: the coordinate plane above y=6400
-				// holds dungeons and instances, not the surface world. The
-				// index covers the surface map, so nothing matched here.
-				out.put("place", "underground or instanced area (off the surface map)");
-			}
-			// Otherwise: no named place within range; say nothing rather
-			// than something wrong.
-		}
-		return out;
-	}
-
-	private static String ago(long thenMs)
-	{
-		long mins = Math.max(0, (System.currentTimeMillis() - thenMs) / 60_000);
-		if (mins < 60)
-		{
-			return mins + " minutes ago";
-		}
-		if (mins < 48 * 60)
-		{
-			return (mins / 60) + " hours ago";
-		}
-		return (mins / (24 * 60)) + " days ago";
-	}
-
-	private static List<String> itemStrings(List<Map<String, Object>> items)
-	{
-		List<String> out = new ArrayList<>();
-		if (items != null)
-		{
-			for (Map<String, Object> item : items)
-			{
-				long qty = item.get("quantity") instanceof Number
-					? ((Number) item.get("quantity")).longValue() : 1;
-				out.add(item.get("name") + (qty > 1 ? " x" + qty : ""));
-			}
-		}
-		return out;
-	}
-
-	private static List<String> itemNamesOnly(List<Map<String, Object>> items)
-	{
-		List<String> out = new ArrayList<>();
-		if (items != null)
-		{
-			for (Map<String, Object> item : items)
-			{
-				out.add(String.valueOf(item.get("name")));
-			}
-		}
-		return out;
 	}
 
 }
