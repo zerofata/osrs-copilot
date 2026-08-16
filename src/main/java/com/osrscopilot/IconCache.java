@@ -72,7 +72,8 @@ final class IconCache
 		{
 			Request request = new Request.Builder()
 				.url(IMAGE_BASE + wikiFile.replace(" ", "_"))
-				.header("User-Agent", "osrs-copilot RuneLite plugin")
+				.header("User-Agent",
+					"osrs-copilot RuneLite plugin (https://github.com/zerofata/osrs-copilot)")
 				.build();
 			try (Response response = client.newCall(request).execute())
 			{

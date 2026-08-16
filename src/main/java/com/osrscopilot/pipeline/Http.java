@@ -20,8 +20,10 @@ class Http
 
 	/** The wiki's APIs (prices.runescape.wiki especially) require a
 	 * descriptive User-Agent identifying the consumer, and 400 anything
-	 * anonymous. Sent on every request. */
-	private static final String USER_AGENT = "osrs-copilot RuneLite plugin";
+	 * anonymous. The repo URL is the contact channel they ask for, so they
+	 * can reach out instead of block. Sent on every request. */
+	private static final String USER_AGENT =
+		"osrs-copilot RuneLite plugin (https://github.com/zerofata/osrs-copilot)";
 
 	private final OkHttpClient client;
 	private final Gson gson;
