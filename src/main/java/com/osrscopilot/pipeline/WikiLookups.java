@@ -1,0 +1,424 @@
+package com.osrscopilot.pipeline;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Structured game-data lookups over the wiki's buckets and the prices API:
+ * drop tables, monster combat profiles, equipment bonuses, quest
+ * requirements, GE prices. Returns error maps rather than nulls because the
+ * LLM tool boundary wants the message.
+ */
+@Slf4j
+class WikiLookups
+{
+	private static final String PRICES_API = "https://prices.runescape.wiki/api";
+
+	private final Http http;
+	private final Gson gson;
+	private final WikiContent content;
+	private final VocabSnapshots vocab;
+
+	WikiLookups(Http http, Gson gson, WikiContent content, VocabSnapshots vocab)
+	{
+		this.http = http;
+		this.gson = gson;
+		this.content = content;
+		this.vocab = vocab;
+	}
+
+	/** Best-effort canonical item name via the GE mapping, else wiki search. */
+	String resolveItemName(String name)
+	{
+		try
+		{
+			String exact = mappingMatch(name);
+			if (exact != null)
+			{
+				return exact;
+			}
+			// The wiki's curated redirects ("bowfa" -> Bow of Faerdhinen) are
+			// the same mechanism the entity resolver trusts -- use them before
+			// substring matching, which is a guess. GE names carry charge
+			// qualifiers players never type ("Toxic blowpipe (empty)"), so a
+			// redirect target also matches its qualified variant.
+			String target = content.resolveTitles(List.of(name)).get(name);
+			if (target != null)
+			{
+				String viaRedirect = mappingMatch(target);
+				if (viaRedirect != null)
+				{
+					return viaRedirect;
+				}
+				String qualified = qualifiedVariant(target);
+				return qualified != null ? qualified : target;
+			}
+			String lower = name.toLowerCase(Locale.ROOT);
+			String shortestPartial = null;
+			for (Map<String, Object> it : vocab.geMapping())
+			{
+				String candidate = (String) it.get("name");
+				if (candidate.toLowerCase(Locale.ROOT).contains(lower)
+					&& (shortestPartial == null || candidate.length() < shortestPartial.length()))
+				{
+					shortestPartial = candidate;
+				}
+			}
+			if (shortestPartial != null)
+			{
+				return shortestPartial;
+			}
+			List<Map<String, Object>> hits = content.search(name);
+			if (!hits.isEmpty() && hits.get(0).containsKey("title"))
+			{
+				return (String) hits.get(0).get("title");
+			}
+		}
+		catch (Exception e)
+		{
+			log.debug("resolveItemName failed for {}", name, e);
+		}
+		return name;
+	}
+
+	/** Case-insensitive exact match against the GE mapping, or null. */
+	private String mappingMatch(String name) throws IOException
+	{
+		for (Map<String, Object> it : vocab.geMapping())
+		{
+			String candidate = (String) it.get("name");
+			if (candidate.equalsIgnoreCase(name))
+			{
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	/** Shortest "Name (qualifier)" entry in the GE mapping, or null. */
+	private String qualifiedVariant(String name) throws IOException
+	{
+		String prefix = name.toLowerCase(Locale.ROOT) + " (";
+		String best = null;
+		for (Map<String, Object> it : vocab.geMapping())
+		{
+			String candidate = (String) it.get("name");
+			if (candidate.toLowerCase(Locale.ROOT).startsWith(prefix)
+				&& (best == null || candidate.length() < best.length()))
+			{
+				best = candidate;
+			}
+		}
+		return best;
+	}
+
+	/** Monsters/activities that drop an item, with quantity and rarity. */
+	Map<String, Object> itemDropSources(String itemName)
+	{
+		Map<String, Object> result = new LinkedHashMap<>();
+		try
+		{
+			String canonical = resolveItemName(itemName);
+			JsonObject r = content.bucket("bucket('dropsline').select('page_name','drop_json')"
+				+ ".where('item_name','" + canonical.replace("'", "\\'") + "').limit(50).run()");
+			List<Map<String, Object>> out = new ArrayList<>();
+			Set<String> seen = new HashSet<>();
+			for (JsonElement row : r.getAsJsonArray("bucket"))
+			{
+				JsonObject o = row.getAsJsonObject();
+				if (!o.has("drop_json"))
+				{
+					continue;
+				}
+				JsonObject dj = gson.fromJson(o.get("drop_json").getAsString(), JsonObject.class);
+				String source = dj.has("Dropped from") ? dj.get("Dropped from").getAsString()
+					: (o.has("page_name") ? o.get("page_name").getAsString() : "?");
+				String qty = dj.has("Drop Quantity") ? dj.get("Drop Quantity").getAsString() : "?";
+				String rarity = dj.has("Rarity") ? dj.get("Rarity").getAsString() : "?";
+				if (!seen.add(source + "|" + qty + "|" + rarity))
+				{
+					continue;
+				}
+				Map<String, Object> entry = new LinkedHashMap<>();
+				entry.put("source", source);
+				entry.put("quantity", qty);
+				entry.put("rarity", rarity);
+				out.add(entry);
+				if (out.size() >= 30)
+				{
+					break;
+				}
+			}
+			result.put("item", canonical);
+			result.put("sources", out);
+			if (!canonical.equalsIgnoreCase(itemName))
+			{
+				result.put("note", "'" + itemName + "' resolved to in-game item '" + canonical + "'");
+			}
+			if (out.isEmpty())
+			{
+				result.put("note", "No drop sources found for '" + canonical + "'. It may not be "
+					+ "dropped by monsters; check wiki_page for other ways to obtain it.");
+			}
+		}
+		catch (Exception e)
+		{
+			result.put("error", "lookup failed: " + e.getMessage());
+		}
+		return result;
+	}
+
+	/** Full drop table of a monster. */
+	Map<String, Object> monsterDrops(String name)
+	{
+		try
+		{
+			JsonObject r = content.bucket("bucket('dropsline').select('item_name','drop_json')"
+				+ ".where('page_name','" + name.replace("'", "\\'") + "').limit(80).run()");
+			JsonArray rows = r.getAsJsonArray("bucket");
+			if (rows == null || rows.size() == 0)
+			{
+				// Monster page names are exact; try to resolve via search once.
+				List<Map<String, Object>> hits = content.search(name);
+				if (!hits.isEmpty() && hits.get(0).containsKey("title")
+					&& !name.equals(hits.get(0).get("title")))
+				{
+					return monsterDrops((String) hits.get(0).get("title"));
+				}
+				return Map.of("error", "No drop data found for '" + name + "'.");
+			}
+			List<Map<String, Object>> out = new ArrayList<>();
+			Set<String> seen = new HashSet<>();
+			for (JsonElement row : rows)
+			{
+				JsonObject o = row.getAsJsonObject();
+				if (!o.has("drop_json"))
+				{
+					continue;
+				}
+				JsonObject dj = gson.fromJson(o.get("drop_json").getAsString(), JsonObject.class);
+				String item = o.has("item_name") ? o.get("item_name").getAsString() : "?";
+				String qty = dj.has("Drop Quantity") ? dj.get("Drop Quantity").getAsString() : "?";
+				String rarity = dj.has("Rarity") ? dj.get("Rarity").getAsString() : "?";
+				if (!seen.add(item + "|" + qty + "|" + rarity))
+				{
+					continue;
+				}
+				Map<String, Object> entry = new LinkedHashMap<>();
+				entry.put("item", item);
+				entry.put("quantity", qty);
+				entry.put("rarity", rarity);
+				out.add(entry);
+			}
+			Map<String, Object> result = new LinkedHashMap<>();
+			result.put("monster", name);
+			result.put("drops", out);
+			return result;
+		}
+		catch (Exception e)
+		{
+			return Map.of("error", "lookup failed: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Combat profile of a monster. Deliberately complete: gear and style
+	 * verdicts hinge on defensive stats, attributes (demon/dragon/undead
+	 * drive demonbane and salve reasoning), and immunities. When these were
+	 * omitted, models filled the gap from stale priors -- "low Defence" was
+	 * once claimed for a Defence-150 monster the model had no numbers for.
+	 */
+	Map<String, Object> monsterInfo(String name)
+	{
+		try
+		{
+			JsonObject r = content.bucket("bucket('infobox_monster')"
+				+ ".select('name','combat_level','hitpoints','max_hit',"
+				+ "'slayer_level','slayer_category','attribute',"
+				+ "'attack_level','strength_level','defence_level','ranged_level','magic_level',"
+				+ "'stab_defence_bonus','slash_defence_bonus','crush_defence_bonus',"
+				+ "'magic_defence_bonus','light_range_defence_bonus',"
+				+ "'standard_range_defence_bonus','heavy_range_defence_bonus',"
+				+ "'attack_style','attack_speed','size',"
+				+ "'venom_immune','cannon_immune','burn_immune','freeze_resistance',"
+				+ "'elemental_weakness','elemental_weakness_percent')"
+				+ ".where('name','" + name.replace("'", "\\'") + "').limit(3).run()");
+			JsonArray rows = r.getAsJsonArray("bucket");
+			if (rows == null || rows.size() == 0)
+			{
+				return Map.of("error", "No monster named '" + name + "' found. Check spelling via wiki_search.");
+			}
+			Map<String, Object> info = gson.fromJson(rows.get(0),
+				new TypeToken<Map<String, Object>>() { }.getType());
+			info.values().removeIf(Objects::isNull);
+			info.replaceAll((k, v) -> stripMarkup(v));
+			return info;
+		}
+		catch (Exception e)
+		{
+			return Map.of("error", "lookup failed: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Equipment combat bonuses. The mirror of monsterInfo: infoboxes never
+	 * survive plaintext extracts, so without this the model compares weapons
+	 * it has no numbers for ("higher base stats -- exact numbers not in the
+	 * retrieved data"). The bucket has no attack-speed or slot field; those
+	 * live in page prose, which IS retrieved.
+	 */
+	Map<String, Object> itemStats(String name)
+	{
+		try
+		{
+			JsonObject r = content.bucket("bucket('infobox_bonuses')"
+				+ ".select('page_name',"
+				+ "'stab_attack_bonus','slash_attack_bonus','crush_attack_bonus',"
+				+ "'magic_attack_bonus','range_attack_bonus',"
+				+ "'stab_defence_bonus','slash_defence_bonus','crush_defence_bonus',"
+				+ "'magic_defence_bonus','range_defence_bonus',"
+				+ "'strength_bonus','ranged_strength_bonus','magic_damage_bonus','prayer_bonus')"
+				+ ".where('page_name','" + name.replace("'", "\\'") + "').limit(3).run()");
+			JsonArray rows = r.getAsJsonArray("bucket");
+			if (rows == null || rows.size() == 0)
+			{
+				return Map.of("error", "No equipment stats for '" + name
+					+ "'. It may not be wearable, or the name may differ; check via wiki_search.");
+			}
+			Map<String, Object> info = gson.fromJson(rows.get(0),
+				new TypeToken<Map<String, Object>>() { }.getType());
+			info.values().removeIf(Objects::isNull);
+			info.replaceAll((k, v) -> stripMarkup(v));
+			return info;
+		}
+		catch (Exception e)
+		{
+			return Map.of("error", "lookup failed: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Quest requirements from the wiki's structured quest bucket. The
+	 * {{Quest details}} template never survives plaintext extracts, so
+	 * without this "can I do X" answers lack the skill levels and the
+	 * prerequisite quest tree -- a vacuum the model once filled with RS3
+	 * quest names from its training data. As a bonus, prerequisite names
+	 * appearing in this fact cause the pipeline to attach the player's
+	 * live progress for each of them (relevantQuestStates scans facts).
+	 */
+	Map<String, Object> questInfo(String name)
+	{
+		try
+		{
+			JsonObject r = content.bucket("bucket('quest')"
+				+ ".select('page_name','requirements','items_required','start_point')"
+				+ ".where('page_name','" + name.replace("'", "\\'") + "').limit(2).run()");
+			JsonArray rows = r.getAsJsonArray("bucket");
+			if (rows == null || rows.size() == 0)
+			{
+				return Map.of("error", "No quest named '" + name
+					+ "' found. Check spelling via wiki_search.");
+			}
+			Map<String, Object> info = gson.fromJson(rows.get(0),
+				new TypeToken<Map<String, Object>>() { }.getType());
+			info.values().removeIf(Objects::isNull);
+			info.replaceAll((k, v) -> v instanceof String ? flattenWikitext((String) v) : v);
+			return info;
+		}
+		catch (Exception e)
+		{
+			return Map.of("error", "lookup failed: " + e.getMessage());
+		}
+	}
+
+	/** Line-preserving cleanup for wikitext bucket fields: drops icon file
+	 * links, unwraps [[page|label]] links, and strips HTML, but keeps the
+	 * "*"/"**" bullet nesting that encodes the prerequisite tree. */
+	private static String flattenWikitext(String wikitext)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (String line : wikitext.split("\n"))
+		{
+			String s = line
+				.replaceAll("\\[\\[File:[^\\]]*\\]\\]", "")
+				.replaceAll("\\[\\[[^|\\]]*\\|([^\\]]*)\\]\\]", "$1")
+				.replaceAll("\\[\\[([^\\]]*)\\]\\]", "$1")
+				.replaceAll("<[^>]+>", "")
+				.replaceAll("[ \t]+", " ")
+				.trim();
+			if (!s.isEmpty() && !s.matches("\\**"))
+			{
+				sb.append(s).append('\n');
+			}
+		}
+		return sb.toString().trim();
+	}
+
+	/** Bucket TEXT fields can carry raw HTML ("<div class=..>*31 (auto)");
+	 * flatten to plain text so stat blocks stay readable. */
+	@SuppressWarnings("unchecked")
+	private static Object stripMarkup(Object value)
+	{
+		if (value instanceof String)
+		{
+			return ((String) value).replaceAll("<[^>]+>", " ")
+				.replaceAll("[\\s*]+", " ").trim();
+		}
+		if (value instanceof List)
+		{
+			List<Object> out = new ArrayList<>();
+			for (Object v : (List<Object>) value)
+			{
+				out.add(stripMarkup(v));
+			}
+			return out;
+		}
+		return value;
+	}
+
+	/** Current GE price, buy limit, and high-alch value. */
+	Map<String, Object> gePrice(String itemName)
+	{
+		try
+		{
+			String canonical = resolveItemName(itemName);
+			for (Map<String, Object> it : vocab.geMapping())
+			{
+				if (!canonical.equals(it.get("name")))
+				{
+					continue;
+				}
+				long id = ((Number) it.get("id")).longValue();
+				JsonObject r = http.getJson(PRICES_API + "/v2/osrs/latest?id=" + id);
+				JsonObject data = r.getAsJsonObject("data").getAsJsonObject(String.valueOf(id));
+				Map<String, Object> out = new LinkedHashMap<>();
+				out.put("item", canonical);
+				out.put("high", data != null && data.has("high") && !data.get("high").isJsonNull()
+					? data.get("high").getAsLong() : null);
+				out.put("low", data != null && data.has("low") && !data.get("low").isJsonNull()
+					? data.get("low").getAsLong() : null);
+				out.put("buy_limit", it.get("limit"));
+				out.put("high_alch", it.get("highalch"));
+				return out;
+			}
+			return Map.of("error", "'" + itemName + "' is not a tradeable item.");
+		}
+		catch (Exception e)
+		{
+			return Map.of("error", "lookup failed: " + e.getMessage());
+		}
+	}
+}

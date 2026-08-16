@@ -1,0 +1,420 @@
+package com.osrscopilot.pipeline;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Live wiki content: search, title resolution, page text (plaintext extract
+ * with wikitext fallback), sections by heading, and render-time query
+ * templates. Owns the short-TTL LRU over wiki GETs, which all live queries
+ * flow through.
+ */
+@Slf4j
+class WikiContent
+{
+	private static final String WIKI_API = "https://oldschool.runescape.wiki/api.php";
+
+	/** Extract-to-page-size ratio below which the plaintext extract has lost
+	 * the page's substance to table stripping; see isHusk. */
+	private static final double HUSK_RATIO = 0.3;
+
+	private static final int PAGE_CHAR_LIMIT = 7000;
+	private static final int WIKITEXT_CHAR_LIMIT = 12000;
+
+	/**
+	 * Short-lived cache over wiki GETs. Follow-up questions inherit the
+	 * conversation's subject and re-prefetch the same pages every turn; a
+	 * five-turn chat about one boss must not fetch its strategy page five
+	 * times. Wiki content cannot meaningfully change within minutes, so the
+	 * repeats are pure upstream load. Deliberately NOT applied to the prices
+	 * API (prices move) or snapshots (own 7-day disk cache).
+	 */
+	private static final long CONTENT_CACHE_TTL_MS = 5 * 60 * 1000;
+	private static final int CONTENT_CACHE_MAX_ENTRIES = 256;
+
+	private final Http http;
+
+	/** URL -> {fetchedAtMs, response}, LRU-evicted. Guarded by itself. */
+	private final Map<String, Object[]> contentCache =
+		new LinkedHashMap<String, Object[]>(64, 0.75f, true)
+		{
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<String, Object[]> eldest)
+			{
+				return size() > CONTENT_CACHE_MAX_ENTRIES;
+			}
+		};
+
+	WikiContent(Http http)
+	{
+		this.http = http;
+	}
+
+	/** All wiki GETs go through here; see CONTENT_CACHE_TTL_MS. Responses
+	 * are treated as read-only by every caller, so sharing them is safe. */
+	private JsonObject cachedGet(String url) throws IOException
+	{
+		synchronized (contentCache)
+		{
+			Object[] hit = contentCache.get(url);
+			if (hit != null && System.currentTimeMillis() - (long) hit[0] < CONTENT_CACHE_TTL_MS)
+			{
+				return (JsonObject) hit[1];
+			}
+		}
+		JsonObject fresh = http.getJson(url);
+		synchronized (contentCache)
+		{
+			contentCache.put(url, new Object[]{System.currentTimeMillis(), fresh});
+		}
+		return fresh;
+	}
+
+	JsonObject bucket(String query) throws IOException
+	{
+		return cachedGet(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
+	}
+
+	JsonObject wikiQuery(String params) throws IOException
+	{
+		return cachedGet(WIKI_API + "?action=query&format=json&" + params);
+	}
+
+	/** Search the wiki. Returns [{title, snippet}]. */
+	List<Map<String, Object>> search(String query)
+	{
+		try
+		{
+			JsonObject r = wikiQuery("list=search&srlimit=5&srsearch=" + Http.enc(query));
+			List<Map<String, Object>> out = new ArrayList<>();
+			for (JsonElement hit : r.getAsJsonObject("query").getAsJsonArray("search"))
+			{
+				JsonObject h = hit.getAsJsonObject();
+				Map<String, Object> entry = new LinkedHashMap<>();
+				entry.put("title", h.get("title").getAsString());
+				entry.put("snippet", h.get("snippet").getAsString()
+					.replace("<span class=\"searchmatch\">", "").replace("</span>", ""));
+				out.add(entry);
+			}
+			return out;
+		}
+		catch (Exception e)
+		{
+			return List.of(Map.of("error", "search failed: " + e.getMessage()));
+		}
+	}
+
+	/**
+	 * Resolves each name to the wiki page it lands on, or null when the wiki
+	 * has no such page. The wiki is the closed vocabulary of what exists in
+	 * this game, and the page a name lands on says how the name relates to
+	 * it: an unchanged title is the thing itself, a near-identical title is a
+	 * spelling or plural variant, and a wholly different title means the name
+	 * is not this game's name for anything (RS3's "Anachronia" resolves to
+	 * "Fossil Island"). Batched 50 per request (API limit).
+	 */
+	Map<String, String> resolveTitles(Collection<String> names) throws IOException
+	{
+		Map<String, String> resolved = new LinkedHashMap<>();
+		List<String> batch = new ArrayList<>(new LinkedHashSet<>(names));
+		for (int i = 0; i < batch.size(); i += 50)
+		{
+			List<String> slice = batch.subList(i, Math.min(i + 50, batch.size()));
+			JsonObject query = wikiQuery("redirects=1&titles="
+				+ Http.enc(String.join("|", slice))).getAsJsonObject("query");
+			if (query == null)
+			{
+				continue;
+			}
+			Map<String, String> hops = new LinkedHashMap<>();
+			addHops(hops, query, "normalized");
+			addHops(hops, query, "redirects");
+			Set<String> missing = new LinkedHashSet<>();
+			if (query.has("pages"))
+			{
+				for (Map.Entry<String, JsonElement> e : query.getAsJsonObject("pages").entrySet())
+				{
+					JsonObject page = e.getValue().getAsJsonObject();
+					if (page.has("missing") || page.has("invalid"))
+					{
+						missing.add(page.get("title").getAsString());
+					}
+				}
+			}
+			for (String name : slice)
+			{
+				String title = name;
+				// Normalization and redirects are reported as hops; follow the
+				// chain, guarding against redirect loops.
+				for (int hop = 0; hop < 5 && hops.containsKey(title); hop++)
+				{
+					title = hops.get(title);
+				}
+				resolved.put(name, missing.contains(title) ? null : title);
+			}
+		}
+		return resolved;
+	}
+
+	private static void addHops(Map<String, String> hops, JsonObject query, String field)
+	{
+		if (!query.has(field))
+		{
+			return;
+		}
+		for (JsonElement e : query.getAsJsonArray(field))
+		{
+			JsonObject hop = e.getAsJsonObject();
+			hops.put(hop.get("from").getAsString(), hop.get("to").getAsString());
+		}
+	}
+
+	/**
+	 * Page content, truncated. Plaintext extract normally; falls back to raw
+	 * wikitext when the extract lost the page's substance. Returns null when
+	 * the page doesn't exist -- the one not-found convention for all content
+	 * methods here; only the LLM tool boundary turns that into an error value.
+	 */
+	String page(String title)
+	{
+		return page(title, 0);
+	}
+
+	/** Same, with a caller-chosen char budget (0 = defaults). */
+	String page(String title, int charLimit)
+	{
+		try
+		{
+			// prop=info gives the page's wikitext size, so the extract can be
+			// measured against what it was made from in the same request.
+			JsonObject r = wikiQuery("prop=extracts%7Cinfo&explaintext=1&redirects=1"
+				+ "&titles=" + Http.enc(title));
+			JsonObject pages = r.getAsJsonObject("query").getAsJsonObject("pages");
+			for (Map.Entry<String, JsonElement> entry : pages.entrySet())
+			{
+				JsonObject p = entry.getValue().getAsJsonObject();
+				if (!p.has("extract"))
+				{
+					continue;
+				}
+				String text = p.get("extract").getAsString();
+				int pageBytes = p.has("length") ? p.get("length").getAsInt() : 0;
+				if (text.isEmpty() && pageBytes == 0)
+				{
+					continue;
+				}
+				// An empty extract from a non-empty page is the extreme husk:
+				// table-only pages plaintext-extract to nothing.
+				if (text.isEmpty() || isHusk(text, pageBytes))
+				{
+					log.debug("husk extract for {} ({}B of {}B page), using wikitext",
+						title, text.length(), pageBytes);
+					return wikitext(title, WIKITEXT_CHAR_LIMIT);
+				}
+				return withQuerySections(title, text,
+					charLimit > 0 ? charLimit : PAGE_CHAR_LIMIT);
+			}
+		}
+		catch (Exception e)
+		{
+			log.debug("page fetch failed for {}", title, e);
+		}
+		return null;
+	}
+
+	/**
+	 * Whether a plaintext extract lost the page's substance to table
+	 * stripping. Table-only pages come back as a shell of section headings
+	 * with nothing under them, which is worse than no page at all: it reads
+	 * as "the wiki has nothing here" and invites the model to fill the gap
+	 * from memory. Measured, not guessed -- on a sample spanning items,
+	 * monsters, locations, skills and diaries, genuinely table-gutted pages
+	 * (Anvil 0.05, Bones 0.12, Varrock Diary 0.17, Adamantite bar 0.22) sit
+	 * well below prose pages (0.39-0.71).
+	 */
+	private static boolean isHusk(String extract, int pageBytes)
+	{
+		return pageBytes > 0 && (double) extract.length() / pageBytes < HUSK_RATIO;
+	}
+
+	/**
+	 * Fetch one section of a page by heading, using the wiki's own document
+	 * structure (action=parse&prop=sections). Returns null when the page has
+	 * no matching section -- callers treat that as "nothing to add".
+	 */
+	String sectionByHeading(String title, Pattern headingPattern, int charLimit)
+	{
+		try
+		{
+			JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=sections&format=json"
+				+ "&redirects=1&page=" + Http.enc(title));
+			for (JsonElement e : r.getAsJsonObject("parse").getAsJsonArray("sections"))
+			{
+				JsonObject s = e.getAsJsonObject();
+				if (!headingPattern.matcher(s.get("line").getAsString()).find())
+				{
+					continue;
+				}
+				JsonObject sec = cachedGet(WIKI_API + "?action=parse&prop=wikitext&format=json"
+					+ "&redirects=1&page=" + Http.enc(title) + "&section=" + s.get("index").getAsString());
+				String text = sec.getAsJsonObject("parse").getAsJsonObject("wikitext")
+					.get("*").getAsString();
+				return truncate(text, charLimit);
+			}
+		}
+		catch (Exception e)
+		{
+			log.debug("section fetch failed for {}", title, e);
+		}
+		return null;
+	}
+
+	/** Wiki pages often keep large tables on subpages transcluded as
+	 * {{/Locations}} etc.; the raw wikitext only has the stub. Follow the
+	 * wiki's own structure one level down. */
+	private static final Pattern SUBPAGE_TRANSCLUSION =
+		Pattern.compile("\\{\\{/([^}|{]+)(\\|[^}]*)?\\}\\}");
+
+	/** Raw wikitext (preserves tables and templates), with directly
+	 * transcluded subpages inlined. Null when the page doesn't exist. */
+	String wikitext(String title, int charLimit)
+	{
+		try
+		{
+			String text = rawWikitext(title);
+			text = inlineSubpages(title, text, charLimit);
+			return withQuerySections(title, text, charLimit);
+		}
+		catch (Exception e)
+		{
+			log.debug("wikitext fetch failed for {}", title, e);
+			return null;
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Render-time query sections
+	// ------------------------------------------------------------------
+
+	/** Sections whose whole body is a render-time query template are
+	 * invisible to BOTH extraction paths: the plaintext extract strips the
+	 * rendered table and the raw wikitext holds only the {{...}} stub. One
+	 * such template matters for answers -- "Used in recommended equipment",
+	 * the wiki's ranked index of which strategy pages recommend an item.
+	 * That is exactly the data a "where is X best-in-slot" question needs,
+	 * and it exists nowhere else. */
+	private static final String USED_IN_REC_EQUIP = "Used in recommended equipment";
+	private static final Pattern REC_EQUIP_HUSK = Pattern.compile(
+		"(\\{\\{Used in recommended equipment[^}]*\\}\\}|==+ *Used in recommended equipment *==+)");
+	private static final int RENDERED_SECTION_CHAR_LIMIT = 2500;
+
+	/**
+	 * Truncate page text to its budget, then re-attach any render-time query
+	 * section rendered for real. Appending AFTER truncation is deliberate:
+	 * the section sits at the tail of long pages, where a fixed budget would
+	 * silently drop the page's only unique data. The in-place husk (stub or
+	 * bare heading) is removed so the model never sees an empty section and
+	 * concludes the wiki has nothing there.
+	 */
+	private String withQuerySections(String title, String text, int charLimit)
+	{
+		boolean present = text.contains(USED_IN_REC_EQUIP);
+		String out = truncate(text, charLimit);
+		if (!present)
+		{
+			return out;
+		}
+		String rendered = renderTemplate("{{" + USED_IN_REC_EQUIP + "|" + title + "}}");
+		if (rendered == null || rendered.length() < 20)
+		{
+			return out;
+		}
+		out = REC_EQUIP_HUSK.matcher(out).replaceAll("");
+		return out + "\n\n== " + USED_IN_REC_EQUIP + " ==\n"
+			+ "(rank 1 = listed best-in-slot on that strategy page)\n"
+			+ truncate(rendered, RENDERED_SECTION_CHAR_LIMIT);
+	}
+
+	/** Render one template invocation by itself and flatten the HTML. */
+	private String renderTemplate(String wikitextCall)
+	{
+		try
+		{
+			JsonObject r = cachedGet(WIKI_API + "?action=parse&format=json&prop=text"
+				+ "&contentmodel=wikitext&text=" + Http.enc(wikitextCall));
+			return htmlToText(r.getAsJsonObject("parse").getAsJsonObject("text")
+				.get("*").getAsString());
+		}
+		catch (Exception e)
+		{
+			log.debug("template render failed for {}", wikitextCall, e);
+			return null;
+		}
+	}
+
+	/** Row-preserving HTML flattening: block closers become line breaks,
+	 * tags go, the entities that appear in game names are unescaped. */
+	private static String htmlToText(String html)
+	{
+		String text = html
+			.replaceAll("(?i)</(tr|li|p|h[1-6]|caption)>", "\n")
+			.replaceAll("<[^>]+>", " ")
+			.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"")
+			.replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ");
+		StringBuilder out = new StringBuilder();
+		for (String line : text.split("\n"))
+		{
+			String collapsed = line.replaceAll("\\s+", " ").trim();
+			if (!collapsed.isEmpty())
+			{
+				out.append(collapsed).append('\n');
+			}
+		}
+		return out.toString().trim();
+	}
+
+	private String rawWikitext(String title) throws IOException
+	{
+		JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=wikitext&format=json"
+			+ "&redirects=1&page=" + Http.enc(title));
+		return r.getAsJsonObject("parse").getAsJsonObject("wikitext")
+			.get("*").getAsString();
+	}
+
+	private String inlineSubpages(String title, String text, int charLimit)
+	{
+		Matcher m = SUBPAGE_TRANSCLUSION.matcher(text);
+		StringBuffer sb = new StringBuffer();
+		while (m.find() && sb.length() < charLimit)
+		{
+			String replacement;
+			try
+			{
+				replacement = rawWikitext(title + "/" + m.group(1).trim());
+			}
+			catch (Exception e)
+			{
+				replacement = m.group(0);
+			}
+			m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+		}
+		m.appendTail(sb);
+		return sb.toString();
+	}
+
+	private static String truncate(String s, int limit)
+	{
+		return s.length() > limit ? s.substring(0, limit) : s;
+	}
+}
