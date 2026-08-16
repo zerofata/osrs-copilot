@@ -22,7 +22,8 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
@@ -82,7 +83,6 @@ public class CopilotPlugin extends Plugin
 
 	private static final File DATA_DIR = new File(RuneLite.RUNELITE_DIR, "osrs-copilot");
 	private static final File CACHE_DIR = new File(DATA_DIR, "cache");
-	private static final File BANK_FILE = new File(DATA_DIR, "bank-latest.json");
 
 	// VarPlayer.SLAYER_TASK_SIZE, and the config the built-in Slayer plugin
 	// writes its task to. Literals keep this off that plugin's classes.
@@ -110,10 +110,16 @@ public class CopilotPlugin extends Plugin
 	private OkHttpClient okHttpClient;
 
 	@Inject
-	private ScheduledExecutorService executor;
-
-	@Inject
 	private ConfigManager configManager;
+
+	/**
+	 * Our own worker for the pipeline. RuneLite's injected executor is a
+	 * SINGLE shared thread that also runs every plugin's scheduled tasks,
+	 * config saves, and notifications -- parking it on a multi-minute LLM
+	 * stream stalls the whole client's background work. One private thread
+	 * keeps today's one-question-at-a-time ordering and dies with the plugin.
+	 */
+	private ExecutorService pipelineExecutor;
 
 	private CopilotPipeline pipeline;
 	private CopilotPanel panel;
@@ -130,6 +136,11 @@ public class CopilotPlugin extends Plugin
 	private String pendingSnapshotLabel;
 	private List<Map<String, Object>> lastBankContents;
 	private long bankCapturedAtMs;
+	/** Which account the in-memory/persisted bank belongs to. The bank is
+	 * per-account state: without keying it, a second account on the same
+	 * machine inherits the first one's bank and every ownership answer is
+	 * confidently wrong. -1 = no account seen yet this session. */
+	private long bankAccountHash = -1;
 
 	// Recent gameplay events kept for question context (client thread only).
 	private final Deque<Map<String, Object>> recentEvents = new ArrayDeque<>();
@@ -159,10 +170,17 @@ public class CopilotPlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		DATA_DIR.mkdirs();
-		loadPersistedBank();
+		// Pre-per-account legacy file: not attributable to an account, so
+		// discarding is the only safe migration (re-open the bank once).
+		new File(DATA_DIR, "bank-latest.json").delete();
 
+		pipelineExecutor = Executors.newSingleThreadExecutor(r -> {
+			Thread t = new Thread(r, "osrs-copilot-pipeline");
+			t.setDaemon(true);
+			return t;
+		});
 		pipeline = new CopilotPipeline(okHttpClient, gson, CACHE_DIR);
-		executor.execute(pipeline::warmCaches);
+		pipelineExecutor.execute(pipeline::warmCaches);
 		iconCache = new IconCache(new File(CACHE_DIR, "icons"), okHttpClient);
 
 		Theme.setActive(Theme.byName(config.theme().key));
@@ -194,6 +212,14 @@ public class CopilotPlugin extends Plugin
 		{
 			eventLog.close();
 			eventLog = null;
+		}
+		if (pipelineExecutor != null)
+		{
+			// Drops queued work; an in-flight HTTP read runs out its timeout
+			// on the dying daemon thread, same bound as before, but nothing
+			// else ever queues behind it.
+			pipelineExecutor.shutdownNow();
+			pipelineExecutor = null;
 		}
 	}
 
@@ -302,6 +328,8 @@ public class CopilotPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick tick)
 	{
+		syncBankAccount();
+
 		if (pendingSnapshotLabel != null)
 		{
 			String label = pendingSnapshotLabel;
@@ -320,7 +348,7 @@ public class CopilotPlugin extends Plugin
 			GameCapture capture = buildCapture();
 			Llm.Settings settings = llmSettings();
 			int maxTurns = config.maxToolTurns();
-			executor.execute(() -> runPipeline(question, capture, settings, maxTurns));
+			pipelineExecutor.execute(() -> runPipeline(question, capture, settings, maxTurns));
 		}
 	}
 
@@ -625,15 +653,17 @@ public class CopilotPlugin extends Plugin
 	public void onChatMessage(ChatMessage event)
 	{
 		// Game messages (drops, task completions, level-ups) are useful
-		// question context; player chat is not.
+		// question context; player chat is not. The disk log applies the
+		// SAME filter: other players' public and private chat is their
+		// data, and must never land in a file -- diagnostics or not.
 		if (event.getType() == ChatMessageType.GAMEMESSAGE
 			|| event.getType() == ChatMessageType.SPAM)
 		{
 			bufferEvent("chat", Map.of("message", event.getMessage()));
+			logEvent("chat", Map.of(
+				"chatType", event.getType().name(),
+				"message", event.getMessage()));
 		}
-		logEvent("chat", Map.of(
-			"chatType", event.getType().name(),
-			"message", event.getMessage()));
 	}
 
 	@Subscribe
@@ -776,13 +806,35 @@ public class CopilotPlugin extends Plugin
 		return task;
 	}
 
-	private void persistBank()
+	/** Runs on the client thread (game tick). Keeps the in-memory bank bound
+	 * to the logged-in account: on the first tick of a session, and on any
+	 * account switch, drop the previous account's bank and load this one's
+	 * persisted copy. GameTick only fires logged in, so the hash is valid. */
+	private void syncBankAccount()
 	{
-		if (lastBankContents == null)
+		long hash = client.getAccountHash();
+		if (hash == -1 || hash == bankAccountHash)
 		{
 			return;
 		}
-		try (BufferedWriter w = new BufferedWriter(new FileWriter(BANK_FILE)))
+		bankAccountHash = hash;
+		lastBankContents = null;
+		bankCapturedAtMs = 0;
+		loadPersistedBank(hash);
+	}
+
+	private File bankFile(long accountHash)
+	{
+		return new File(DATA_DIR, "bank-" + Long.toUnsignedString(accountHash) + ".json");
+	}
+
+	private void persistBank()
+	{
+		if (lastBankContents == null || bankAccountHash == -1)
+		{
+			return;
+		}
+		try (BufferedWriter w = new BufferedWriter(new FileWriter(bankFile(bankAccountHash))))
 		{
 			w.write(gson.toJson(lastBankContents));
 		}
@@ -792,18 +844,19 @@ public class CopilotPlugin extends Plugin
 		}
 	}
 
-	private void loadPersistedBank()
+	private void loadPersistedBank(long accountHash)
 	{
-		if (!BANK_FILE.exists())
+		File f = bankFile(accountHash);
+		if (!f.exists())
 		{
 			return;
 		}
-		try (FileReader r = new FileReader(BANK_FILE))
+		try (FileReader r = new FileReader(f))
 		{
 			lastBankContents = gson.fromJson(r,
 				new TypeToken<List<Map<String, Object>>>() { }.getType());
 			// The file's mtime is when the bank was last persisted.
-			bankCapturedAtMs = BANK_FILE.lastModified();
+			bankCapturedAtMs = f.lastModified();
 			log.info("Loaded persisted bank ({} items)",
 				lastBankContents != null ? lastBankContents.size() : 0);
 		}
@@ -846,8 +899,26 @@ public class CopilotPlugin extends Plugin
 		}
 	}
 
+	/** How long dev event logs are kept before pruning. */
+	private static final long EVENT_LOG_RETENTION_MS = 14L * 24 * 60 * 60 * 1000;
+
 	private void openEventLog() throws IOException
 	{
+		// One file per session and nothing ever read them back: without
+		// pruning they accumulate forever.
+		File[] old = DATA_DIR.listFiles((d, name) ->
+			name.startsWith("events-") && name.endsWith(".jsonl"));
+		if (old != null)
+		{
+			long cutoff = System.currentTimeMillis() - EVENT_LOG_RETENTION_MS;
+			for (File f : old)
+			{
+				if (f.lastModified() < cutoff)
+				{
+					f.delete();
+				}
+			}
+		}
 		File logFile = new File(DATA_DIR, "events-" + System.currentTimeMillis() + ".jsonl");
 		eventLog = new BufferedWriter(new FileWriter(logFile, true));
 	}

@@ -59,9 +59,31 @@ public class WikiApi
 	 * cadence, so game/wiki changes flow in without a code update. */
 	private static final long CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000;
 
+	/**
+	 * Short-lived cache over wiki GETs. Follow-up questions inherit the
+	 * conversation's subject and re-prefetch the same pages every turn; a
+	 * five-turn chat about one boss must not fetch its strategy page five
+	 * times. Wiki content cannot meaningfully change within minutes, so the
+	 * repeats are pure upstream load. Deliberately NOT applied to the prices
+	 * API (prices move) or snapshots (own 7-day disk cache).
+	 */
+	private static final long CONTENT_CACHE_TTL_MS = 5 * 60 * 1000;
+	private static final int CONTENT_CACHE_MAX_ENTRIES = 256;
+
 	private final Http http;
 	private final Gson gson;
 	private final File cacheDir;
+
+	/** URL -> {fetchedAtMs, response}, LRU-evicted. Guarded by itself. */
+	private final Map<String, Object[]> contentCache =
+		new LinkedHashMap<String, Object[]>(64, 0.75f, true)
+		{
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<String, Object[]> eldest)
+			{
+				return size() > CONTENT_CACHE_MAX_ENTRIES;
+			}
+		};
 
 	private List<Map<String, Object>> geMapping;
 	private Set<String> monsterNames;
@@ -297,14 +319,34 @@ public class WikiApi
 	// Wiki queries
 	// ------------------------------------------------------------------
 
+	/** All wiki GETs go through here; see CONTENT_CACHE_TTL_MS. Responses
+	 * are treated as read-only by every caller, so sharing them is safe. */
+	private JsonObject cachedGet(String url) throws IOException
+	{
+		synchronized (contentCache)
+		{
+			Object[] hit = contentCache.get(url);
+			if (hit != null && System.currentTimeMillis() - (long) hit[0] < CONTENT_CACHE_TTL_MS)
+			{
+				return (JsonObject) hit[1];
+			}
+		}
+		JsonObject fresh = http.getJson(url);
+		synchronized (contentCache)
+		{
+			contentCache.put(url, new Object[]{System.currentTimeMillis(), fresh});
+		}
+		return fresh;
+	}
+
 	JsonObject bucket(String query) throws IOException
 	{
-		return http.getJson(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
+		return cachedGet(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
 	}
 
 	JsonObject wikiQuery(String params) throws IOException
 	{
-		return http.getJson(WIKI_API + "?action=query&format=json&" + params);
+		return cachedGet(WIKI_API + "?action=query&format=json&" + params);
 	}
 
 	/** Search the wiki. Returns [{title, snippet}]. */
@@ -473,7 +515,7 @@ public class WikiApi
 	{
 		try
 		{
-			JsonObject r = http.getJson(WIKI_API + "?action=parse&prop=sections&format=json"
+			JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=sections&format=json"
 				+ "&redirects=1&page=" + Http.enc(title));
 			for (JsonElement e : r.getAsJsonObject("parse").getAsJsonArray("sections"))
 			{
@@ -482,7 +524,7 @@ public class WikiApi
 				{
 					continue;
 				}
-				JsonObject sec = http.getJson(WIKI_API + "?action=parse&prop=wikitext&format=json"
+				JsonObject sec = cachedGet(WIKI_API + "?action=parse&prop=wikitext&format=json"
 					+ "&redirects=1&page=" + Http.enc(title) + "&section=" + s.get("index").getAsString());
 				String text = sec.getAsJsonObject("parse").getAsJsonObject("wikitext")
 					.get("*").getAsString();
@@ -567,7 +609,7 @@ public class WikiApi
 	{
 		try
 		{
-			JsonObject r = http.getJson(WIKI_API + "?action=parse&format=json&prop=text"
+			JsonObject r = cachedGet(WIKI_API + "?action=parse&format=json&prop=text"
 				+ "&contentmodel=wikitext&text=" + Http.enc(wikitextCall));
 			return htmlToText(r.getAsJsonObject("parse").getAsJsonObject("text")
 				.get("*").getAsString());
@@ -602,7 +644,7 @@ public class WikiApi
 
 	private String rawWikitext(String title) throws IOException
 	{
-		JsonObject r = http.getJson(WIKI_API + "?action=parse&prop=wikitext&format=json"
+		JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=wikitext&format=json"
 			+ "&redirects=1&page=" + Http.enc(title));
 		return r.getAsJsonObject("parse").getAsJsonObject("wikitext")
 			.get("*").getAsString();

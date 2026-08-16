@@ -28,7 +28,18 @@ final class IconCache
 	 * session (ConcurrentHashMap forbids null values). */
 	private static final String MISS = "";
 
+	/**
+	 * Confirmed 404s persist across sessions: icon filenames are guessed
+	 * from item names, and a guess the wiki has no file for will 404 again
+	 * next session too -- re-issuing the same misses every session is pure
+	 * upstream noise. The file expires wholesale after this long, because
+	 * new content DOES gain sprites over time. Transient failures (network
+	 * errors) are never persisted, only real not-found responses.
+	 */
+	private static final long MISS_TTL_MS = 30L * 24 * 60 * 60 * 1000;
+
 	private final File dir;
+	private final File missFile;
 	private final OkHttpClient client;
 	private final Map<String, String> resolved = new ConcurrentHashMap<>();
 
@@ -36,7 +47,53 @@ final class IconCache
 	{
 		this.dir = dir;
 		this.client = client;
+		this.missFile = new File(dir, "misses.txt");
 		dir.mkdirs();
+		loadPersistedMisses();
+	}
+
+	private void loadPersistedMisses()
+	{
+		if (!missFile.exists())
+		{
+			return;
+		}
+		if (System.currentTimeMillis() - missFile.lastModified() > MISS_TTL_MS)
+		{
+			missFile.delete();
+			return;
+		}
+		try
+		{
+			for (String line : java.nio.file.Files.readAllLines(missFile.toPath()))
+			{
+				if (!line.trim().isEmpty())
+				{
+					resolved.put(line.trim(), MISS);
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			log.debug("icon miss list unreadable, starting fresh", e);
+		}
+	}
+
+	/** Append one confirmed not-found to the persisted miss list. Failure
+	 * costs only a retry next session. */
+	private synchronized void persistMiss(String wikiFile)
+	{
+		try
+		{
+			java.nio.file.Files.write(missFile.toPath(),
+				(wikiFile + System.lineSeparator()).getBytes(java.nio.charset.StandardCharsets.UTF_8),
+				java.nio.file.StandardOpenOption.CREATE,
+				java.nio.file.StandardOpenOption.APPEND);
+		}
+		catch (Exception e)
+		{
+			log.debug("icon miss persist failed for {}", wikiFile, e);
+		}
 	}
 
 	/** File URL for a wiki image (e.g. "Quest_point_icon.png"), downloading
@@ -80,6 +137,9 @@ final class IconCache
 				if (!response.isSuccessful() || response.body() == null)
 				{
 					log.debug("icon fetch failed for {}: HTTP {}", wikiFile, response.code());
+					// A definitive answer from the server, not a transient
+					// failure: remember it across sessions.
+					persistMiss(wikiFile);
 					return null;
 				}
 				try (OutputStream out = new FileOutputStream(f))
