@@ -123,6 +123,13 @@ class VocabSnapshots
 	 * "Prayer (interface item)", "Key", "Note") and claiming bare
 	 * dictionary words breaks real references ("Varrock diary", "prayer
 	 * level"). Same principle as the resolver's desperation rule.
+	 *
+	 * Entries whose canonical page the wiki marks "(unobtainable item)" or
+	 * "(interface item)" are excluded outright: a player can never mean
+	 * them, and their names are real speech ("Dart", "Cooking pot",
+	 * "Master farmer") -- claiming a mention locally blocks the redirect
+	 * pass from resolving it to the real thing ("addy darts" once resolved
+	 * to Dart (unobtainable item) instead of the Addy darts redirect).
 	 */
 	synchronized List<String[]> knownItemNames() throws IOException
 	{
@@ -143,6 +150,10 @@ class VocabSnapshots
 			{
 				String name = it[0];
 				if (name.indexOf(' ') < 0 && english.contains(name.toLowerCase(Locale.ROOT)))
+				{
+					continue;
+				}
+				if (it[1].endsWith("(unobtainable item)") || it[1].endsWith("(interface item)"))
 				{
 					continue;
 				}

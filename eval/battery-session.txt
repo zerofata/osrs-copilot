@@ -25,11 +25,14 @@ should i use a whip or a scimitar
 ASSERT {"pages": ["Whip", "Scimitar"]}
 
 # A follow-up that only varies a parameter ("what about addy darts") keeps
-# the monster subject from the previous turn.
+# the monster subject from the previous turn, and the varied parameter
+# resolves through the wiki's slang redirect (Addy darts -> Adamant dart).
+# Vocab junk must not claim it first: the item index once carried the
+# unobtainable "Dart", whose local hit on "darts" blocked the redirect.
 tormented demons, blowpipe or bowfa without ca
 ASSERT {"monsters": ["Tormented Demon"]}
 > what about addy darts
-ASSERT {"monsters": ["Tormented Demon"]}
+ASSERT {"monsters": ["Tormented Demon"], "items": ["Adamant dart"], "not_items": ["Dart (unobtainable item)"]}
 
 # A follow-up that resolves its own subject is self-contained: nothing from
 # the previous turn leaks into its route, sourcing intent classifies, and
