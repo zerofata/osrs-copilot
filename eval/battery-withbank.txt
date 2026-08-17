@@ -1,8 +1,11 @@
-# Runs against eval/snapshot-withbank.json: same player, bank captured
-# (25 items incl. law/fire/air/nature runes and varrock teleport tabs).
-# Checks the "complete" bank contract: the model should now answer ownership
-# questions definitively instead of conditionally.
+# Bank-mode contract, complete side. Run with:
+#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample.json -PevalBattery=eval\battery-withbank.txt -PevalRouteOnly=true
+# The sample bank (30 items) is under Router.BANK_INLINE_LIMIT, so the whole
+# bank inlines into PLAYER STATE and routes bank=complete. Under this mode
+# the model must answer ownership definitively, never conditionally --
+# route-only pins the mode; full runs check the phrasing.
 
 fastest way to varrock from where i am
-ASSERT {"pages": ["Varrock"], "needs": ["transport"]}
+ASSERT {"pages": ["Varrock"], "needs": ["transport"], "bank": ["complete"]}
 > do you know if i have the runes?
+ASSERT {"pages": ["Runes"], "bank": ["complete"], "not_needs": ["transport"]}

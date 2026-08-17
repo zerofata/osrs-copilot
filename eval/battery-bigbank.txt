@@ -1,9 +1,11 @@
-# Summarized-bank mode (run with eval\snapshot-bigbank.json: 252 items, past
-# the inline limit). Gear questions must prefetch the strategy page's
+# Bank-mode contract, summarized side. Run with:
+#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample-bigbank.json -PevalBattery=eval\battery-bigbank.txt -PevalRouteOnly=true
+# That fixture's bank exceeds Router.BANK_INLINE_LIMIT, so routing flips to
+# bank=summarized. Under this mode prefetch must attach the strategy page's
 # equipment section (tables the plaintext extract strips) and an ownership
-# slice of owned items the facts mention. Ownership checks the model still
-# wants happen in ONE batched search_owned_items call -- a live session once
-# made 55 single-item calls for this exact question.
+# slice of the items the facts mention; residual ownership checks the model
+# makes must go through ONE batched search_owned_items call. Route-only pins
+# the mode; full runs check the prefetch and the batching.
 
 what should i bring for tormented demons
-ASSERT {"monsters": ["Tormented Demon"], "needs": ["strategy"]}
+ASSERT {"monsters": ["Tormented Demon"], "needs": ["strategy"], "bank": ["summarized"]}

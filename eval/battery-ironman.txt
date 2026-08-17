@@ -1,6 +1,9 @@
-# Runs against eval/snapshot-ironman.json: same player, accountType=IRONMAN.
-# Checks the account-type contract: sourcing advice must not lean on the
-# Grand Exchange.
+# Account-type contract. Run with:
+#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample-ironman.json -PevalBattery=eval\battery-ironman.txt -PevalRouteOnly=true
+# Routing is account-blind by design; the ironman rule lives in the system
+# prompt and is only observable in full runs, where sourcing advice must not
+# lean on the Grand Exchange. Route-only verifies the ironman fixture routes
+# identically to a normal account.
 
 Where do I get addy bars?
 ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"]}

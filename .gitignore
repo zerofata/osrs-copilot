@@ -14,6 +14,8 @@ nbproject/
 eval/*
 !eval/battery*.txt
 !eval/snapshot-sample.json
+!eval/snapshot-sample-ironman.json
+!eval/snapshot-sample-bigbank.json
 !eval/make-sample-snapshot.py
 run.ps1
 AGENTS.md

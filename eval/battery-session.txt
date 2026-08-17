@@ -1,61 +1,68 @@
-# Questions from a live in-game session that produced bad answers:
-# the Slayer task wasn't captured at all, and "blowpipe or bowfa" resolved to
-# an ornament kit because the wiki really does redirect "Blowpipe or" there.
+# Multi-turn inheritance invariants: what a follow-up keeps, what it must
+# not drag along, and how game state feeds resolution. Run with:
+#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample.json -PevalBattery=eval\battery-session.txt -PevalRouteOnly=true
+# Assertions assume the synthetic eval/snapshot-sample.json fixture (its
+# slayer task is Bloodveld).
 
+# "My task" resolves the task creature from the game capture, not from text.
 what was my slayer task
+ASSERT {"monsters": ["Bloodveld"], "skills": ["Slayer"]}
 
+# A leading subject followed by a comma-spliced question still routes both
+# the monster and the gear intent.
 tormented demons, what gear should i use
 ASSERT {"monsters": ["Tormented Demon"], "needs": ["strategy"]}
 
+# "X or Y" comparisons resolve each side separately. The wiki really does
+# redirect the span "blowpipe or..." to an ornament kit; that redirect must
+# never win. "crystal armor" resolves to its own page, not the generic
+# Armour page via desperation.
 whats better blowpipe or bowfa with crystal armor
 ASSERT {"items": ["Bow of Faerdhinen"], "pages": ["Crystal equipment"], "not_items": ["Trailblazer reloaded blowpipe ornament kit"], "not_pages": ["Armour"]}
 
-# Conjunctions and possessives must not be absorbed into entity names.
+# Conjunctions and articles must not be absorbed into entity spans.
 should i use a whip or a scimitar
-ASSERT {"pages": ["Whip", "Scimitar"], "not_items": ["Trailblazer reloaded blowpipe ornament kit"]}
+ASSERT {"pages": ["Whip", "Scimitar"]}
 
-# Live session 2026-08-14: verdict questions and follow-up subject retention.
-# The model once called Defence-150 Tormented Demons "low Defence" because
-# monster info carried no defensive stats, then invented quest progress on a
-# follow-up because routing lost the subject.
+# A follow-up that only varies a parameter ("what about addy darts") keeps
+# the monster subject from the previous turn.
 tormented demons, blowpipe or bowfa without ca
 ASSERT {"monsters": ["Tormented Demon"]}
 > what about addy darts
 ASSERT {"monsters": ["Tormented Demon"]}
 
-# Live session 2026-08-15: a self-contained new question must not drag pages
-# from earlier turns into its facts (an ironman's planks question once carried
-# three stale pages from prior questions). Item sourcing intent must classify,
-# and the facility the answer hinges on gets grounded from facts, not memory.
+# A follow-up that resolves its own subject is self-contained: nothing from
+# the previous turn leaks into its route, sourcing intent classifies, and
+# the facility the answer hinges on is grounded from facts.
 whats better blowpipe or bowfa with crystal armor
 ASSERT {"items": ["Bow of Faerdhinen"]}
 > whats the quickest way i can get planks?
 ASSERT {"items": ["Plank"], "needs": ["item_sources"], "not_items": ["Bow of Faerdhinen"], "not_pages": ["Bow of Faerdhinen", "Crystal equipment"]}
 
-# Anaphoric follow-ups ("what ONES") keep the previous subject even when they
-# resolve a new entity of their own -- inheritance keys on pointing-back
-# language, not on which entity kinds resolved. With context inherited, the
-# resolver's desperation pass stays off: "bank" arrives via the facility rule
-# (its Locations section -- the better content), not as a bare page.
+# Anaphoric follow-ups ("what ONES") keep the previous subject even when
+# they resolve a new entity of their own -- inheritance keys on
+# pointing-back language, not on which entity kinds resolved. With context
+# inherited, the desperation pass stays off: "bank" arrives via the
+# facility rule (its Locations section), not as a bare page.
 what is the difference between houses?
 ASSERT {"pages": ["Player-owned house"]}
 > what ones closer to a bank?
 ASSERT {"pages": ["Player-owned house"], "facilities": ["Bank"], "not_pages": ["Bank"]}
 
-# Live session 2026-08-15 (sloop build): desperation on a follow-up once
-# resolved pages Master, List, and Resources from "master list of all
-# combined resources", crowding the sloop out of the page budget.
+# Filler nouns in a follow-up must not become pages under desperation
+# ("master list of all combined resources" once resolved pages Master,
+# List, and Resources, crowding the sloop out of the page budget).
 what materials do i need to build a sloop
 ASSERT {"pages": ["Sloop"], "not_pages": ["Account"]}
 > could you give me a master list of all combined resources that i require
 ASSERT {"pages": ["Sloop"], "not_pages": ["Master", "List", "Resources"]}
 
-# Live session 2026-08-17: a resolved skill must count as this turn's subject.
-# "how do I get started with sailing" once inherited the entire previous
-# question's subject (two items, three quests, four pages -- 60k input tokens)
-# because skills were left out of anyEntity(), so routing saw "nothing
-# resolved" and treated a self-contained skill question as a follow-up.
+# A resolved skill counts as this turn's subject: a self-contained skill
+# question after an unrelated turn inherits nothing. (Skills once fell
+# outside anyEntity(), so "how do I get started with sailing" inherited two
+# items, three quests, and four pages -- 60k input tokens.)
 Are there any quest items in my bank I don't need anymore?
+ASSERT {"pages": ["Bank"]}
 ANSWER A spare Ring of charos can go; both Creature of Fenkenstrain and Garden of Tranquillity are finished. The Crystal chime is only needed against warped creatures. It's recoverable from Dr Fenkenstrain. It also reduces charter and mine cart costs.
 > Hm, how do I get started with sailing / what's the most efficient thing to start off with
 ASSERT {"skills": ["Sailing"], "not_items": ["Ring of charos", "Crystal chime"], "not_quests": ["Creature of Fenkenstrain", "Garden of Tranquillity"], "not_pages": ["Dr Fenkenstrain", "Mine cart"]}

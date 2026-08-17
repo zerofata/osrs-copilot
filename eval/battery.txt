@@ -1,37 +1,71 @@
-# OSRS Copilot eval battery.
-# One question per line; "> " = follow-up in the same conversation;
-# "EVENT {json}" attaches a simulated recent game event to the next question;
-# "ASSERT {json}" checks the previous question's route (route-only runs are
-# free: gradlew evalRun -PevalBattery=eval\battery.txt -PevalRouteOnly=true).
+# Single-turn routing invariants. Every question carries an ASSERT; a battery
+# entry that checks nothing is dead weight. Assertions name entries that must
+# be present in the route ("not_" prefix: must be absent); they are not
+# exhaustive. Keys: items, monsters, quests, pages, skills, needs, facilities,
+# diary_tier, bank.
+#
+# Run (route-only is free -- no LLM, no wiki):
+#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample.json -PevalBattery=eval\battery.txt -PevalRouteOnly=true
+# Assertions assume the synthetic eval/snapshot-sample.json fixture.
+# Multi-turn inheritance: battery-session.txt. Bank and account modes:
+# battery-withbank / battery-bigbank / battery-ironman.
 
-# --- Event-context question (drop just happened) ---
+# A question pointing at a recent game event routes both the event context
+# and the mentioned monster's drop table.
 EVENT {"tsMs": 1786617090000, "type": "npcLoot", "npc": "Greater demon", "items": [{"id": 1163, "name": "Rune full helm", "quantity": 1}, {"id": 592, "name": "Ashes", "quantity": 1}, {"id": 554, "name": "Fire rune", "quantity": 150}]}
 what's this greater demon drop?
-ASSERT {"monsters": ["Greater demon"], "needs": ["drop_table"]}
+ASSERT {"monsters": ["Greater demon"], "needs": ["drop_table", "recent_events"]}
 
-# --- Original battery ---
+# --- Entity resolution: slang, partial names, untradeables ---
+
+# Monster names resolve from partial, lowercase mentions.
 in desert temple, can I afk while the assassin is active
 ASSERT {"monsters": ["Assassin"], "needs": ["mechanics"]}
 
+# Quests resolve from descriptions, not just exact titles.
 what happens to the cats in that cat quest with gertrude
 ASSERT {"quests": ["Gertrude's Cat"]}
 
+# Slang expands before item lookup ("addy" -> "adamantite").
 Where do I get addy bars?
-ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"], "facilities": []}
+ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"]}
+
+# Abbreviations resolve to monsters, not left as dead text.
+Best strategy for kbd
+ASSERT {"monsters": ["King Black Dragon"], "needs": ["strategy", "mechanics"]}
+
+# Untradeables resolve as items via the item infobox index; the GE catalogue
+# never lists them.
+how do i get a fire cape
+ASSERT {"items": ["Fire cape"], "needs": ["item_sources"]}
+
+# Slang resolves through redirects ("bond" -> Old school bond).
+how much is a bond
+ASSERT {"items": ["Old school bond"], "needs": ["prices"], "not_facilities": ["Bank"], "not_needs": ["transport"]}
+
+# --- Intent classification (needs) ---
 
 What's the best gear for Vorkath?
 ASSERT {"monsters": ["Vorkath"], "needs": ["strategy"]}
 
+# "Worth doing" is a profit question: drops, prices, and strategy together.
 Is Dagannoth kings worth doing?
 ASSERT {"monsters": ["Dagannoth"], "needs": ["drop_table", "prices", "strategy"]}
 
+# Level-progress questions route xp math with the skill as subject.
 How many bones do I need to bury for next prayer level
 ASSERT {"skills": ["Prayer"], "needs": ["xp_math"]}
 
-Best strategy for kbd
-ASSERT {"monsters": ["King Black Dragon"], "needs": ["strategy", "mechanics"]}
+whats the best way to train smithing to 99
+ASSERT {"skills": ["Smithing"], "needs": ["training"], "not_facilities": ["Anvil", "Furnace"], "not_needs": ["transport"]}
 
-# --- Later additions ---
+# Group-vs-solo etiquette resolves the place itself.
+do players normally group or solo gwd
+ASSERT {"pages": ["God Wars Dungeon"]}
+
+# --- Diary routing ---
+
+# A diary question routes the diary page and the tier under discussion.
 Can you give me steps to finish my medium varrock diary
 ASSERT {"pages": ["Varrock Diary"], "diary_tier": ["medium"]}
 
@@ -42,50 +76,36 @@ ASSERT {"pages": ["Falador Diary"], "diary_tier": ["hard"]}
 how hard is vorkath
 ASSERT {"monsters": ["Vorkath"], "not_diary_tier": ["hard"]}
 
-# Untradeables resolve as items via the item infobox index (the GE
-# catalogue never lists them).
-how do i get a fire cape
-ASSERT {"items": ["Fire cape"], "needs": ["item_sources"]}
+# --- Facility grounding ---
 
-do players normally group or solo gwd
-ASSERT {"pages": ["God Wars Dungeon"]}
-
-# --- Multi-turn session from in-game testing ---
-fastest way to varrock from where i am
-ASSERT {"pages": ["Varrock"], "needs": ["transport"]}
-> do you know if i have the runes?
-
-# --- Facility / location grounding ---
+# "Where can I <do the thing>" grounds the facility, not a wiki page fetched
+# from the verb.
 where can i refill my prayer
 ASSERT {"facilities": ["Altar"]}
 
-# Live session 2026-08-15: "nearest"/"closest" are question grammar, but the
-# wiki redirects them (and "nearest bank") to its "Closest..." navigation
-# page, which once resolved as a fact and fed the facility scan a furnace.
+# "Nearest"/"closest" is question grammar. The wiki redirects "nearest bank"
+# to its "Closest..." navigation page; that page must never become a fact.
 Where's my nearest bank?
 ASSERT {"facilities": ["Bank"], "not_pages": ["Closest..."]}
 
 wheres the nearest anvil to me
 ASSERT {"facilities": ["Anvil"]}
 
-# --- Negative cases: rules must NOT fire here ---
-whats the best way to train smithing to 99
-ASSERT {"skills": ["Smithing"], "needs": ["training"], "not_facilities": ["Anvil", "Furnace"], "not_needs": ["transport"]}
-
+# Facility words inside non-location intents stay inert: buying is not
+# banking, and a bank-contents question needs no bank directions.
 where can i buy a dragon scimitar
 ASSERT {"items": ["Dragon scimitar"], "not_facilities": ["Bank", "Altar", "Anvil"]}
 
 can you check my bank for rune essence
-ASSERT {"not_facilities": ["Bank"], "not_needs": ["transport"]}
+ASSERT {"items": ["Rune essence"], "not_facilities": ["Bank"], "not_needs": ["transport"]}
 
-how much is a bond
-ASSERT {"needs": ["prices"], "not_facilities": ["Bank"], "not_needs": ["transport"]}
+# --- Negation and absence ---
 
-# --- Negation guard (live session 2026-08-16: "not on consumables though"
-# prefetched the Consumables page; exclusions must not drive prefetch) ---
+# Excluded topics must not drive prefetch ("not on X though" -> no X page).
 Optimal setup to use for tormented demons if I'm willing to spend 20m (not on consumables though)
 ASSERT {"monsters": ["Tormented Demon"], "not_pages": ["Consumables"]}
 
+# "Without a <thing>" excludes the thing, keeps the subject.
 can i kill vorkath without a shield
 ASSERT {"monsters": ["Vorkath"], "not_pages": ["Shield"], "not_items": ["Shield"]}
 
@@ -94,11 +114,12 @@ ASSERT {"monsters": ["Vorkath"], "not_pages": ["Shield"], "not_items": ["Shield"
 what if i dont have a fire cape
 ASSERT {"items": ["Fire cape"]}
 
-# --- Answer-derived subject (live session 2026-08-16: the question named the
-# synapse, the ANSWER introduced the Scorching bow, and "this bow" then had
-# nothing to point at -- the model read only the Arrows page and inverted
-# "bows that fire dragon arrows include it" into "it only fires dragon
-# arrows"). The seeded ANSWER mirrors what the model actually said.
+# --- Answer-derived subject ---
+
+# An entity the ANSWER introduced is inheritable: "this bow" must reach the
+# Scorching bow even though the question only named the synapse. (Without
+# this, a follow-up once read only the Arrows page and inverted "bows that
+# fire dragon arrows include it" into "it only fires dragon arrows".)
 I just got a tormented synapse drop, can you take me through making the bow
 ASSERT {"items": ["Tormented synapse"]}
 ANSWER Nice drop! Here's how to make your Scorching bow: read Duradel's notes, then use your Tormented synapse on a Magic longbow (u). Requires 74 Fletching and While Guthix Sleeps.

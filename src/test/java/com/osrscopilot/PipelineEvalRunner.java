@@ -335,6 +335,8 @@ public class PipelineEvalRunner
 		routeLists.put("facilities", route.facilityPages);
 		routeLists.put("diary_tier",
 			route.diaryTier == null ? List.of() : List.of(route.diaryTier));
+		routeLists.put("bank",
+			route.bankMode == null ? List.of() : List.of(route.bankMode));
 
 		for (String key : asserts.keySet())
 		{
