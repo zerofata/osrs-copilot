@@ -7,7 +7,7 @@ progress, inventory, equipment, and bank -- grounded in facts fetched from the
 OSRS Wiki and Grand Exchange at question time, not the model's memory.
 
 You bring your own LLM: point the plugin at any OpenAI-compatible chat
-completions endpoint (a hosted provider or your own local server) and it works.
+completions endpoint (a hosted provider or your own local server).
 
 ## Usage Examples / Screenshots
 <img width="1438" height="760" alt="image" src="https://github.com/user-attachments/assets/8b3b853b-9ebf-4d4c-8d7c-e5796e4a7bd8" />
