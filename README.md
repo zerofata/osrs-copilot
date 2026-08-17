@@ -9,6 +9,11 @@ OSRS Wiki and Grand Exchange at question time, not the model's memory.
 You bring your own LLM: point the plugin at any OpenAI-compatible chat
 completions endpoint (a hosted provider or your own local server) and it works.
 
+## Usage Examples / Screenshots
+<img width="2876" height="1520" alt="image" src="https://github.com/user-attachments/assets/8b3b853b-9ebf-4d4c-8d7c-e5796e4a7bd8" />
+
+<img width="552" height="1516" alt="image" src="https://github.com/user-attachments/assets/db606af1-0d39-4b99-a0c0-8b4b507fad45" />
+
 ## How it works
 
 Each question runs through a deterministic pipeline before the model sees it:
