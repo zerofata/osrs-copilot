@@ -1,0 +1,8 @@
+# Runs against eval/snapshot-withbank.json: same player, bank captured
+# (25 items incl. law/fire/air/nature runes and varrock teleport tabs).
+# Checks the "complete" bank contract: the model should now answer ownership
+# questions definitively instead of conditionally.
+
+fastest way to varrock from where i am
+ASSERT {"pages": ["Varrock"], "needs": ["transport"]}
+> do you know if i have the runes?

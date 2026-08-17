@@ -1,0 +1,106 @@
+# OSRS Copilot eval battery.
+# One question per line; "> " = follow-up in the same conversation;
+# "EVENT {json}" attaches a simulated recent game event to the next question;
+# "ASSERT {json}" checks the previous question's route (route-only runs are
+# free: gradlew evalRun -PevalBattery=eval\battery.txt -PevalRouteOnly=true).
+
+# --- Event-context question (drop just happened) ---
+EVENT {"tsMs": 1786617090000, "type": "npcLoot", "npc": "Greater demon", "items": [{"id": 1163, "name": "Rune full helm", "quantity": 1}, {"id": 592, "name": "Ashes", "quantity": 1}, {"id": 554, "name": "Fire rune", "quantity": 150}]}
+what's this greater demon drop?
+ASSERT {"monsters": ["Greater demon"], "needs": ["drop_table"]}
+
+# --- Original battery ---
+in desert temple, can I afk while the assassin is active
+ASSERT {"monsters": ["Assassin"], "needs": ["mechanics"]}
+
+what happens to the cats in that cat quest with gertrude
+ASSERT {"quests": ["Gertrude's Cat"]}
+
+Where do I get addy bars?
+ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"], "facilities": []}
+
+What's the best gear for Vorkath?
+ASSERT {"monsters": ["Vorkath"], "needs": ["strategy"]}
+
+Is Dagannoth kings worth doing?
+ASSERT {"monsters": ["Dagannoth"], "needs": ["drop_table", "prices", "strategy"]}
+
+How many bones do I need to bury for next prayer level
+ASSERT {"skills": ["Prayer"], "needs": ["xp_math"]}
+
+Best strategy for kbd
+ASSERT {"monsters": ["King Black Dragon"], "needs": ["strategy", "mechanics"]}
+
+# --- Later additions ---
+Can you give me steps to finish my medium varrock diary
+ASSERT {"pages": ["Varrock Diary"], "diary_tier": ["medium"]}
+
+have i done the falador hard diary?
+ASSERT {"pages": ["Falador Diary"], "diary_tier": ["hard"]}
+
+# Tier words are inert without a resolved diary page.
+how hard is vorkath
+ASSERT {"monsters": ["Vorkath"], "not_diary_tier": ["hard"]}
+
+# Untradeables resolve as items via the item infobox index (the GE
+# catalogue never lists them).
+how do i get a fire cape
+ASSERT {"items": ["Fire cape"], "needs": ["item_sources"]}
+
+do players normally group or solo gwd
+ASSERT {"pages": ["God Wars Dungeon"]}
+
+# --- Multi-turn session from in-game testing ---
+fastest way to varrock from where i am
+ASSERT {"pages": ["Varrock"], "needs": ["transport"]}
+> do you know if i have the runes?
+
+# --- Facility / location grounding ---
+where can i refill my prayer
+ASSERT {"facilities": ["Altar"]}
+
+# Live session 2026-08-15: "nearest"/"closest" are question grammar, but the
+# wiki redirects them (and "nearest bank") to its "Closest..." navigation
+# page, which once resolved as a fact and fed the facility scan a furnace.
+Where's my nearest bank?
+ASSERT {"facilities": ["Bank"], "not_pages": ["Closest..."]}
+
+wheres the nearest anvil to me
+ASSERT {"facilities": ["Anvil"]}
+
+# --- Negative cases: rules must NOT fire here ---
+whats the best way to train smithing to 99
+ASSERT {"skills": ["Smithing"], "needs": ["training"], "not_facilities": ["Anvil", "Furnace"], "not_needs": ["transport"]}
+
+where can i buy a dragon scimitar
+ASSERT {"items": ["Dragon scimitar"], "not_facilities": ["Bank", "Altar", "Anvil"]}
+
+can you check my bank for rune essence
+ASSERT {"not_facilities": ["Bank"], "not_needs": ["transport"]}
+
+how much is a bond
+ASSERT {"needs": ["prices"], "not_facilities": ["Bank"], "not_needs": ["transport"]}
+
+# --- Negation guard (live session 2026-08-16: "not on consumables though"
+# prefetched the Consumables page; exclusions must not drive prefetch) ---
+Optimal setup to use for tormented demons if I'm willing to spend 20m (not on consumables though)
+ASSERT {"monsters": ["Tormented Demon"], "not_pages": ["Consumables"]}
+
+can i kill vorkath without a shield
+ASSERT {"monsters": ["Vorkath"], "not_pages": ["Shield"], "not_items": ["Shield"]}
+
+# Absence-talk is not exclusion: a content word between the cue and the
+# mention breaks the negation, and the entity's facts are still wanted.
+what if i dont have a fire cape
+ASSERT {"items": ["Fire cape"]}
+
+# --- Answer-derived subject (live session 2026-08-16: the question named the
+# synapse, the ANSWER introduced the Scorching bow, and "this bow" then had
+# nothing to point at -- the model read only the Arrows page and inverted
+# "bows that fire dragon arrows include it" into "it only fires dragon
+# arrows"). The seeded ANSWER mirrors what the model actually said.
+I just got a tormented synapse drop, can you take me through making the bow
+ASSERT {"items": ["Tormented synapse"]}
+ANSWER Nice drop! Here's how to make your Scorching bow: read Duradel's notes, then use your Tormented synapse on a Magic longbow (u). Requires 74 Fletching and While Guthix Sleeps.
+> what arrows can I use with this bow
+ASSERT {"items": ["Scorching bow"]}

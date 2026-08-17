@@ -1,0 +1,9 @@
+# Summarized-bank mode (run with eval\snapshot-bigbank.json: 252 items, past
+# the inline limit). Gear questions must prefetch the strategy page's
+# equipment section (tables the plaintext extract strips) and an ownership
+# slice of owned items the facts mention. Ownership checks the model still
+# wants happen in ONE batched search_owned_items call -- a live session once
+# made 55 single-item calls for this exact question.
+
+what should i bring for tormented demons
+ASSERT {"monsters": ["Tormented Demon"], "needs": ["strategy"]}

@@ -1,0 +1,6 @@
+# Runs against eval/snapshot-ironman.json: same player, accountType=IRONMAN.
+# Checks the account-type contract: sourcing advice must not lean on the
+# Grand Exchange.
+
+Where do I get addy bars?
+ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"]}
