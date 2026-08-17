@@ -155,7 +155,14 @@ public class CopilotPlugin extends Plugin
 			return t;
 		});
 		pipeline = new CopilotPipeline(okHttpClient, gson, CACHE_DIR);
-		pipelineExecutor.execute(pipeline::warmCaches);
+		// Nothing may leave the client before the user opts in -- not even
+		// static vocabulary downloads from our own GitHub. The disclosure
+		// promises zero pre-consent traffic, so the code keeps that promise;
+		// warming instead happens the moment the copilot is enabled.
+		if (config.enableCopilot())
+		{
+			pipelineExecutor.execute(pipeline::warmCaches);
+		}
 		iconStore = new IconStore(new File(CACHE_DIR, "icons"),
 			itemManager, spriteManager, skillIconManager);
 
@@ -230,11 +237,18 @@ public class CopilotPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if ("osrscopilot".equals(event.getGroup())
-			&& ("theme".equals(event.getKey()) || "fontSize".equals(event.getKey())))
+		if (!"osrscopilot".equals(event.getGroup()))
+		{
+			return;
+		}
+		if ("theme".equals(event.getKey()) || "fontSize".equals(event.getKey()))
 		{
 			// Both rebuild the panel and replay the conversation into it.
 			SwingUtilities.invokeLater(this::applyTheme);
+		}
+		if ("enableCopilot".equals(event.getKey()) && config.enableCopilot())
+		{
+			pipelineExecutor.execute(pipeline::warmCaches);
 		}
 	}
 
