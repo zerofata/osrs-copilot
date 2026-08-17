@@ -23,7 +23,7 @@ public class GameCapture
 	public Map<String, Object> slayerTask;
 	/** Active spellbook and prayer-scroll unlocks (rigour/augury/preserve),
 	 * read from varbits. Gear advice hinges on these and no bank search can
-	 * answer them; null on captures that predate the field. */
+	 * answer them. */
 	public Map<String, Object> unlocks;
 	/** Item lists as {name, quantity} maps. bank may be null (never seen). */
 	public List<Map<String, Object>> inventory;

@@ -1,7 +1,6 @@
 package com.osrscopilot;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
@@ -17,7 +16,6 @@ import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import okhttp3.OkHttpClient;
 
@@ -28,7 +26,7 @@ import okhttp3.OkHttpClient;
  *
  * Usage:
  *   --env FILE        KEY=VALUE file with PARASAIL_BASE_URL / PARASAIL_API_KEY
- *   --snapshot FILE   snapshot JSON (::probe dump; old probe format also works)
+ *   --snapshot FILE   snapshot JSON (::probe dump)
  *   --question TEXT   the question to ask
  *   --battery FILE    run every question in a file instead (one per line;
  *                     "&gt; " prefix = follow-up in the same conversation;
@@ -440,88 +438,10 @@ public class PipelineEvalRunner
 		return opts;
 	}
 
-	/** Loads either a GameCapture dump (::probe, new format) or an old
-	 * probe-format snapshot. */
+	/** Loads a GameCapture dump as written by ::probe. */
 	static GameCapture loadSnapshot(File file, Gson gson) throws Exception
 	{
 		String json = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-		JsonObject root = gson.fromJson(json, JsonObject.class);
-		if (!root.has("skills") || !root.get("skills").isJsonArray())
-		{
-			return gson.fromJson(json, GameCapture.class);
-		}
-
-		// Old probe format: skills/quests as arrays, player nested.
-		GameCapture cap = new GameCapture();
-		JsonObject player = root.getAsJsonObject("player");
-		if (player != null)
-		{
-			cap.playerName = player.get("name").getAsString();
-			cap.combatLevel = player.get("combatLevel").getAsInt();
-			if (player.has("location"))
-			{
-				cap.location = gson.fromJson(player.get("location"),
-					new TypeToken<Map<String, Object>>() { }.getType());
-			}
-		}
-		cap.accountType = root.has("accountType") ? root.get("accountType").getAsInt() : 0;
-
-		cap.skills = new LinkedHashMap<>();
-		cap.skillXp = new LinkedHashMap<>();
-		cap.boostsOrDrains = new LinkedHashMap<>();
-		for (JsonElement e : root.getAsJsonArray("skills"))
-		{
-			JsonObject s = e.getAsJsonObject();
-			String name = titleCase(s.get("skill").getAsString());
-			int real = s.get("real").getAsInt();
-			cap.skills.put(name, real);
-			cap.skillXp.put(name, s.get("xp").getAsInt());
-			int boosted = s.get("boosted").getAsInt();
-			if (boosted != real)
-			{
-				cap.boostsOrDrains.put(name, boosted - real);
-			}
-		}
-
-		cap.questStates = new LinkedHashMap<>();
-		JsonArray quests = root.getAsJsonArray("quests");
-		if (quests != null)
-		{
-			for (JsonElement e : quests)
-			{
-				JsonObject q = e.getAsJsonObject();
-				cap.questStates.put(q.get("quest").getAsString(), q.get("state").getAsString());
-			}
-		}
-
-		TypeToken<List<Map<String, Object>>> itemsType = new TypeToken<List<Map<String, Object>>>() { };
-		cap.inventory = gson.fromJson(root.get("inventory"), itemsType.getType());
-		cap.equipment = gson.fromJson(root.get("equipment"), itemsType.getType());
-		if (root.has("bank"))
-		{
-			cap.bank = gson.fromJson(root.get("bank"), itemsType.getType());
-		}
-		if (root.has("diaries"))
-		{
-			cap.diaries = gson.fromJson(root.get("diaries"),
-				new TypeToken<Map<String, Object>>() { }.getType());
-		}
-		if (root.has("slayerTask"))
-		{
-			cap.slayerTask = gson.fromJson(root.get("slayerTask"),
-				new TypeToken<Map<String, Object>>() { }.getType());
-		}
-		if (root.has("unlocks"))
-		{
-			cap.unlocks = gson.fromJson(root.get("unlocks"),
-				new TypeToken<Map<String, Object>>() { }.getType());
-		}
-		return cap;
-	}
-
-	private static String titleCase(String upper)
-	{
-		String lower = upper.toLowerCase(Locale.ROOT);
-		return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
+		return gson.fromJson(json, GameCapture.class);
 	}
 }

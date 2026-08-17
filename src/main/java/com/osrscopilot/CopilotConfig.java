@@ -11,7 +11,7 @@ public interface CopilotConfig extends Config
 {
 	@ConfigSection(
 		name = "LLM endpoint",
-		description = "Any OpenAI-compatible chat completions API",
+		description = "Any OpenAI-compatible chat completions API.",
 		position = 0
 	)
 	String endpointSection = "endpoint";
@@ -67,7 +67,7 @@ public interface CopilotConfig extends Config
 	@ConfigItem(
 		keyName = "apiBaseUrl",
 		name = "API base URL",
-		description = "OpenAI-compatible base URL, e.g. https://api.parasail.io/v1 or http://localhost:8000/v1",
+		description = "OpenAI-compatible base URL, e.g. https://openrouter.ai/api/v1 or http://localhost:11434/v1 (local)",
 		section = endpointSection,
 		position = 1
 	)
@@ -92,7 +92,7 @@ public interface CopilotConfig extends Config
 	@ConfigItem(
 		keyName = "model",
 		name = "Model",
-		description = "Model name as the endpoint expects it, e.g. deepseek-ai/DeepSeek-V4-Flash",
+		description = "Model name as the endpoint expects it, e.g. deepseek/deepseek-chat on OpenRouter",
 		section = endpointSection,
 		position = 3
 	)

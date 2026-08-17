@@ -63,11 +63,9 @@ class ToolRegistry
 			"quest_name"));
 		// Only offered when ownership is NOT already fully in context (bank
 		// inlined, or the ownership fact complete for everything the facts
-		// mention) -- a tool over visible data invites redundant lookups:
-		// models re-verified dozens of already-answered items per question
-		// whenever this tool was within reach. Batched: a gear
-		// recommendation legitimately needs dozens of ownership checks,
-		// and they should cost one round trip, not one each.
+		// mention): a tool over visible data invites redundant lookups.
+		// Batched: a gear recommendation legitimately needs dozens of
+		// ownership checks, and they should cost one round trip, not one each.
 		if (offerOwnedSearch)
 		{
 			specs.add(toolSpec("search_owned_items",
@@ -125,14 +123,11 @@ class ToolRegistry
 		boolean annotateOwnership)
 	{
 		Map<String, AgentLoop.Tool> tools = new LinkedHashMap<>();
-		// Content-returning tools surface item names the prefetched facts
-		// never saw (a search snippet naming the Giantsoul amulet, a drop
-		// table, a strategy page fetched mid-loop). The ownership fact only
-		// covers what was in context at prompt time, so without this the
-		// model must hedge ("if you have one...") about items it just
-		// discovered. Annotating each result with the same complete-both-
-		// ways ownership slice extends the grounding to the whole loop, at
-		// zero extra round trips.
+		// The ownership fact covers only what was in context at prompt time.
+		// Content-returning tools surface item names it never saw, so each
+		// result carries the same complete-both-ways ownership slice --
+		// ownership stays grounded across the whole loop at zero extra
+		// round trips.
 		tools.put("wiki_search", annotated(owned, ownedNames, annotateOwnership,
 			args -> wiki.search(str(args, "query"))));
 		tools.put("wiki_page", annotated(owned, ownedNames, annotateOwnership, args -> {

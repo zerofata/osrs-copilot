@@ -60,8 +60,8 @@ import okhttp3.OkHttpClient;
 @Slf4j
 @PluginDescriptor(
 	name = "OSRS Copilot",
-	description = "AI copilot: ask questions in the side panel, answered with your live game state",
-	tags = {"ai", "copilot", "assistant"}
+	description = "Bring your own LLM! Supports OpenRouter or any OpenAI-compatible endpoint.",
+	tags = {"ai", "copilot", "assistant", "llm"}
 )
 public class CopilotPlugin extends Plugin
 {
@@ -156,9 +156,8 @@ public class CopilotPlugin extends Plugin
 		});
 		pipeline = new CopilotPipeline(okHttpClient, gson, CACHE_DIR);
 		// Nothing may leave the client before the user opts in -- not even
-		// static vocabulary downloads from our own GitHub. The disclosure
-		// promises zero pre-consent traffic, so the code keeps that promise;
-		// warming instead happens the moment the copilot is enabled.
+		// static vocabulary downloads from our own GitHub. Warming runs when
+		// the copilot is enabled, here or from onConfigChanged.
 		if (config.enableCopilot())
 		{
 			pipelineExecutor.execute(pipeline::warmCaches);
@@ -295,8 +294,7 @@ public class CopilotPlugin extends Plugin
 		if (!config.enableCopilot())
 		{
 			panel.showError("Enable the copilot in the plugin settings first "
-				+ "(wrench icon -> OSRS Copilot -> Enable copilot). Your questions and "
-				+ "game state are sent only to the LLM endpoint you configure there.");
+				+ "(wrench icon -> OSRS Copilot -> Enable copilot).");
 			return;
 		}
 		Llm.Settings settings = llmSettings();

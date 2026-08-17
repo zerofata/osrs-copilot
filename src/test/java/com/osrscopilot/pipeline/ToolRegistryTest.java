@@ -121,10 +121,9 @@ public class ToolRegistryTest
 	@Test
 	public void toolResultsCarryTheOwnershipSliceForItemsTheyMention() throws Exception
 	{
-		// The scenario that motivated this: a page fetched mid-loop names
-		// an item the prefetched facts never mentioned (Giantsoul amulet).
-		// The result itself must say whether the player owns it, or the
-		// model can only hedge ("if you have one...").
+		// A page fetched mid-loop names items the prefetched facts never
+		// mentioned. The result itself must state ownership, or the model
+		// can only hedge ("if you have one...").
 		WikiApi wiki = stubWiki(
 			"The fastest route is the Giantsoul amulet teleport. "
 				+ "Alternatively use a Twisted bow for the boss.",

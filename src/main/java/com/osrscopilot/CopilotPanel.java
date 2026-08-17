@@ -289,9 +289,8 @@ class CopilotPanel extends PluginPanel
 			// Without bank contents the copilot can't tell "you don't own it"
 			// from "I can't see it", so gear answers stay hypothetical.
 			setStatusBase("answered - open your bank once for gear answers");
-			status.setToolTipText("<html><body style='width:280px'>The copilot has never "
-				+ "seen your bank, so it doesn't know what you own. Open your bank once "
-				+ "and it will remember.</body></html>");
+			status.setToolTipText("<html><body style='width:280px'>Bank contents are "
+				+ "read when the bank is opened, then persist across sessions.</body></html>");
 		}
 	}
 
@@ -457,7 +456,10 @@ class CopilotPanel extends PluginPanel
 			+ "<br><br><font size='3' color='" + theme.welcomeTextHex + "'>"
 			+ "\u201cwhat should i bring for vorkath\u201d<br>"
 			+ "\u201cwhere do i get addy bars\u201d<br>"
-			+ "\u201cis my slayer task worth doing\u201d</font></center></body></html>");
+			+ "\u201cis my slayer task worth doing\u201d</font>"
+			+ "<br><br><font size='3' color='" + theme.welcomeTextHex + "'>"
+			+ "Requires an OpenAI-compatible LLM endpoint, set in plugin settings."
+			+ "</font></center></body></html>");
 		return pane;
 	}
 

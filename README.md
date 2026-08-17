@@ -67,17 +67,15 @@ OSRS Copilot) and set:
 - **Model** -- the model name your endpoint serves
 
 Settings persist in your RuneLite profile. Click the copilot icon in the
-sidebar and ask away. Open your bank once per session so it can be captured --
-ownership answers are conditional until then.
+sidebar and ask. Open your bank once so it can be captured; contents persist
+across sessions per account.
 
 Alternatively, `./gradlew shadowJar` builds a single self-contained jar
 (client + plugin) you can run anywhere with `java -jar`.
 
 ## Privacy
 
-Your game state is sent only to the LLM endpoint **you** configure -- there is
-no third-party service of ours. Wiki, Grand Exchange, and hiscores lookups go
-to official `runescape.wiki`/`runelite.net` APIs over HTTPS.
+Your game state is sent only to the LLM endpoint **you** configure. Wiki, Grand Exchange, and hiscores lookups go to `runescape.wiki`/`runelite.net` APIs over HTTPS.
 
 ## License
 
