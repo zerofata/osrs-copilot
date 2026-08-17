@@ -54,9 +54,6 @@ final class IconStore
 		this.dir = dir;
 		this.itemManager = itemManager;
 		dir.mkdirs();
-		// The wiki-era cache guessed filenames and remembered its 404s;
-		// neither concept survives the move to ID-keyed client sprites.
-		new File(dir, "misses.txt").delete();
 
 		if (skillIconManager != null)
 		{

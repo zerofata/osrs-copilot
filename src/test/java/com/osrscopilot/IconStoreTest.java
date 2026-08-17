@@ -52,17 +52,6 @@ public class IconStoreTest
 	}
 
 	@Test
-	public void wikiEraMissListIsRetired() throws Exception
-	{
-		File dir = tmp.newFolder();
-		File misses = new File(dir, "misses.txt");
-		java.nio.file.Files.write(misses.toPath(), "Emberlight.png".getBytes());
-		new IconStore(dir, null, null, null);
-		assertFalse("guess-miss bookkeeping must not survive the ID-keyed store",
-			misses.exists());
-	}
-
-	@Test
 	public void decoratorResolvesOwnedItemIconsByCapturedId() throws Exception
 	{
 		IconStore store = storeWith("item-" + WHIP + ".png");

@@ -35,9 +35,6 @@ class BankStore
 	{
 		this.dataDir = dataDir;
 		this.gson = gson;
-		// Pre-per-account legacy file: not attributable to an account, so
-		// discarding is the only safe migration (re-open the bank once).
-		new File(dataDir, "bank-latest.json").delete();
 	}
 
 	/** Runs on the client thread (game tick). Keeps the in-memory bank bound
