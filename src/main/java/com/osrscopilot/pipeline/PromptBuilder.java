@@ -125,11 +125,14 @@ class PromptBuilder
 				// referencing a withheld tool would send the model chasing it.
 				bank.put("access", ownershipComplete
 					? "the Ownership fact in RETRIEVED FACTS is the definitive bank "
-						+ "answer for every item the facts mention; treat items it "
-						+ "doesn't cover as unverified and advise conditionally"
-					: "ownership of items the facts mention is in RETRIEVED FACTS; "
-						+ "for anything else use ONE search_owned_items call with "
-						+ "all queries batched");
+						+ "answer for every item the facts mention, and each tool "
+						+ "result carries the same ownership note for the items IT "
+						+ "mentions -- state ownership plainly from these, never "
+						+ "conditionally ('if you have one')"
+					: "ownership of items the facts mention is in RETRIEVED FACTS, "
+						+ "and each tool result carries an ownership note for the "
+						+ "items IT mentions; for anything still uncovered use ONE "
+						+ "search_owned_items call with all queries batched");
 			}
 		}
 		state.put("bank", bank);

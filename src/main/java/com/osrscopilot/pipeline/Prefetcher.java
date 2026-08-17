@@ -2,9 +2,7 @@ package com.osrscopilot.pipeline;
 
 import com.google.gson.Gson;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,18 +44,6 @@ class Prefetcher
 	/** Strategy pages keep recommended gear in an equipment/setup section. */
 	private static final Pattern EQUIPMENT_HEADING =
 		Pattern.compile("(?i)\\b(equipment|gear|setups?|loadout)\\b");
-
-	/** Cap on the ownership slice; past this the block is noise, and the
-	 * batched search tool covers the rest. */
-	private static final int OWNERSHIP_FACT_LIMIT = 120;
-	/** Cap on the not-owned enumeration, sized ABOVE what real equipment
-	 * pages mention (a three-style tabber names ~100-150 items): a
-	 * truncated list forfeits the completeness claim, and the model then
-	 * rationally re-verifies items one search at a time -- the exact
-	 * behavior this block exists to prevent. ~4 tokens per entry, so even
-	 * a full list costs under a thousand tokens against the multi-
-	 * thousand-token sweep it replaces. */
-	private static final int LACKED_FACT_LIMIT = 200;
 
 	private final WikiApi wiki;
 	private final Gson gson;
@@ -311,97 +297,7 @@ class Prefetcher
 	boolean addOwnershipFromFacts(List<String> facts, Map<String, long[]> owned,
 		Map<String, String> names)
 	{
-		String haystack = String.join("\n", facts).toLowerCase(Locale.ROOT);
-		Map<String, Long> ownedMentioned = new LinkedHashMap<>();
-		List<String> ownedBases = new ArrayList<>();
-		for (Map.Entry<String, long[]> e : owned.entrySet())
-		{
-			// Charge/dose qualifiers exist in bank names but never in prose:
-			// "Prayer potion(4)" must match a page saying "prayer potions".
-			String base = e.getKey().replaceAll("\\s*\\([^)]*\\)$", "").trim();
-			ownedBases.add(base);
-			if (base.length() < 3 || !mentionedInFacts(haystack, base))
-			{
-				continue;
-			}
-			String display = names.get(e.getKey()).replaceAll("\\s*\\([^)]*\\)$", "").trim();
-			ownedMentioned.merge(display, e.getValue()[0], Long::sum);
-		}
-
-		Set<String> lacked = lackedMentioned(haystack, ownedBases);
-		if (ownedMentioned.isEmpty() && (lacked == null || lacked.isEmpty()))
-		{
-			return false;
-		}
-
-		StringBuilder sb = new StringBuilder("OWNED: ");
-		int n = 0;
-		boolean truncated = false;
-		for (Map.Entry<String, Long> e : ownedMentioned.entrySet())
-		{
-			if (n >= OWNERSHIP_FACT_LIMIT)
-			{
-				sb.append(", ...");
-				truncated = true;
-				break;
-			}
-			sb.append(n++ > 0 ? ", " : "").append(e.getKey());
-			if (e.getValue() > 1)
-			{
-				sb.append(" x").append(e.getValue());
-			}
-		}
-		if (n == 0)
-		{
-			sb.append("none of them");
-		}
-		if (lacked != null)
-		{
-			sb.append("\nNOT OWNED (verified absent at capture): ");
-			n = 0;
-			for (String name : lacked)
-			{
-				if (n >= LACKED_FACT_LIMIT)
-				{
-					sb.append(", ...");
-					truncated = true;
-					break;
-				}
-				sb.append(n++ > 0 ? ", " : "").append(name);
-			}
-			if (n == 0)
-			{
-				sb.append("nothing relevant");
-			}
-		}
-
-		// The completeness claim is only made when it is true: a cut list
-		// or an unavailable vocabulary falls back to honest framing that
-		// still steers verification into ONE batched call, not a sweep.
-		// The return value reports which framing was used -- a complete
-		// block means the search tool has nothing left to answer and the
-		// caller withholds it entirely.
-		boolean complete = lacked != null && !truncated;
-		addFact(facts, complete
-			? "Ownership of every item these facts mention (complete both ways: "
-				+ "owned means owned, absent from OWNED means not owned)"
-			: "Ownership (lists cut for length; for items in neither list, decide "
-				+ "what actually matters to the answer and verify just those in ONE "
-				+ "batched search_owned_items call)",
-			sb.toString());
-		return complete;
-	}
-
-	/**
-	 * Every catalogued item the facts mention that the player does NOT
-	 * own, by name. Null when the vocabulary is unavailable -- the caller
-	 * then may not claim completeness. Owned variants count as owned: a
-	 * fact saying "Slayer helmet (i)" is covered by the player's "Black
-	 * slayer helmet (i)".
-	 */
-	private Set<String> lackedMentioned(String haystack, List<String> ownedBases)
-	{
-		List<String[]> vocabulary;
+		List<String[]> vocabulary = null;
 		try
 		{
 			vocabulary = wiki.knownItemNames();
@@ -409,61 +305,28 @@ class Prefetcher
 		catch (Exception e)
 		{
 			log.debug("item vocabulary unavailable; ownership fact stays partial", e);
-			return null;
 		}
-		Set<String> lacked = new LinkedHashSet<>();
-		Set<String> seen = new HashSet<>();
-		for (String[] it : vocabulary)
+		Ownership.Slice slice = Ownership.slice(
+			String.join("\n", facts).toLowerCase(Locale.ROOT),
+			owned, names, vocabulary);
+		if (slice == null)
 		{
-			String base = it[0].replaceAll("\\s*\\([^)]*\\)$", "").trim();
-			String lower = base.toLowerCase(Locale.ROOT);
-			if (lower.length() < 4 || !seen.add(lower)
-				|| !Ownership.mentionsWord(haystack, lower))
-			{
-				continue;
-			}
-			boolean ownedVariant = false;
-			for (String ownedBase : ownedBases)
-			{
-				if (ownedBase.equals(lower) || Ownership.mentionsWord(ownedBase, lower))
-				{
-					ownedVariant = true;
-					break;
-				}
-			}
-			if (!ownedVariant)
-			{
-				lacked.add(base);
-			}
+			return false;
 		}
-		return lacked;
-	}
-
-	/**
-	 * True when the facts mention the owned item's name -- directly, or
-	 * under a shorter form of it. Wiki pages name canonical gear ("Slayer
-	 * helmet (i)"); the player's copy is often a decorated variant ("Black
-	 * slayer helmet (i)"), which plain containment can never find in the
-	 * page's text. Stripping lead qualifier words one at a time catches
-	 * those, and only multi-word remainders count: single words like
-	 * "helmet" are prose, not an item reference.
-	 */
-	private static boolean mentionedInFacts(String haystack, String base)
-	{
-		String candidate = base;
-		while (true)
-		{
-			if (Ownership.mentionsWord(haystack, candidate))
-			{
-				return true;
-			}
-			int space = candidate.indexOf(' ');
-			if (space < 0 || candidate.indexOf(' ', space + 1) < 0)
-			{
-				return false;
-			}
-			candidate = candidate.substring(space + 1);
-		}
+		// The completeness claim is only made when it is true: a cut list
+		// or an unavailable vocabulary falls back to honest framing that
+		// still steers verification into ONE batched call, not a sweep.
+		// The return value reports which framing was used -- a complete
+		// block means the search tool has nothing left to answer and the
+		// caller withholds it entirely.
+		addFact(facts, slice.complete
+			? "Ownership of every item these facts mention (complete both ways: "
+				+ "owned means owned, absent from OWNED means not owned)"
+			: "Ownership (lists cut for length; for items in neither list, decide "
+				+ "what actually matters to the answer and verify just those in ONE "
+				+ "batched search_owned_items call)",
+			slice.text);
+		return slice.complete;
 	}
 
 	/** Attach the player's progress for every quest the question or facts

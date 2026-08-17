@@ -1,5 +1,6 @@
 package com.osrscopilot.pipeline;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -18,10 +19,12 @@ import java.util.Map;
 class ToolRegistry
 {
 	private final WikiApi wiki;
+	private final Gson gson;
 
-	ToolRegistry(WikiApi wiki)
+	ToolRegistry(WikiApi wiki, Gson gson)
 	{
 		this.wiki = wiki;
+		this.gson = gson;
 	}
 
 	JsonArray buildToolSpecs(boolean offerOwnedSearch)
@@ -118,22 +121,37 @@ class ToolRegistry
 	}
 
 	Map<String, AgentLoop.Tool> buildTools(GameCapture cap, Map<String, long[]> owned,
-		Map<String, String> ownedNames, boolean offerOwnedSearch)
+		Map<String, String> ownedNames, boolean offerOwnedSearch,
+		boolean annotateOwnership)
 	{
 		Map<String, AgentLoop.Tool> tools = new LinkedHashMap<>();
-		tools.put("wiki_search", args -> wiki.search(str(args, "query")));
-		tools.put("wiki_page", args -> {
+		// Content-returning tools surface item names the prefetched facts
+		// never saw (a search snippet naming the Giantsoul amulet, a drop
+		// table, a strategy page fetched mid-loop). The ownership fact only
+		// covers what was in context at prompt time, so without this the
+		// model must hedge ("if you have one...") about items it just
+		// discovered. Annotating each result with the same complete-both-
+		// ways ownership slice extends the grounding to the whole loop, at
+		// zero extra round trips.
+		tools.put("wiki_search", annotated(owned, ownedNames, annotateOwnership,
+			args -> wiki.search(str(args, "query"))));
+		tools.put("wiki_page", annotated(owned, ownedNames, annotateOwnership, args -> {
 			String title = str(args, "title");
 			String text = wiki.page(title);
 			return text != null ? text
 				: Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
-		});
-		tools.put("item_drop_sources", args -> wiki.itemDropSources(str(args, "item_name")));
-		tools.put("monster_drops", args -> wiki.monsterDrops(str(args, "name")));
-		tools.put("monster_info", args -> wiki.monsterInfo(str(args, "name")));
-		tools.put("item_stats", args -> wiki.itemStats(str(args, "item_name")));
-		tools.put("quest_info", args -> wiki.questInfo(str(args, "quest_name")));
-		tools.put("ge_price", args -> {
+		}));
+		tools.put("item_drop_sources", annotated(owned, ownedNames, annotateOwnership,
+			args -> wiki.itemDropSources(str(args, "item_name"))));
+		tools.put("monster_drops", annotated(owned, ownedNames, annotateOwnership,
+			args -> wiki.monsterDrops(str(args, "name"))));
+		tools.put("monster_info", annotated(owned, ownedNames, annotateOwnership,
+			args -> wiki.monsterInfo(str(args, "name"))));
+		tools.put("item_stats", annotated(owned, ownedNames, annotateOwnership,
+			args -> wiki.itemStats(str(args, "item_name"))));
+		tools.put("quest_info", annotated(owned, ownedNames, annotateOwnership,
+			args -> wiki.questInfo(str(args, "quest_name"))));
+		tools.put("ge_price", annotated(owned, ownedNames, annotateOwnership, args -> {
 			List<String> names = strList(args, "item_names", "item_name");
 			if (names.isEmpty())
 			{
@@ -145,7 +163,7 @@ class ToolRegistry
 				result.put(name, wiki.gePrice(name));
 			}
 			return result;
-		});
+		}));
 		tools.put("quest_status", args -> {
 			if (cap.questStates == null || cap.questStates.isEmpty())
 			{
@@ -201,6 +219,49 @@ class ToolRegistry
 			});
 		}
 		return tools;
+	}
+
+	/**
+	 * Appends the ownership slice for every catalogued item a tool result
+	 * mentions. Disabled when the bank is inlined in the prompt (the model
+	 * already sees everything). Error results pass through untouched; a
+	 * result that mentions no catalogued item gains nothing.
+	 */
+	private AgentLoop.Tool annotated(Map<String, long[]> owned,
+		Map<String, String> ownedNames, boolean enabled, AgentLoop.Tool inner)
+	{
+		if (!enabled)
+		{
+			return inner;
+		}
+		return args -> {
+			Object out = inner.call(args);
+			if (out instanceof Map && ((Map<?, ?>) out).containsKey("error"))
+			{
+				return out;
+			}
+			String text = out instanceof String ? (String) out : gson.toJson(out);
+			List<String[]> vocabulary;
+			try
+			{
+				vocabulary = wiki.knownItemNames();
+			}
+			catch (Exception e)
+			{
+				vocabulary = null;
+			}
+			Ownership.Slice slice = Ownership.slice(text.toLowerCase(Locale.ROOT),
+				owned, ownedNames, vocabulary);
+			if (slice == null)
+			{
+				return out;
+			}
+			return text + "\n\n[Player ownership of items this result mentions"
+				+ (slice.complete
+					? " (complete both ways: absent from OWNED means not owned)"
+					: " (lists cut for length)")
+				+ "]\n" + slice.text;
+		};
 	}
 
 	private static String str(JsonObject args, String key)

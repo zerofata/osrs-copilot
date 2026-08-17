@@ -135,7 +135,7 @@ public class CopilotPipeline
 		this.hiscores = new Hiscores(http);
 		this.router = new Router(resolver);
 		this.prefetcher = new Prefetcher(wiki, gson);
-		this.toolRegistry = new ToolRegistry(wiki);
+		this.toolRegistry = new ToolRegistry(wiki, gson);
 		this.promptBuilder = new PromptBuilder(gson, wiki, hiscores);
 	}
 
@@ -347,7 +347,7 @@ public class CopilotPipeline
 
 		JsonArray toolSpecs = toolRegistry.buildToolSpecs(prepared.offerOwnedSearch);
 		Map<String, AgentLoop.Tool> tools = toolRegistry.buildTools(cap, prepared.ownedIndex,
-			prepared.ownedNames, prepared.offerOwnedSearch);
+			prepared.ownedNames, prepared.offerOwnedSearch, !prepared.bankInlined);
 
 		AgentLoop.Result agent = AgentLoop.run(llm, gson, messages,
 			toolSpecs, tools, maxTurns, listener);
