@@ -84,7 +84,8 @@ public class EntityResolver
 
 		public boolean anyEntity()
 		{
-			return !items.isEmpty() || !monsters.isEmpty() || !quests.isEmpty() || !pages.isEmpty();
+			return !items.isEmpty() || !monsters.isEmpty() || !quests.isEmpty()
+				|| !skills.isEmpty() || !pages.isEmpty();
 		}
 
 		private List<String> byKind(String kind)

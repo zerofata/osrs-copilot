@@ -132,6 +132,102 @@ public class PrefetcherTest
 	}
 
 	@Test
+	public void singleDestinationLocationTableYieldsItsPage()
+	{
+		// Skeletal Wyvern's table: one row, destination link followed by a
+		// fairy code template whose [[...]]-free syntax must not confuse
+		// the parse.
+		String table = "==Locations==\n{{LocTableHead}}\n{{LocLine\n"
+			+ "|name = Skeletal Wyvern\n"
+			+ "|location = [[Asgarnian Ice Dungeon]] ({{Fairycode|AIQ}})\n"
+			+ "|levels = 140\n}}\n{{LocTableBottom}}";
+		assertEquals("Asgarnian Ice Dungeon", Prefetcher.soleDestination(table));
+	}
+
+	@Test
+	public void multipleDestinationsYieldNothingToHopTo()
+	{
+		// Greater demon spawns everywhere; picking a row would be a
+		// judgment call, so the hop must not trigger.
+		String table = "==Locations==\n"
+			+ "{{LocLine\n|name = Greater demon\n|location = [[Wilderness]] near [[Demonic Ruins]]\n}}\n"
+			+ "{{LocLine\n|name = Greater demon\n|location = [[Brimhaven Dungeon]] upper level\n}}\n"
+			+ "{{LocLine\n|name = Greater demon\n|location = [[Catacombs of Kourend]]\n}}";
+		assertEquals(null, Prefetcher.soleDestination(table));
+	}
+
+	@Test
+	public void repeatedRowsAtOneDestinationStillCountAsOne()
+	{
+		// Different levels of the same dungeon are one destination: the
+		// link target, not the row count, decides.
+		String table = "{{LocLine\n|location = [[Brimhaven Dungeon]] upper level\n}}\n"
+			+ "{{LocLine\n|location = [[Brimhaven Dungeon]] lower level\n}}";
+		assertEquals("Brimhaven Dungeon", Prefetcher.soleDestination(table));
+	}
+
+	@Test
+	public void pipedLinksResolveToThePageNotTheLabel()
+	{
+		String table = "{{LocLine\n|location = [[Royal Titans|Branda and Eldric]]\n}}";
+		assertEquals("Royal Titans", Prefetcher.soleDestination(table));
+	}
+
+	@Test
+	public void sectionsWithoutLocationRowsYieldNothing()
+	{
+		assertEquals(null, Prefetcher.soleDestination(null));
+		assertEquals(null, Prefetcher.soleDestination(
+			"==Locations==\nFound throughout [[Gielinor]] in various dungeons."));
+	}
+
+	/** WikiApi that serves a canned article for any page and records titles. */
+	private static WikiApi pagesOf(List<String> fetched)
+	{
+		return new WikiApi(null, new Gson(), new File("build/tmp"))
+		{
+			@Override
+			String page(String title, int charLimit)
+			{
+				fetched.add(title);
+				return "Article: " + title;
+			}
+		};
+	}
+
+	private static List<String> prefetchSkillsRoute(List<String> fetched,
+		List<String> skills, List<String> items)
+	{
+		CopilotPipeline.Route route = new CopilotPipeline.Route();
+		route.entities = new EntityResolver.Resolution();
+		route.entities.skills.addAll(skills);
+		route.entities.items.addAll(items);
+		route.needs = List.of();
+		route.facilityPages = List.of();
+		return new Prefetcher(pagesOf(fetched), new Gson())
+			.prefetch(route, new GameCapture(), Map.of(), Map.of(), true);
+	}
+
+	@Test
+	public void aSkillAloneFetchesItsOwnPage()
+	{
+		List<String> fetched = new ArrayList<>();
+		List<String> facts = prefetchSkillsRoute(fetched, List.of("Sailing"), List.of());
+		assertTrue(fetched.contains("Sailing"));
+		assertTrue(facts.stream().anyMatch(f -> f.startsWith("### Skill: Sailing")));
+	}
+
+	@Test
+	public void aSkillBesideAnotherSubjectFetchesNothingExtra()
+	{
+		// "what attack level for the dragon scimitar": the item bundle
+		// answers; the generic Attack article would only spend the budget.
+		List<String> fetched = new ArrayList<>();
+		prefetchSkillsRoute(fetched, List.of("Attack"), List.of("Dragon scimitar"));
+		assertFalse(fetched.contains("Attack"));
+	}
+
+	@Test
 	public void doseAndChargeVariantsStillMatchProse()
 	{
 		List<String> added = ownershipFacts(

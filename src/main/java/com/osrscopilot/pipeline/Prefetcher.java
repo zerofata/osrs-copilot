@@ -3,6 +3,7 @@ package com.osrscopilot.pipeline;
 import com.google.gson.Gson;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,6 +41,11 @@ class Prefetcher
 
 	private static final Pattern LOCATIONS_HEADING =
 		Pattern.compile("(?i)^locations?$|list of|where to find");
+
+	/** First page link of a location table row's destination, e.g.
+	 * "|location = [[Asgarnian Ice Dungeon]] ({{Fairycode|AIQ}})". */
+	private static final Pattern LOCATION_ROW_DEST =
+		Pattern.compile("(?m)^\\|\\s*location\\s*=\\s*\\[\\[([^\\]|]+)");
 
 	/** Strategy pages keep recommended gear in an equipment/setup section. */
 	private static final Pattern EQUIPMENT_HEADING =
@@ -90,8 +96,7 @@ class Prefetcher
 			}
 			if (needs.contains(Router.NEED_TRANSPORT))
 			{
-				String section = wiki.sectionByHeading(monster, TRANSPORT_HEADING, FACT_PAGE_BUDGET);
-				addFact(facts, "Getting there: " + monster, section);
+				addTravelFact(facts, monster);
 			}
 		}
 
@@ -163,10 +168,24 @@ class Prefetcher
 			addFact(facts, "Equipment stats: " + page, wiki.itemStats(page));
 			if (needs.contains(Router.NEED_TRANSPORT))
 			{
-				// Travel options live in a dedicated section that the
-				// truncated extract usually cuts off; fetch it by heading.
-				String section = wiki.sectionByHeading(page, TRANSPORT_HEADING, FACT_PAGE_BUDGET);
-				addFact(facts, "Getting there: " + page, section);
+				addTravelFact(facts, page);
+			}
+		}
+
+		// Core bundle for skills: the skill's own page, but only when skills
+		// are the question's whole subject. Combat skills especially are
+		// mentioned incidentally next to a real subject ("gear for tormented
+		// demons with my attack level") -- there the other entity's bundle
+		// answers and the player's levels already sit in PLAYER STATE, so a
+		// generic skill article would only spend the budget. When the skill
+		// is all there is ("how do I get started with sailing"), its page IS
+		// the subject matter and the prompt would otherwise carry no facts.
+		if (!ents.skills.isEmpty() && ents.items.isEmpty() && ents.monsters.isEmpty()
+			&& ents.quests.isEmpty() && ents.pages.isEmpty())
+		{
+			for (String skill : limit(ents.skills, 2))
+			{
+				addFact(facts, "Skill: " + skill, wiki.page(skill, FACT_PAGE_BUDGET));
 			}
 		}
 
@@ -199,6 +218,55 @@ class Prefetcher
 			}
 		}
 		return facts;
+	}
+
+	/**
+	 * Travel facts follow two wiki conventions. Destinations with a journey
+	 * worth documenting (bosses, dungeons, cities) carry a dedicated travel
+	 * section -- Getting there / Transportation / Access. Ordinary monster
+	 * pages have no such section; where the creature is found lives under a
+	 * Locations heading instead. Try the direct answer first, then fall back,
+	 * so a transport question never ships without its destination.
+	 */
+	private void addTravelFact(List<String> facts, String page)
+	{
+		String section = wiki.sectionByHeading(page, TRANSPORT_HEADING, FACT_PAGE_BUDGET);
+		if (section != null)
+		{
+			addFact(facts, "Getting there: " + page, section);
+			return;
+		}
+		String locations = wiki.sectionByHeading(page, LOCATIONS_HEADING, FACT_PAGE_BUDGET);
+		addFact(facts, "Locations: " + page, locations);
+		// The locations table says WHERE, not HOW TO GET THERE. With one
+		// destination that gap is pure retrieval -- its page's travel
+		// section is the answer, so fetch it. With several, which one is
+		// best is a judgment call (task, gear, diary unlocks), and travel
+		// detail for arbitrary rows would only bias the model toward them;
+		// it picks from the table and can wiki_page its choice.
+		String destination = soleDestination(locations);
+		if (destination != null && !destination.equalsIgnoreCase(page))
+		{
+			addFact(facts, "Getting there: " + destination,
+				wiki.sectionByHeading(destination, TRANSPORT_HEADING, FACT_PAGE_BUDGET));
+		}
+	}
+
+	/** The single destination a locations table points at, or null when it
+	 * has none or several. */
+	static String soleDestination(String locationsWikitext)
+	{
+		if (locationsWikitext == null)
+		{
+			return null;
+		}
+		Set<String> destinations = new LinkedHashSet<>();
+		Matcher m = LOCATION_ROW_DEST.matcher(locationsWikitext);
+		while (m.find())
+		{
+			destinations.add(m.group(1).trim());
+		}
+		return destinations.size() == 1 ? destinations.iterator().next() : null;
 	}
 
 	/**
