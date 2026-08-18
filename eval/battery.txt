@@ -130,3 +130,17 @@ ASSERT {"items": ["Tormented synapse"]}
 ANSWER Nice drop! Here's how to make your Scorching bow: read Duradel's notes, then use your Tormented synapse on a Magic longbow (u). Requires 74 Fletching and While Guthix Sleeps.
 > what arrows can I use with this bow
 ASSERT {"items": ["Scorching bow"]}
+
+# --- Slayer task reference ---
+
+# "my task" resolves the slayer-task creature from game state (the sample
+# snapshot's task is Bloodveld).
+best setup for my slayer task
+ASSERT {"monsters": ["Bloodveld"], "needs": ["strategy"]}
+
+# A denied task ("not on task") must not inject the task creature; with
+# nothing else resolved, the follow-up inherits the conversation's subject.
+What gear should I bring for aberrant spectres?
+ASSERT {"monsters": ["Aberrant spectre"]}
+> im not on task tho?
+ASSERT {"monsters": ["Aberrant spectre"], "not_monsters": ["Bloodveld"]}

@@ -308,6 +308,22 @@ public class EntityResolver
 	 * cue and the mention; a content word ("don't HAVE the armor") breaks
 	 * the chain, so absence-talk still resolves its entity.
 	 */
+	/** True when the question mentions the word at least once NOT under a
+	 * negation cue ("on task" yes; "not on task" no). Lets keyword rules
+	 * outside the vocabulary pass share the resolver's negation semantics. */
+	static boolean mentionsAffirmatively(String question, String word)
+	{
+		String[] tokens = norm(question).split(" +");
+		for (int i = 0; i < tokens.length; i++)
+		{
+			if (tokens[i].equals(word) && !negated(tokens, i))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static boolean negated(String[] tokens, int start)
 	{
 		for (int back = 1; back <= 3 && start - back >= 0; back++)

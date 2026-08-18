@@ -228,6 +228,9 @@ class Router
 	 * True when the player refers to their Slayer task instead of naming the
 	 * creature, and the client knows what that task is. A monster resolved
 	 * from the question wins -- they may be asking about something else.
+	 * A denied task ("im not on task", "off task") must not fire: injecting
+	 * the task creature would hijack the subject and, by counting as a
+	 * resolved entity, block inheritance of the real one.
 	 */
 	private static boolean referencesSlayerTask(String question, EntityResolver.Resolution entities)
 	{
@@ -236,6 +239,11 @@ class Router
 			return false;
 		}
 		String q = question.toLowerCase(Locale.ROOT);
-		return q.matches(".*\\b(task|assignment)\\b.*");
+		if (q.matches(".*\\boff[ -](task|assignment)\\b.*"))
+		{
+			return false;
+		}
+		return EntityResolver.mentionsAffirmatively(question, "task")
+			|| EntityResolver.mentionsAffirmatively(question, "assignment");
 	}
 }
