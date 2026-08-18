@@ -20,9 +20,7 @@ import java.util.regex.Pattern;
  *
  * Purely deterministic: names are matched against vocabularies the client or
  * wiki provides (quest list with live states, captured containers, the GE
- * item catalogue, wiki-verified route entities). The model plays no part, so
- * the styling can never assert something the game state doesn't back -- and
- * new content appears here the moment the live vocabularies carry it.
+ * item catalogue, wiki-verified route entities). The model plays no part.
  */
 final class AnswerDecorator
 {
@@ -37,23 +35,19 @@ final class AnswerDecorator
 		final String title;
 		final String color;
 		/** Pre-resolved icon file URL (skill and quest icons, written to
-		 * disk at startup); null = none or item-sprite icon. State color
-		 * already says finished/in-progress/missing, so no glyphs. */
+		 * disk at startup); null = none or item-sprite icon. */
 		final String iconUrl;
 		/** Item ID whose inventory sprite decorates the name; -1 = none.
-		 * Stored as an ID, not an image: the vocabulary holds thousands of
-		 * rules (the whole GE catalogue) and only names that actually
-		 * appear in an answer may cost a sprite render. */
+		 * An ID rather than an image: sprites render only for names that
+		 * appear in an answer, never for the whole vocabulary. */
 		final int iconItemId;
 		final int iconW;
 		final int iconH;
 		/** Skill names are everyday words ("attack the demon", "a ranged
 		 * switch"); only their capitalized form denotes the skill. */
 		final boolean capitalizedOnly;
-		/** Ownership annotation ("×5,006 banked") rendered after the FIRST
-		 * mention of the name; null = none. Colors alone ask the reader to
-		 * know the legend -- the badge states it: when the model says "mine
-		 * mithril ore", the ore the player already owns says so inline. */
+		/** Ownership annotation ("×5,006 banked") rendered after the first
+		 * mention of the name only; null = none. */
 		final String badge;
 
 		Rule(String lowerName, String title, String color, String iconUrl,
@@ -203,8 +197,7 @@ final class AnswerDecorator
 			String name = String.valueOf(item.get("name"));
 			// Charge/dose qualifiers exist in item names but never in prose:
 			// "Prayer potion(4)" must match an answer saying "prayer potion".
-			// The icon keeps the exact variant's ID -- the sprite the player
-			// actually owns.
+			// The icon keeps the exact owned variant's ID.
 			String base = name.replaceAll("\\s*\\([^)]*\\)$", "").trim();
 			Object q = item.get("quantity");
 			long qty = q instanceof Number ? ((Number) q).longValue() : 1;
@@ -286,8 +279,7 @@ final class AnswerDecorator
 			Rule rule = rules.get(m[2]);
 			out.append(html, pos, m[0])
 				.append("<a href='").append(wikiUrl(rule.title)).append("'>");
-			// Item sprites render lazily, here, for matched names only: the
-			// rule vocabulary is thousands strong, an answer mentions a few.
+			// Item sprites render here, lazily, for matched names only.
 			String iconUrl = rule.iconUrl != null ? rule.iconUrl
 				: rule.iconItemId >= 0 && icons != null
 				? icons.itemIconUrl(rule.iconItemId) : null;
@@ -303,8 +295,7 @@ final class AnswerDecorator
 			out.append("<font color='").append(rule.color).append("'>")
 				.append(html, m[0], m[1])
 				.append("</font></a>");
-			// Ownership badge on the first mention only: repeated names in
-			// one answer would otherwise repeat the same annotation.
+			// Ownership badge on the first mention only.
 			if (rule.badge != null && badged.add(m[2]))
 			{
 				out.append(" <font size='2' color='").append(badgeHex)
