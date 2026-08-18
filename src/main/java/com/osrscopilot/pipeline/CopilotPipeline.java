@@ -242,6 +242,13 @@ public class CopilotPipeline
 		return Prefetcher.sourcePage(factTitle);
 	}
 
+	/** A fact title's user-facing form: game-state headings drop the
+	 * model-facing instructions they carry. */
+	public static String factDisplayTitle(String factTitle)
+	{
+		return Prefetcher.displayTitle(factTitle);
+	}
+
 	/** Every known item as {name, wiki page} (tradeable and untradeable
 	 * alike), for UI entity linking. Best-effort: empty when the sources
 	 * can't be fetched. */

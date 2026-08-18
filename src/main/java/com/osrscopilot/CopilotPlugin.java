@@ -1,6 +1,8 @@
 package com.osrscopilot;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.inject.Provides;
 import com.osrscopilot.pipeline.CopilotPipeline;
 import com.osrscopilot.pipeline.EmptyAnswerException;
@@ -415,10 +417,12 @@ public class CopilotPlugin extends Plugin
 	/** One dim HTML line under each answer disclosing what the model was
 	 * given: retrieved facts, tools it called, and token cost. Keeps the
 	 * pipeline inspectable in-game instead of only in offline eval runs.
-	 * Each wiki-backed fact links its source page's edit history -- the
-	 * page's contributors hold the copyright (CC BY-NC-SA), and a history
-	 * link is the accepted way to credit them. */
-	private static String answerMeta(CopilotPipeline.Result result)
+	 * Every wiki page the answer drew on -- prefetched fact or tool fetch --
+	 * links its edit history: the page's contributors hold the copyright
+	 * (CC BY-NC-SA), and a history link is the accepted way to credit them.
+	 * Underlined explicitly: the shared stylesheet suppresses underlines
+	 * for the answer body's entity links. */
+	static String answerMeta(CopilotPipeline.Result result)
 	{
 		StringBuilder sb = new StringBuilder();
 		if (result.factTitles.isEmpty())
@@ -432,22 +436,18 @@ public class CopilotPlugin extends Plugin
 			{
 				String title = result.factTitles.get(i);
 				String page = CopilotPipeline.factSourcePage(title);
-				sb.append(i > 0 ? "; " : "");
-				if (page != null)
-				{
-					sb.append("<a href='").append(AnswerDecorator.wikiUrl(page))
-						.append("?action=history'>").append(SwingUtil.escapeHtml(title))
-						.append("</a>");
-				}
-				else
-				{
-					sb.append(SwingUtil.escapeHtml(title));
-				}
+				String display = SwingUtil.escapeHtml(CopilotPipeline.factDisplayTitle(title));
+				sb.append(i > 0 ? "; " : "")
+					.append(page == null ? display : historyLink(page, display));
 			}
 		}
 		if (result.toolLog != null && !result.toolLog.isEmpty())
 		{
-			sb.append(" | tools: ").append(SwingUtil.escapeHtml(String.join(", ", result.toolLog)));
+			sb.append(" | tools: ");
+			for (int i = 0; i < result.toolLog.size(); i++)
+			{
+				sb.append(i > 0 ? ", " : "").append(toolHtml(result.toolLog.get(i)));
+			}
 		}
 		if (result.usage != null)
 		{
@@ -460,6 +460,48 @@ public class CopilotPlugin extends Plugin
 				.append(SwingUtil.escapeHtml(String.join(", ", result.suspectNames)));
 		}
 		return sb.toString();
+	}
+
+	private static String historyLink(String page, String escapedText)
+	{
+		return "<a href='" + AnswerDecorator.wikiUrl(page) + "?action=history'><u>"
+			+ escapedText + "</u></a>";
+	}
+
+	private static final Gson META_GSON = new Gson();
+
+	/** One tool-log entry ("name({json})") as footer HTML. Single-argument
+	 * calls display just the value; page-backed tools (wiki_page,
+	 * item_stats) link the page like a fact. Anything unexpected falls back
+	 * to the raw entry. */
+	private static String toolHtml(String entry)
+	{
+		int paren = entry.indexOf('(');
+		if (paren > 0 && entry.endsWith(")"))
+		{
+			String name = entry.substring(0, paren);
+			try
+			{
+				JsonObject args = META_GSON.fromJson(
+					entry.substring(paren + 1, entry.length() - 1), JsonObject.class);
+				if (args.size() == 1)
+				{
+					JsonElement only = args.entrySet().iterator().next().getValue();
+					if (only.isJsonPrimitive() && only.getAsJsonPrimitive().isString())
+					{
+						String value = only.getAsString();
+						String display = SwingUtil.escapeHtml(name + "(" + value + ")");
+						return "wiki_page".equals(name) || "item_stats".equals(name)
+							? historyLink(value, display) : display;
+					}
+				}
+			}
+			catch (RuntimeException e)
+			{
+				log.debug("unparseable tool log entry: {}", entry);
+			}
+		}
+		return SwingUtil.escapeHtml(entry);
 	}
 
 	private Llm.Settings llmSettings()

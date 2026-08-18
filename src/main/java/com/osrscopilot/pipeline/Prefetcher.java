@@ -481,6 +481,25 @@ class Prefetcher
 		}
 	}
 
+	/**
+	 * Fact headings address the model -- game-state blocks carry usage
+	 * instructions in their titles ("authoritative...", "complete both
+	 * ways..."). The footer shows the player what was retrieved, so those
+	 * blocks display their short names; wiki facts are already short.
+	 */
+	static String displayTitle(String factTitle)
+	{
+		if (factTitle.startsWith("Quest progress"))
+		{
+			return "Quest progress";
+		}
+		if (factTitle.startsWith("Ownership") && !factTitle.startsWith("Ownership: "))
+		{
+			return "Ownership";
+		}
+		return factTitle;
+	}
+
 	/** A failed lookup is not a fact. Content methods signal failure with
 	 * null; the structured lookups (prices, drops, monster info) return
 	 * error maps because the LLM tool boundary wants the message -- prefetch

@@ -271,4 +271,27 @@ public class PrefetcherTest
 	{
 		assertEquals(null, Prefetcher.sourcePage("Some future fact: Thing"));
 	}
+
+	@Test
+	public void gameStateHeadingsDisplayShortNames()
+	{
+		assertEquals("Quest progress", Prefetcher.displayTitle(
+			"Quest progress (authoritative, from the game client)"));
+		assertEquals("Ownership", Prefetcher.displayTitle(
+			"Ownership of every item these facts mention (complete both ways: "
+				+ "owned means owned, absent from OWNED means not owned)"));
+		assertEquals("Ownership", Prefetcher.displayTitle(
+			"Ownership (lists cut for length; for items in neither list, decide "
+				+ "what actually matters to the answer and verify just those in ONE "
+				+ "batched search_owned_items call)"));
+	}
+
+	@Test
+	public void wikiFactTitlesDisplayUnchanged()
+	{
+		assertEquals("Ownership: Scorching bow",
+			Prefetcher.displayTitle("Ownership: Scorching bow"));
+		assertEquals("Monster info: Vorkath",
+			Prefetcher.displayTitle("Monster info: Vorkath"));
+	}
 }
