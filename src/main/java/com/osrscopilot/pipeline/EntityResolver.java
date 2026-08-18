@@ -174,6 +174,18 @@ public class EntityResolver
 		{
 			questVocab.put(norm(q), q);
 		}
+		// Players name series quests bare ("Dragon Slayer", "Monkey Madness")
+		// but the client's quest list only has numbered entries. Alias the
+		// bare name to the series opener; a real quest with that exact name
+		// keeps priority via putIfAbsent.
+		for (String q : questNames)
+		{
+			String n = norm(q);
+			if (n.endsWith(" i"))
+			{
+				questVocab.putIfAbsent(n.substring(0, n.length() - 2), q);
+			}
+		}
 
 		String[] tokens = norm(question).split(" +");
 		Resolution result = new Resolution();

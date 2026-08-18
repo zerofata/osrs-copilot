@@ -46,6 +46,8 @@ import okhttp3.OkHttpClient;
  * ASSERT keys: items/monsters/quests/pages/skills/needs/facilities require
  * those entries in the route (case-insensitive); a "not_" prefix requires
  * their absence. Example: ASSERT {"needs":["transport"],"not_facilities":["Bank"]}
+ * The "facts" key asserts prefetched fact headings ("Monster info: Bloodveld")
+ * and requires a promptOnly or full run, since routeOnly builds no facts.
  *
  * Battery runs write a JSONL artifact to eval/runs/ so runs diff mechanically.
  * Exits nonzero when any assertion fails.
@@ -222,7 +224,10 @@ public class PipelineEvalRunner
 				route.entities.pages, route.entities.skills, route.needs,
 				route.facilityPages, route.diaryTier, route.bankMode);
 
-			List<String> assertFailures = checkAssertions(item.asserts, route);
+			String builtPrompt = promptDump.containsKey(item.question)
+				? promptDump.get(item.question)
+				: result != null ? result.prompt : null;
+			List<String> assertFailures = checkAssertions(item.asserts, route, builtPrompt);
 			for (String f : assertFailures)
 			{
 				out.println("ASSERT FAIL: " + f);
@@ -317,8 +322,11 @@ public class PipelineEvalRunner
 	}
 
 	/** Checks route expectations: each key lists entries that must be present
-	 * in the corresponding route list ("not_" prefix: must be absent). */
-	private static List<String> checkAssertions(JsonObject asserts, CopilotPipeline.Route route)
+	 * in the corresponding route list ("not_" prefix: must be absent).
+	 * "facts" checks prefetched fact headings against the built prompt,
+	 * null in routeOnly runs. */
+	private static List<String> checkAssertions(JsonObject asserts, CopilotPipeline.Route route,
+		String prompt)
 	{
 		List<String> failures = new java.util.ArrayList<>();
 		if (asserts == null)
@@ -326,6 +334,18 @@ public class PipelineEvalRunner
 			return failures;
 		}
 		Map<String, List<String>> routeLists = new HashMap<>();
+		if (prompt != null)
+		{
+			List<String> factLabels = new java.util.ArrayList<>();
+			for (String line : prompt.split("\n"))
+			{
+				if (line.startsWith("### "))
+				{
+					factLabels.add(line.substring(4).trim());
+				}
+			}
+			routeLists.put("facts", factLabels);
+		}
 		routeLists.put("items", route.entities.items);
 		routeLists.put("monsters", route.entities.monsters);
 		routeLists.put("quests", route.entities.quests);
@@ -345,7 +365,9 @@ public class PipelineEvalRunner
 			List<String> actual = routeLists.get(listName);
 			if (actual == null)
 			{
-				failures.add("unknown assert key: " + key);
+				failures.add("facts".equals(listName)
+					? "facts assertion requires a promptOnly or full run"
+					: "unknown assert key: " + key);
 				continue;
 			}
 			for (JsonElement e : asserts.getAsJsonArray(key))

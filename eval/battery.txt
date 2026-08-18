@@ -26,6 +26,11 @@ ASSERT {"monsters": ["Assassin"], "needs": ["mechanics"]}
 what happens to the cats in that cat quest with gertrude
 ASSERT {"quests": ["Gertrude's Cat"]}
 
+# Series openers resolve from the bare name; the client quest list only
+# carries numbered entries ("Dragon Slayer I").
+Can I start Dragon Slayer?
+ASSERT {"quests": ["Dragon Slayer I"], "not_skills": ["Slayer"]}
+
 # Slang expands before item lookup ("addy" -> "adamantite").
 Where do I get addy bars?
 ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"]}

@@ -1,0 +1,23 @@
+# Fact-integrity canaries: assert that prefetched facts actually BUILD, not
+# just that routing chose them. Routing was correct when the wiki renamed
+# infobox_monster's venom_immune field (Aug 2026) and every Monster info fact
+# silently vanished; only a facts-level assertion catches that class of drift.
+#
+# Each entry costs live wiki calls, so this battery stays small: one canary
+# per upstream data source. Requires promptOnly (facts don't exist routeOnly):
+#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample.json -PevalBattery=eval\battery-facts.txt -PevalPromptOnly=true
+
+# infobox_monster bucket (schema-drift canary; Bloodveld has no /Strategies
+# subpage, so this also exercises the main-page strategy fallback).
+Hmm, what gear do you think I'd use for bloodvelds?
+ASSERT {"monsters": ["Bloodveld"], "needs": ["strategy"], "facts": ["Monster info: Bloodveld", "Page: Bloodveld"]}
+
+# /Strategies subpage and its equipment-table extraction (husk-scrape canary).
+What's the best gear for Vorkath?
+ASSERT {"monsters": ["Vorkath"], "facts": ["Monster info: Vorkath", "Strategy: Vorkath", "Recommended equipment: Vorkath"]}
+
+# quest bucket (requirements come from structured data, not page prose).
+# Phrased as players phrase it: "Dragon Slayer" must reach the quest, not
+# the Slayer skill.
+Can I start Dragon Slayer?
+ASSERT {"quests": ["Dragon Slayer I"], "facts": ["Quest requirements: Dragon Slayer I"]}

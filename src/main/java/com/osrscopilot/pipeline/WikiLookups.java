@@ -253,8 +253,8 @@ class WikiLookups
 				+ "'magic_defence_bonus','light_range_defence_bonus',"
 				+ "'standard_range_defence_bonus','heavy_range_defence_bonus',"
 				+ "'attack_style','attack_speed','size',"
-				+ "'venom_immune','cannon_immune','burn_immune','freeze_resistance',"
-				+ "'elemental_weakness','elemental_weakness_percent')"
+				+ "'poison_resistance','venom_resistance','cannon_immune','burn_immune',"
+				+ "'freeze_resistance','elemental_weakness','elemental_weakness_percent')"
 				+ ".where('name','" + name.replace("'", "\\'") + "').limit(3).run()");
 			JsonArray rows = r.getAsJsonArray("bucket");
 			if (rows == null || rows.size() == 0)
@@ -264,6 +264,9 @@ class WikiLookups
 			Map<String, Object> info = gson.fromJson(rows.get(0),
 				new TypeToken<Map<String, Object>>() { }.getType());
 			info.values().removeIf(Objects::isNull);
+			// The bucket carries "ERR" where the wiki's own template data is
+			// broken (currently the resistance fields); junk, not a value.
+			info.values().removeIf("ERR"::equals);
 			info.replaceAll((k, v) -> stripMarkup(v));
 			return info;
 		}

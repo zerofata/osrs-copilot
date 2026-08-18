@@ -81,9 +81,21 @@ class WikiContent
 		return fresh;
 	}
 
+	/** Runs a bucket query. API-level errors (bad field name after an
+	 * upstream schema change, malformed query) throw rather than reading
+	 * as an empty result: an empty result means the subject doesn't
+	 * exist, and conflating the two hides schema drift. */
 	JsonObject bucket(String query) throws IOException
 	{
-		return cachedGet(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
+		JsonObject r = cachedGet(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
+		if (r != null && r.has("error"))
+		{
+			String message = r.get("error").isJsonPrimitive()
+				? r.get("error").getAsString() : r.get("error").toString();
+			log.warn("bucket query rejected: {} (query: {})", message, query);
+			throw new IOException("bucket query rejected: " + message);
+		}
+		return r;
 	}
 
 	JsonObject wikiQuery(String params) throws IOException
