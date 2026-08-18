@@ -60,6 +60,11 @@ class PromptBuilder
 		boolean bankInlined, boolean ownershipComplete)
 	{
 		Map<String, Object> state = new LinkedHashMap<>();
+		// Without today's date the model assumes its training-time year for
+		// anything "new" or "recent" (it once searched "update 2025" in late
+		// 2026). Lives here rather than in the system prompt so the static
+		// prefix stays byte-identical for provider prompt caching.
+		state.put("date", java.time.LocalDate.now().toString());
 		state.put("player", cap.playerName);
 		state.put("account_type", cap.accountTypeName());
 		state.put("combat_level", cap.combatLevel);
