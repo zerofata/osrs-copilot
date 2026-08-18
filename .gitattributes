@@ -1,0 +1,4 @@
+# LF in repo and working tree; editors on any OS see the same bytes.
+* text=auto eol=lf
+# Windows batch scripts require CRLF to execute correctly.
+*.bat text eol=crlf
