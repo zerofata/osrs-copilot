@@ -90,7 +90,7 @@ public class BankMutationsTest
 		BankMutations.GeSlots slots = new BankMutations.GeSlots();
 		slots.offerChanged(0, GrandExchangeOfferState.BOUGHT, 560, 500, 500);
 		// No EMPTY seen between offers: the first offer's items were
-		// collected while we weren't watching, so its accrual is stale.
+		// collected while untracked, so its accrual is stale.
 		// The new offer's lower quantitySold is the tell; only its own
 		// fills may credit.
 		slots.offerChanged(0, GrandExchangeOfferState.BUYING, 560, 20, 300);

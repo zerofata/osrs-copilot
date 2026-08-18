@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,8 @@ import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.client.RuneLite;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -74,10 +77,6 @@ public class CopilotPlugin extends Plugin
 	private static final File DATA_DIR = new File(RuneLite.RUNELITE_DIR, "osrs-copilot");
 	private static final File CACHE_DIR = new File(DATA_DIR, "cache");
 
-	/** InterfaceID.BANK; a raw int like the container ids, to stay
-	 * compatible across API versions. */
-	private static final int BANK_GROUP = 12;
-
 	@Inject
 	private Client client;
 
@@ -104,6 +103,11 @@ public class CopilotPlugin extends Plugin
 
 	@Inject
 	private SkillIconManager skillIconManager;
+
+	/** RuneLite's shared background thread: right for small tasks like the
+	 * bank persist writes, which must stay off the client thread. */
+	@Inject
+	private ScheduledExecutorService sharedExecutor;
 
 	/**
 	 * Our own worker for the pipeline. RuneLite's injected executor is a
@@ -160,7 +164,7 @@ public class CopilotPlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		DATA_DIR.mkdirs();
-		bankStore = new BankStore(DATA_DIR, gson);
+		bankStore = new BankStore(DATA_DIR, gson, sharedExecutor);
 		bankMutations = new BankMutations(bankStore, itemManager);
 		events = new EventRecorder(client, gson, config, DATA_DIR);
 		reader = new GameStateReader(client, configManager, config, bankStore, events);
@@ -212,9 +216,8 @@ public class CopilotPlugin extends Plugin
 		}
 		if (pipelineExecutor != null)
 		{
-			// Drops queued work; an in-flight HTTP read runs out its timeout
-			// on the dying daemon thread, same bound as before, but nothing
-			// else ever queues behind it.
+			// Drops queued work; an in-flight HTTP read runs out its
+			// timeout on the dying daemon thread.
 			pipelineExecutor.shutdownNow();
 			pipelineExecutor = null;
 		}
@@ -591,12 +594,11 @@ public class CopilotPlugin extends Plugin
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
 		int id = event.getContainerId();
-		if (id == GameStateReader.BANK_ID)
+		if (id == InventoryID.BANK)
 		{
-			// Authoritative capture. The drift audit -- how far the tracked
-			// prediction strayed while the bank was closed, the measure of
-			// whether BankMutations is right in real play -- runs only on
-			// the visit's first capture: later ones fire per withdrawal and
+			// Authoritative capture. The drift audit (how far the tracked
+			// prediction strayed while the bank was closed) runs only on the
+			// visit's first capture: later captures fire per withdrawal and
 			// deposit, and diffing those merely echoes each interaction.
 			List<Map<String, Object>> fresh = reader.itemList(event.getItemContainer());
 			if (bankDriftAuditArmed)
@@ -685,22 +687,22 @@ public class CopilotPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (event.getGroupId() == BankMutations.DEPOSIT_BOX_GROUP)
+		if (event.getGroupId() == InterfaceID.BANK_DEPOSITBOX)
 		{
 			bankMutations.depositBoxOpened(
-				client.getItemContainer(GameStateReader.INV_ID),
-				client.getItemContainer(GameStateReader.WORN_ID));
+				client.getItemContainer(InventoryID.INV),
+				client.getItemContainer(InventoryID.WORN));
 		}
 	}
 
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
-		if (event.getGroupId() == BankMutations.DEPOSIT_BOX_GROUP)
+		if (event.getGroupId() == InterfaceID.BANK_DEPOSITBOX)
 		{
 			bankMutations.depositBoxClosed();
 		}
-		if (event.getGroupId() == BANK_GROUP)
+		if (event.getGroupId() == InterfaceID.BANKMAIN)
 		{
 			bankDriftAuditArmed = true;
 		}

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -20,22 +21,31 @@ import lombok.extern.slf4j.Slf4j;
  * answers survive client restarts. The account hash keys everything: a
  * second account on the same machine must never inherit the first one's
  * bank, or every ownership answer is confidently wrong.
+ *
+ * All mutators run on the client thread. Disk writes are handed to the
+ * executor so they never block a game tick; each queued write serializes
+ * the state current at execution time, so write order cannot matter. The
+ * synchronized blocks exist for that handoff: the writer must observe
+ * contents and accountHash as a consistent pair, or an account switch
+ * could publish one account's bank under another's file.
  */
 @Slf4j
 class BankStore
 {
 	private final File dataDir;
 	private final Gson gson;
+	private final Executor ioExecutor;
 
 	private List<Map<String, Object>> contents;
 	/** Which account the in-memory/persisted bank belongs to.
 	 * -1 = no account seen yet this session. */
 	private long accountHash = -1;
 
-	BankStore(File dataDir, Gson gson)
+	BankStore(File dataDir, Gson gson, Executor ioExecutor)
 	{
 		this.dataDir = dataDir;
 		this.gson = gson;
+		this.ioExecutor = ioExecutor;
 	}
 
 	/** Runs on the client thread (game tick). Keeps the in-memory bank bound
@@ -48,15 +58,21 @@ class BankStore
 		{
 			return;
 		}
-		accountHash = hash;
-		contents = null;
+		synchronized (this)
+		{
+			accountHash = hash;
+			contents = null;
+		}
 		load(hash);
 	}
 
 	/** A fresh bank capture from an open bank container: cache and persist. */
 	void update(List<Map<String, Object>> items)
 	{
-		contents = items;
+		synchronized (this)
+		{
+			contents = items;
+		}
 		persist();
 	}
 
@@ -101,7 +117,10 @@ class BankStore
 			entry.put("quantity", quantity);
 			next.add(entry);
 		}
-		contents = next;
+		synchronized (this)
+		{
+			contents = next;
+		}
 		persist();
 	}
 
@@ -121,15 +140,29 @@ class BankStore
 		{
 			return;
 		}
-		try
+		ioExecutor.execute(() ->
 		{
-			Files.write(bankFile(accountHash).toPath(),
-				gson.toJson(contents).getBytes(StandardCharsets.UTF_8));
-		}
-		catch (IOException e)
-		{
-			log.warn("Bank persist failed", e);
-		}
+			List<Map<String, Object>> snapshot;
+			long hash;
+			synchronized (this)
+			{
+				snapshot = contents;
+				hash = accountHash;
+			}
+			if (snapshot == null || hash == -1)
+			{
+				return;
+			}
+			try
+			{
+				Files.write(bankFile(hash).toPath(),
+					gson.toJson(snapshot).getBytes(StandardCharsets.UTF_8));
+			}
+			catch (IOException e)
+			{
+				log.warn("Bank persist failed", e);
+			}
+		});
 	}
 
 	private void load(long accountHash)
@@ -141,10 +174,14 @@ class BankStore
 		}
 		try (BufferedReader r = Files.newBufferedReader(f.toPath(), StandardCharsets.UTF_8))
 		{
-			contents = gson.fromJson(r,
+			List<Map<String, Object>> loaded = gson.fromJson(r,
 				new TypeToken<List<Map<String, Object>>>() { }.getType());
+			synchronized (this)
+			{
+				contents = loaded;
+			}
 			log.info("Loaded persisted bank ({} items)",
-				contents != null ? contents.size() : 0);
+				loaded != null ? loaded.size() : 0);
 		}
 		catch (Exception e)
 		{

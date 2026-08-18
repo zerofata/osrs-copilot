@@ -273,10 +273,10 @@ class Prefetcher
 	 * Second pass, mirror of addOwnershipFromFacts: a sourcing answer often
 	 * hinges on a facility the question never names. "Quickest way to get
 	 * planks" retrieves the Plank page, which says "sawmill" throughout but
-	 * never says WHERE one is -- a vacuum the model once filled with an
-	 * invented Taverley sawmill. When a sourcing/locational question's facts
-	 * lean on a known facility (repeated mentions, not incidental), ground
-	 * its locations from the live wiki instead of the model's memory.
+	 * never says WHERE one is; left ungrounded, the model invents
+	 * locations. When a sourcing/locational question's facts lean on a
+	 * known facility (repeated mentions, not incidental), ground its
+	 * locations from the live wiki instead of the model's memory.
 	 */
 	void addFacilitiesFromFacts(String question, CopilotPipeline.Route route, List<String> facts)
 	{
@@ -355,12 +355,11 @@ class Prefetcher
 	 * for every route and every page layout, and can't be broken by a wiki
 	 * reformat.
 	 *
-	 * Both lists exist because models don't infer from absence -- our own
-	 * system prompt forbids it ("everything not shown is UNKNOWN"). An
-	 * owned-only block whose header said "not listed = not owned" was
-	 * ignored in practice: the model re-verified 38 fact-mentioned items
-	 * through the search tool in one observed run, an entire redundant
-	 * LLM round-trip. Naming the lacked items removes the inference.
+	 * Both lists exist because models don't infer from absence -- the
+	 * system prompt itself forbids it ("everything not shown is UNKNOWN"),
+	 * so an owned-only list sends the model to the search tool to
+	 * re-verify everything unlisted. Naming the lacked items outright
+	 * removes the inference and the redundant round-trip.
 	 */
 	boolean addOwnershipFromFacts(List<String> facts, Map<String, long[]> owned,
 		Map<String, String> names)

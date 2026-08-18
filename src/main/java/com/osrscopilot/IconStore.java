@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
-import net.runelite.api.SpriteID;
+import net.runelite.api.gameval.SpriteID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.SkillIconManager;
 import net.runelite.client.game.SpriteManager;
@@ -59,7 +59,9 @@ final class IconStore
 		{
 			for (Skill skill : Skill.values())
 			{
-				if (skill == Skill.OVERALL)
+				// The deprecated OVERALL pseudo-skill has no icon. Matched
+				// by name so its removal from the enum cannot break this.
+				if ("OVERALL".equals(skill.name()))
 				{
 					continue;
 				}
@@ -70,7 +72,7 @@ final class IconStore
 		{
 			// Sprite readiness depends on client startup; async with a
 			// write-once callback instead of assuming the cache is loaded.
-			spriteManager.getSpriteAsync(SpriteID.QUESTS_PAGE_ICON_BLUE_QUESTS, 0,
+			spriteManager.getSpriteAsync(SpriteID.AchievementDiaryIcons.BLUE_QUESTS, 0,
 				img -> writeOnce(questFile(), () -> img));
 		}
 	}

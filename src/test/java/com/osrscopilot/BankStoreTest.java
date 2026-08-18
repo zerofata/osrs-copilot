@@ -22,11 +22,11 @@ public class BankStoreTest
 	@Test
 	public void persistedBankSurvivesRestart()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.sync(42L);
 		store.update(ITEMS);
 
-		BankStore reopened = new BankStore(tmp.getRoot(), gson);
+		BankStore reopened = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		reopened.sync(42L);
 		assertEquals(1, reopened.contents().size());
 		assertEquals("Dragon arrow", reopened.contents().get(0).get("name"));
@@ -35,7 +35,7 @@ public class BankStoreTest
 	@Test
 	public void accountSwitchNeverInheritsAnotherAccountsBank()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.sync(42L);
 		store.update(ITEMS);
 
@@ -50,7 +50,7 @@ public class BankStoreTest
 	@Test
 	public void noAccountSeenMeansNothingPersisted()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.update(ITEMS);
 		// No account hash yet: nothing may be written to disk.
 		assertEquals(0, tmp.getRoot().listFiles((d, n) -> n.startsWith("bank-")).length);
@@ -59,7 +59,7 @@ public class BankStoreTest
 	@Test
 	public void creditMergesIntoTheExistingStack()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.sync(42L);
 		store.update(ITEMS);
 
@@ -73,7 +73,7 @@ public class BankStoreTest
 	@Test
 	public void creditAppendsAnItemNotYetBanked()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.sync(42L);
 		store.update(ITEMS);
 
@@ -88,12 +88,12 @@ public class BankStoreTest
 	@Test
 	public void creditPersistsAcrossRestart()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.sync(42L);
 		store.update(ITEMS);
 		store.credit(11212, "Dragon arrow", 37);
 
-		BankStore reopened = new BankStore(tmp.getRoot(), gson);
+		BankStore reopened = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		reopened.sync(42L);
 		assertEquals(4700L,
 			((Number) reopened.contents().get(0).get("quantity")).longValue());
@@ -102,7 +102,7 @@ public class BankStoreTest
 	@Test
 	public void creditWithoutASnapshotIsRefused()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.sync(42L);
 		// No capture ever seen: there is nothing sound to patch.
 		store.credit(11212, "Dragon arrow", 5);
@@ -113,7 +113,7 @@ public class BankStoreTest
 	@Test
 	public void creditDoesNotMutateTheCapturedList()
 	{
-		BankStore store = new BankStore(tmp.getRoot(), gson);
+		BankStore store = new BankStore(tmp.getRoot(), gson, Runnable::run);
 		store.sync(42L);
 		store.update(ITEMS);
 		List<Map<String, Object>> captured = store.contents();

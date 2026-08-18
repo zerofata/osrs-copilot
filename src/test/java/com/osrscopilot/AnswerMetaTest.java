@@ -17,8 +17,6 @@ import static org.junit.Assert.assertTrue;
  */
 public class AnswerMetaTest
 {
-	// In the plugin the Gson comes injected from the client; tests have no
-	// injector, so they construct one (test code is not Hub-scanned).
 	private static final Gson GSON = new Gson();
 
 	private static String answerMeta(CopilotPipeline.Result result)

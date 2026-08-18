@@ -37,9 +37,8 @@ class AgentLoop
 		for (int turn = 0; turn < maxTurns; turn++)
 		{
 			result.turns = turn + 1;
-			// A model told its research budget spends the last turn answering;
-			// one that discovers the cutoff after the fact leaks tool markup
-			// instead of prose. Warn before the final turn, not after it.
+			// The warning must precede the final turn: a cutoff discovered
+			// after the fact leaks tool markup instead of prose.
 			if (turn == maxTurns - 1 && turn > 0)
 			{
 				messages.add(message("user", "Research budget nearly exhausted: any tool "

@@ -314,8 +314,8 @@ class WikiLookups
 	 * Quest requirements from the wiki's structured quest bucket. The
 	 * {{Quest details}} template never survives plaintext extracts, so
 	 * without this "can I do X" answers lack the skill levels and the
-	 * prerequisite quest tree -- a vacuum the model once filled with RS3
-	 * quest names from its training data. As a bonus, prerequisite names
+	 * prerequisite quest tree, and the model fills the gap from training
+	 * data (where RS3 quests bleed in). As a bonus, prerequisite names
 	 * appearing in this fact cause the pipeline to attach the player's
 	 * live progress for each of them (relevantQuestStates scans facts).
 	 */

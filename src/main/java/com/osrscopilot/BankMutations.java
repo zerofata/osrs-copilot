@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.client.game.ItemManager;
 
 /**
@@ -28,10 +29,6 @@ import net.runelite.client.game.ItemManager;
 @Slf4j
 class BankMutations
 {
-	/** InterfaceID.BANK_DEPOSITBOX; a raw int like GameStateReader's
-	 * container ids, to stay compatible across API versions. */
-	static final int DEPOSIT_BOX_GROUP = 192;
-
 	private static final String COLLECT_TO_BANK = "Collect to bank";
 
 	private final BankStore bankStore;
@@ -73,12 +70,12 @@ class BankMutations
 		}
 		Map<Integer, Integer> now = multiset(container);
 		Map<Integer, Integer> before;
-		if (containerId == GameStateReader.INV_ID)
+		if (containerId == InventoryID.INV)
 		{
 			before = inventorySeen;
 			inventorySeen = now;
 		}
-		else if (containerId == GameStateReader.WORN_ID)
+		else if (containerId == InventoryID.WORN)
 		{
 			before = equipmentSeen;
 			equipmentSeen = now;
@@ -178,8 +175,7 @@ class BankMutations
 	/**
 	 * Prediction-vs-actual summary for the drift audit at an authoritative
 	 * bank capture, or null when the prediction matched (or there was
-	 * nothing predicted). This is how we learn whether the trackers are
-	 * right in real play and whether the untracked paths matter.
+	 * nothing predicted).
 	 */
 	static String drift(List<Map<String, Object>> predicted, List<Map<String, Object>> actual)
 	{
@@ -233,8 +229,8 @@ class BankMutations
 	 * The GE bookkeeping: per slot, the offer's item and how many of it are
 	 * sitting uncollected. Buy fills accrue from quantitySold deltas; a
 	 * cancelled sell's remainder becomes collectable as items. Sold-portion
-	 * proceeds and refunds are coins, which are out of scope (v2 if budget
-	 * questions prove to need them). Pure state machine, no client types.
+	 * proceeds and refunds are coins, which are not tracked. Pure state
+	 * machine, no client types.
 	 */
 	static class GeSlots
 	{

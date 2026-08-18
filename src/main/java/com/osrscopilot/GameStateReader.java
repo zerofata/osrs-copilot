@@ -13,6 +13,8 @@ import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.config.ConfigManager;
 
@@ -23,15 +25,8 @@ import net.runelite.client.config.ConfigManager;
  */
 class GameStateReader
 {
-	// Mirror net.runelite.api.gameval.InventoryID; raw ints to stay compatible
-	// across API versions.
-	static final int INV_ID = 93;
-	static final int WORN_ID = 94;
-	static final int BANK_ID = 95;
-
-	// VarPlayer.SLAYER_TASK_SIZE, and the config the built-in Slayer plugin
-	// writes its task to. Literals keep this off that plugin's classes.
-	private static final int SLAYER_TASK_SIZE = 394;
+	// The config the built-in Slayer plugin writes its task to. String
+	// literals keep this off that plugin's classes.
 	private static final String SLAYER_GROUP = "slayer";
 	private static final String SLAYER_TASK_NAME = "taskName";
 	private static final String SLAYER_TASK_LOCATION = "taskLocation";
@@ -99,11 +94,11 @@ class GameStateReader
 		cap.slayerTask = slayerTask();
 		cap.unlocks = unlocks();
 
-		cap.inventory = itemList(client.getItemContainer(INV_ID));
-		cap.equipment = itemList(client.getItemContainer(WORN_ID));
+		cap.inventory = itemList(client.getItemContainer(InventoryID.INV));
+		cap.equipment = itemList(client.getItemContainer(InventoryID.WORN));
 		if (config.sendBank())
 		{
-			ItemContainer bank = client.getItemContainer(BANK_ID);
+			ItemContainer bank = client.getItemContainer(InventoryID.BANK);
 			cap.bank = bank != null ? itemList(bank) : bankStore.contents();
 		}
 		if (config.sendRecentEvents())
@@ -188,7 +183,7 @@ class GameStateReader
 	{
 		// The count is the source of truth for "is there a task": the stored
 		// creature name outlives the task it was recorded for.
-		int remaining = client.getVarpValue(SLAYER_TASK_SIZE);
+		int remaining = client.getVarpValue(VarPlayerID.SLAYER_COUNT);
 		if (remaining <= 0)
 		{
 			return null;
