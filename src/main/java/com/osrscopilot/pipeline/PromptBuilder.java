@@ -115,10 +115,6 @@ class PromptBuilder
 		else
 		{
 			bank.put("status", bankInlined ? "complete" : "summarized");
-			if (cap.bankCapturedAtMs != null)
-			{
-				bank.put("captured", ago(cap.bankCapturedAtMs));
-			}
 			if (bankInlined)
 			{
 				bank.put("items", itemStrings(cap.bank));
@@ -275,20 +271,6 @@ class PromptBuilder
 			kept.add(0, ex);
 		}
 		return kept;
-	}
-
-	private static String ago(long thenMs)
-	{
-		long mins = Math.max(0, (System.currentTimeMillis() - thenMs) / 60_000);
-		if (mins < 60)
-		{
-			return mins + " minutes ago";
-		}
-		if (mins < 48 * 60)
-		{
-			return (mins / 60) + " hours ago";
-		}
-		return (mins / (24 * 60)) + " days ago";
 	}
 
 	private static List<String> itemStrings(List<Map<String, Object>> items)

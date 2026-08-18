@@ -163,7 +163,6 @@ def capture(account_type, bank_items):
         ],
         "equipment": [],
         "bank": bank_items,
-        "bankCapturedAtMs": 1755400000000,
         "recentEvents": [],
     }
 

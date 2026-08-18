@@ -41,7 +41,6 @@ public class BankStoreTest
 
 		store.sync(99L);
 		assertNull("fresh account must start with no bank", store.contents());
-		assertEquals(0L, store.capturedAtMs());
 
 		// Switching back restores the first account's persisted bank.
 		store.sync(42L);

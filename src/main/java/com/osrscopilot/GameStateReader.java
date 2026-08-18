@@ -105,11 +105,6 @@ class GameStateReader
 		{
 			ItemContainer bank = client.getItemContainer(BANK_ID);
 			cap.bank = bank != null ? itemList(bank) : bankStore.contents();
-			if (cap.bank != null)
-			{
-				cap.bankCapturedAtMs = bank != null
-					? System.currentTimeMillis() : bankStore.capturedAtMs();
-			}
 		}
 		if (config.sendRecentEvents())
 		{

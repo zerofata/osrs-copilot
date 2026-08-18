@@ -29,8 +29,6 @@ public class GameCapture
 	public List<Map<String, Object>> inventory;
 	public List<Map<String, Object>> equipment;
 	public List<Map<String, Object>> bank;
-	/** When the bank contents were last captured (live or persisted). */
-	public Long bankCapturedAtMs;
 	public List<Map<String, Object>> recentEvents;
 
 	public static final Map<Integer, String> ACCOUNT_TYPES = Map.of(

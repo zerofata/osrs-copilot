@@ -26,7 +26,6 @@ class BankStore
 	private final Gson gson;
 
 	private List<Map<String, Object>> contents;
-	private long capturedAtMs;
 	/** Which account the in-memory/persisted bank belongs to.
 	 * -1 = no account seen yet this session. */
 	private long accountHash = -1;
@@ -49,7 +48,6 @@ class BankStore
 		}
 		accountHash = hash;
 		contents = null;
-		capturedAtMs = 0;
 		load(hash);
 	}
 
@@ -57,18 +55,12 @@ class BankStore
 	void update(List<Map<String, Object>> items)
 	{
 		contents = items;
-		capturedAtMs = System.currentTimeMillis();
 		persist();
 	}
 
 	List<Map<String, Object>> contents()
 	{
 		return contents;
-	}
-
-	long capturedAtMs()
-	{
-		return capturedAtMs;
 	}
 
 	private File bankFile(long accountHash)
@@ -103,8 +95,6 @@ class BankStore
 		{
 			contents = gson.fromJson(r,
 				new TypeToken<List<Map<String, Object>>>() { }.getType());
-			// The file's mtime is when the bank was last persisted.
-			capturedAtMs = f.lastModified();
 			log.info("Loaded persisted bank ({} items)",
 				contents != null ? contents.size() : 0);
 		}
