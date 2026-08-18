@@ -55,4 +55,20 @@ public class OwnershipTest
 		assertTrue(Ownership.mentionsWord("dragon arrows are best", "dragon arrow"));
 		assertFalse(Ownership.mentionsWord("use the blowpipe here", "bow"));
 	}
+
+	@Test
+	public void baseNameStripsTrailingQualifiers()
+	{
+		assertEquals("Prayer potion", Ownership.baseName("Prayer potion(4)"));
+		assertEquals("Slayer helmet", Ownership.baseName("Slayer helmet (i)"));
+		assertEquals("Rune platebody", Ownership.baseName("Rune platebody"));
+	}
+
+	@Test
+	public void wordMatchEndExtendsPluralsAndRejectsMidWordSpans()
+	{
+		assertEquals(13, Ownership.wordMatchEnd("dragon arrows", 7, 5));
+		assertEquals(3, Ownership.wordMatchEnd("bow", 0, 3));
+		assertEquals(-1, Ownership.wordMatchEnd("longbows here", 4, 3));
+	}
 }

@@ -2,8 +2,9 @@ package com.osrscopilot;
 
 import com.osrscopilot.pipeline.EntityResolver;
 import com.osrscopilot.pipeline.GameCapture;
-import java.io.UnsupportedEncodingException;
+import com.osrscopilot.pipeline.Ownership;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -195,10 +196,8 @@ final class AnswerDecorator
 		for (Map<String, Object> item : container)
 		{
 			String name = String.valueOf(item.get("name"));
-			// Charge/dose qualifiers exist in item names but never in prose:
-			// "Prayer potion(4)" must match an answer saying "prayer potion".
 			// The icon keeps the exact owned variant's ID.
-			String base = name.replaceAll("\\s*\\([^)]*\\)$", "").trim();
+			String base = Ownership.baseName(name);
 			Object q = item.get("quantity");
 			long qty = q instanceof Number ? ((Number) q).longValue() : 1;
 			counts.computeIfAbsent(base, k -> new long[3])[slot] += qty;
@@ -241,12 +240,8 @@ final class AnswerDecorator
 			while ((i = lower.indexOf(needle, from)) >= 0)
 			{
 				from = i + 1;
-				int end = i + needle.length();
-				if (end < lower.length() && lower.charAt(end) == 's')
-				{
-					end++;
-				}
-				if (!wordBounded(lower, i, end) || anyMarked(offLimits, i, end))
+				int end = Ownership.wordMatchEnd(lower, i, needle.length());
+				if (end < 0 || anyMarked(offLimits, i, end))
 				{
 					continue;
 				}
@@ -350,13 +345,6 @@ final class AnswerDecorator
 		return m.lookingAt();
 	}
 
-	private static boolean wordBounded(String s, int start, int end)
-	{
-		boolean startOk = start == 0 || !Character.isLetterOrDigit(s.charAt(start - 1));
-		boolean endOk = end >= s.length() || !Character.isLetterOrDigit(s.charAt(end));
-		return startOk && endOk;
-	}
-
 	private static boolean anyMarked(boolean[] marked, int start, int end)
 	{
 		for (int i = start; i < end; i++)
@@ -371,13 +359,6 @@ final class AnswerDecorator
 
 	static String wikiUrl(String title)
 	{
-		try
-		{
-			return WIKI_BASE + URLEncoder.encode(title, "UTF-8").replace("+", "_");
-		}
-		catch (UnsupportedEncodingException e)
-		{
-			throw new IllegalStateException(e);
-		}
+		return WIKI_BASE + URLEncoder.encode(title, StandardCharsets.UTF_8).replace("+", "_");
 	}
 }

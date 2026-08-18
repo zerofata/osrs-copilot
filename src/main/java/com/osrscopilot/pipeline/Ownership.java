@@ -9,18 +9,31 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * The player's ownership index: bank + inventory + equipment flattened into
  * case-folded name -> quantity, with the original display names kept
  * alongside. Pure functions of a GameCapture -- no I/O, no state -- shared
- * by the prefetcher (ownership facts) and the tool registry
- * (search_owned_items).
+ * by the prefetcher (ownership facts), the tool registry
+ * (search_owned_items), and the answer decorator (ownership badges). The
+ * name-matching primitives live here alone so the ownership the model is
+ * told and the ownership the UI displays can never drift apart.
  */
-final class Ownership
+public final class Ownership
 {
+	private static final Pattern TRAILING_QUALIFIER = Pattern.compile("\\s*\\([^)]*\\)$");
+
 	private Ownership()
 	{
+	}
+
+	/** Item display name with any trailing "(4)"/"(i)" qualifier removed.
+	 * Dose, charge, and version qualifiers exist in item names but never
+	 * in prose, so matching and display both use the base name. */
+	public static String baseName(String name)
+	{
+		return TRAILING_QUALIFIER.matcher(name).replaceAll("").trim();
 	}
 
 	static Map<String, long[]> buildIndex(GameCapture cap)
@@ -142,15 +155,13 @@ final class Ownership
 		List<String> ownedBases = new ArrayList<>();
 		for (Map.Entry<String, long[]> e : owned.entrySet())
 		{
-			// Charge/dose qualifiers exist in bank names but never in prose:
-			// "Prayer potion(4)" must match a page saying "prayer potions".
-			String base = e.getKey().replaceAll("\\s*\\([^)]*\\)$", "").trim();
+			String base = baseName(e.getKey());
 			ownedBases.add(base);
 			if (base.length() < 3 || !mentionsItem(haystackLower, base))
 			{
 				continue;
 			}
-			String display = names.get(e.getKey()).replaceAll("\\s*\\([^)]*\\)$", "").trim();
+			String display = baseName(names.get(e.getKey()));
 			ownedMentioned.merge(display, e.getValue()[0], Long::sum);
 		}
 
@@ -216,7 +227,7 @@ final class Ownership
 		Set<String> seen = new HashSet<>();
 		for (String[] it : vocabulary)
 		{
-			String base = it[0].replaceAll("\\s*\\([^)]*\\)$", "").trim();
+			String base = baseName(it[0]);
 			String lower = base.toLowerCase(Locale.ROOT);
 			if (lower.length() < 4 || !seen.add(lower)
 				|| !mentionsWord(haystackLower, lower))
@@ -267,27 +278,34 @@ final class Ownership
 		}
 	}
 
-	/** Case-folded whole-word containment, tolerating a plural "s" on the
-	 * fact side. Plain substring would let "bow" claim "blowpipe". */
+	/** Case-folded whole-word containment. */
 	static boolean mentionsWord(String haystack, String needle)
 	{
 		int from = 0;
 		int i;
 		while ((i = haystack.indexOf(needle, from)) >= 0)
 		{
-			int end = i + needle.length();
-			if (end < haystack.length() && haystack.charAt(end) == 's')
-			{
-				end++;
-			}
-			boolean startOk = i == 0 || !Character.isLetterOrDigit(haystack.charAt(i - 1));
-			boolean endOk = end >= haystack.length() || !Character.isLetterOrDigit(haystack.charAt(end));
-			if (startOk && endOk)
+			if (wordMatchEnd(haystack, i, needle.length()) >= 0)
 			{
 				return true;
 			}
 			from = i + 1;
 		}
 		return false;
+	}
+
+	/** End index of a whole-word match at [start, start+length), extended
+	 * over a plural "s"; -1 when the span is not word-bounded. Plain
+	 * substring containment would let "bow" claim "blowpipe". */
+	public static int wordMatchEnd(String s, int start, int length)
+	{
+		int end = start + length;
+		if (end < s.length() && s.charAt(end) == 's')
+		{
+			end++;
+		}
+		boolean startOk = start == 0 || !Character.isLetterOrDigit(s.charAt(start - 1));
+		boolean endOk = end >= s.length() || !Character.isLetterOrDigit(s.charAt(end));
+		return startOk && endOk ? end : -1;
 	}
 }

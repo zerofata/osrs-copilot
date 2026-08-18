@@ -34,7 +34,7 @@ final class MarkdownHtml
 
 		for (String raw : markdown.split("\n", -1))
 		{
-			String line = escape(raw);
+			String line = SwingUtil.escapeHtml(raw);
 
 			Matcher table = TABLE_ROW.matcher(line);
 			if (table.matches())
@@ -147,10 +147,5 @@ final class MarkdownHtml
 		// Links render as underlined text; the game client is no place to browse.
 		s = s.replaceAll("\\[([^\\]]+)\\]\\([^)]*\\)", "<u>$1</u>");
 		return s;
-	}
-
-	private static String escape(String s)
-	{
-		return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 	}
 }

@@ -3,8 +3,8 @@ package com.osrscopilot.pipeline;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import okhttp3.MediaType;
@@ -141,13 +141,6 @@ class Http
 
 	static String enc(String s)
 	{
-		try
-		{
-			return URLEncoder.encode(s, "UTF-8");
-		}
-		catch (UnsupportedEncodingException e)
-		{
-			throw new IllegalStateException(e);
-		}
+		return URLEncoder.encode(s, StandardCharsets.UTF_8);
 	}
 }
