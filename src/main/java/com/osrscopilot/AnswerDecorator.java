@@ -378,7 +378,7 @@ final class AnswerDecorator
 		return false;
 	}
 
-	private static String wikiUrl(String title)
+	static String wikiUrl(String title)
 	{
 		try
 		{

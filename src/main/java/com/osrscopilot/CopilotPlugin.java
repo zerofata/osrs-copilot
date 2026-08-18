@@ -412,17 +412,42 @@ public class CopilotPlugin extends Plugin
 		}
 	}
 
-	/** One dim line under each answer disclosing what the model was given:
-	 * retrieved facts, tools it called, and token cost. Keeps the pipeline
-	 * inspectable in-game instead of only in offline eval runs. */
+	/** One dim HTML line under each answer disclosing what the model was
+	 * given: retrieved facts, tools it called, and token cost. Keeps the
+	 * pipeline inspectable in-game instead of only in offline eval runs.
+	 * Each wiki-backed fact links its source page's edit history -- the
+	 * page's contributors hold the copyright (CC BY-NC-SA), and a history
+	 * link is the accepted way to credit them. */
 	private static String answerMeta(CopilotPipeline.Result result)
 	{
 		StringBuilder sb = new StringBuilder();
-		sb.append(result.factTitles.isEmpty() ? "no facts retrieved"
-			: "facts: " + String.join("; ", result.factTitles));
+		if (result.factTitles.isEmpty())
+		{
+			sb.append("no facts retrieved");
+		}
+		else
+		{
+			sb.append("facts: ");
+			for (int i = 0; i < result.factTitles.size(); i++)
+			{
+				String title = result.factTitles.get(i);
+				String page = CopilotPipeline.factSourcePage(title);
+				sb.append(i > 0 ? "; " : "");
+				if (page != null)
+				{
+					sb.append("<a href='").append(AnswerDecorator.wikiUrl(page))
+						.append("?action=history'>").append(SwingUtil.escapeHtml(title))
+						.append("</a>");
+				}
+				else
+				{
+					sb.append(SwingUtil.escapeHtml(title));
+				}
+			}
+		}
 		if (result.toolLog != null && !result.toolLog.isEmpty())
 		{
-			sb.append(" | tools: ").append(String.join(", ", result.toolLog));
+			sb.append(" | tools: ").append(SwingUtil.escapeHtml(String.join(", ", result.toolLog)));
 		}
 		if (result.usage != null)
 		{
@@ -431,7 +456,8 @@ public class CopilotPlugin extends Plugin
 		}
 		if (!result.suspectNames.isEmpty())
 		{
-			sb.append(" | unverified names: ").append(String.join(", ", result.suspectNames));
+			sb.append(" | unverified names: ")
+				.append(SwingUtil.escapeHtml(String.join(", ", result.suspectNames)));
 		}
 		return sb.toString();
 	}

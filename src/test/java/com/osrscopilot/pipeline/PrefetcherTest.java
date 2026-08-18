@@ -240,4 +240,35 @@ public class PrefetcherTest
 		assertFalse("owned potions may not be declared lacking",
 			added.get(0).contains("NOT OWNED (verified absent at capture): Prayer potion"));
 	}
+
+	// --- sourcePage: which wiki page a fact title credits ---
+
+	@Test
+	public void wikiBackedFactTitlesNameTheirSourcePage()
+	{
+		assertEquals("Vorkath", Prefetcher.sourcePage("Monster info: Vorkath"));
+		assertEquals("Vorkath/Strategies", Prefetcher.sourcePage("Strategy: Vorkath"));
+		assertEquals("Smithing training", Prefetcher.sourcePage("Training guide: Smithing"));
+		assertEquals("Varrock Diary", Prefetcher.sourcePage("Diary tasks (medium): Varrock Diary"));
+		assertEquals("Adamantite bar", Prefetcher.sourcePage("How to obtain: Adamantite bar"));
+	}
+
+	@Test
+	public void gameStateAndApiFactsCreditNoPage()
+	{
+		assertEquals(null, Prefetcher.sourcePage("Ownership: Scorching bow"));
+		assertEquals(null, Prefetcher.sourcePage("GE price: Old school bond"));
+		assertEquals(null, Prefetcher.sourcePage("XP math: Prayer"));
+		assertEquals(null, Prefetcher.sourcePage(
+			"Ownership of every item these facts mention (complete both ways: "
+				+ "owned means owned, absent from OWNED means not owned)"));
+		assertEquals(null, Prefetcher.sourcePage(
+			"Quest progress (authoritative, from the game client)"));
+	}
+
+	@Test
+	public void unknownFactLabelsGoUnlinkedRatherThanMislinked()
+	{
+		assertEquals(null, Prefetcher.sourcePage("Some future fact: Thing"));
+	}
 }

@@ -430,6 +430,57 @@ class Prefetcher
 		return rel.isEmpty() ? null : rel;
 	}
 
+	/**
+	 * The wiki page a fact block was retrieved from, or null for facts
+	 * derived from game state or non-page APIs (ownership, quest progress,
+	 * GE prices, XP math). Lives here because the labels are minted here;
+	 * the answer footer links each wiki-backed fact to its source page's
+	 * edit history, the accepted way to credit the page's contributors
+	 * under the wiki content's CC BY-NC-SA license. Unknown labels map to
+	 * null, so a new fact kind can never mislink -- it just goes unlinked
+	 * until added here.
+	 */
+	static String sourcePage(String factTitle)
+	{
+		int sep = factTitle.indexOf(": ");
+		if (sep < 0)
+		{
+			return null;
+		}
+		String label = factTitle.substring(0, sep);
+		String name = factTitle.substring(sep + 2);
+		if (label.startsWith("Diary tasks"))
+		{
+			return name;
+		}
+		switch (label)
+		{
+			case "Monster info":
+			case "Drop table":
+			case "Page":
+			case "Item page":
+			case "Equipment stats":
+			case "How to obtain":
+			case "Quest page":
+			case "Quest requirements":
+			case "Skill":
+			case "Getting there":
+			case "Locations":
+			case "Facility locations":
+			// Fetched from the /Strategies subpage when one exists, the
+			// main page otherwise; either way that page is also its own
+			// fact right above, so every source page ends up linked.
+			case "Recommended equipment":
+				return name;
+			case "Strategy":
+				return name + "/Strategies";
+			case "Training guide":
+				return name + " training";
+			default:
+				return null;
+		}
+	}
+
 	/** A failed lookup is not a fact. Content methods signal failure with
 	 * null; the structured lookups (prices, drops, monster info) return
 	 * error maps because the LLM tool boundary wants the message -- prefetch

@@ -430,8 +430,10 @@ class CopilotPanel extends PluginPanel
 		}
 		if (block.meta != null && !block.meta.isEmpty())
 		{
+			// Meta arrives as HTML from answerMeta (its only producer), which
+			// escapes the dynamic parts itself: fact titles carry source links.
 			html.append("<br><font size='3' color='").append(theme.metaHex).append("'>")
-				.append(SwingUtil.escapeHtml(block.meta)).append("</font>");
+				.append(block.meta).append("</font>");
 		}
 		card.setBodyHtml(html.toString());
 		scrollToBottom();
@@ -459,6 +461,10 @@ class CopilotPanel extends PluginPanel
 			+ "\u201cis my slayer task worth doing\u201d</font>"
 			+ "<br><br><font size='3' color='" + theme.welcomeTextHex + "'>"
 			+ "Requires an OpenAI-compatible LLM endpoint, set in plugin settings."
+			+ "<br><br>Game data from the <a href='https://oldschool.runescape.wiki/'>OSRS Wiki</a>"
+			+ " (content by its contributors, CC BY-NC-SA)"
+			+ "<br>and the wiki's <a href='https://prices.runescape.wiki/'>GE price API</a>."
+			+ " Each answer links its sources."
 			+ "</font></center></body></html>");
 		return pane;
 	}

@@ -235,6 +235,13 @@ public class CopilotPipeline
 		}
 	}
 
+	/** The wiki page a fact title was retrieved from (null for game-state
+	 * and non-page facts), for the answer footer's source links. */
+	public static String factSourcePage(String factTitle)
+	{
+		return Prefetcher.sourcePage(factTitle);
+	}
+
 	/** Every known item as {name, wiki page} (tradeable and untradeable
 	 * alike), for UI entity linking. Best-effort: empty when the sources
 	 * can't be fetched. */
