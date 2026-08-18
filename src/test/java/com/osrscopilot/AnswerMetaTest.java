@@ -1,5 +1,6 @@
 package com.osrscopilot;
 
+import com.google.gson.Gson;
 import com.osrscopilot.pipeline.CopilotPipeline;
 import java.util.List;
 import org.junit.Test;
@@ -16,6 +17,15 @@ import static org.junit.Assert.assertTrue;
  */
 public class AnswerMetaTest
 {
+	// In the plugin the Gson comes injected from the client; tests have no
+	// injector, so they construct one (test code is not Hub-scanned).
+	private static final Gson GSON = new Gson();
+
+	private static String answerMeta(CopilotPipeline.Result result)
+	{
+		return CopilotPlugin.answerMeta(result, GSON);
+	}
+
 	private static CopilotPipeline.Result result(List<String> factTitles, List<String> toolLog)
 	{
 		CopilotPipeline.Result r = new CopilotPipeline.Result();
@@ -27,7 +37,7 @@ public class AnswerMetaTest
 	@Test
 	public void wikiFactsLinkTheirSourcePageHistory()
 	{
-		String meta = CopilotPlugin.answerMeta(result(List.of("Monster info: Vorkath"), List.of()));
+		String meta = answerMeta(result(List.of("Monster info: Vorkath"), List.of()));
 		assertTrue(meta.contains(
 			"<a href='https://oldschool.runescape.wiki/w/Vorkath?action=history'>"));
 		assertTrue("links must be visibly underlined", meta.contains("<u>Monster info: Vorkath</u>"));
@@ -36,7 +46,7 @@ public class AnswerMetaTest
 	@Test
 	public void gameStateFactsDisplayShortAndUnlinked()
 	{
-		String meta = CopilotPlugin.answerMeta(result(
+		String meta = answerMeta(result(
 			List.of("Quest progress (authoritative, from the game client)"), List.of()));
 		assertTrue(meta.contains("Quest progress"));
 		assertFalse(meta.contains("authoritative"));
@@ -46,7 +56,7 @@ public class AnswerMetaTest
 	@Test
 	public void pageBackedToolCallsLinkAndSimplify()
 	{
-		String meta = CopilotPlugin.answerMeta(result(List.of(),
+		String meta = answerMeta(result(List.of(),
 			List.of("wiki_page({\"title\":\"Castaway\"})")));
 		assertTrue(meta.contains(
 			"<a href='https://oldschool.runescape.wiki/w/Castaway?action=history'>"));
@@ -56,7 +66,7 @@ public class AnswerMetaTest
 	@Test
 	public void searchCallsSimplifyWithoutLinking()
 	{
-		String meta = CopilotPlugin.answerMeta(result(List.of(),
+		String meta = answerMeta(result(List.of(),
 			List.of("wiki_search({\"query\":\"dog pet update 2025\"})")));
 		assertTrue(meta.contains("wiki_search(dog pet update 2025)"));
 		assertFalse(meta.contains("<a "));
@@ -67,7 +77,7 @@ public class AnswerMetaTest
 	public void multiArgumentToolCallsFallBackToTheRawEntry()
 	{
 		String entry = "search_owned_items({\"queries\":[\"slayer helmet\",\"dragon boots\"]})";
-		String meta = CopilotPlugin.answerMeta(result(List.of(), List.of(entry)));
+		String meta = answerMeta(result(List.of(), List.of(entry)));
 		assertTrue(meta.contains("search_owned_items"));
 		assertTrue(meta.contains("slayer helmet"));
 		assertFalse(meta.contains("<a "));
@@ -76,6 +86,6 @@ public class AnswerMetaTest
 	@Test
 	public void emptyResultSaysSo()
 	{
-		assertEquals("no facts retrieved", CopilotPlugin.answerMeta(result(List.of(), List.of())));
+		assertEquals("no facts retrieved", answerMeta(result(List.of(), List.of())));
 	}
 }

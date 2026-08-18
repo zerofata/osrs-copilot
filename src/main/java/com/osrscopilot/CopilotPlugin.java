@@ -394,7 +394,7 @@ public class CopilotPlugin extends Plugin
 				pipeline.answer(question, history, capture, settings, maxTurns, listener);
 			log.debug("answered in {}ms, {} fact blocks, {} tool calls, {} context chars",
 				result.millis, result.factBlocks, result.toolLog.size(), result.contextChars);
-			String meta = answerMeta(result);
+			String meta = answerMeta(result, gson);
 			// Entity decoration (wiki links, quest/item state colors) runs
 			// here on the worker thread: it may fetch the GE catalogue. A
 			// failure costs only the styling, never the answer.
@@ -436,7 +436,7 @@ public class CopilotPlugin extends Plugin
 	 * (CC BY-NC-SA), and a history link is the accepted way to credit them.
 	 * Underlined explicitly: the shared stylesheet suppresses underlines
 	 * for the answer body's entity links. */
-	static String answerMeta(CopilotPipeline.Result result)
+	static String answerMeta(CopilotPipeline.Result result, Gson gson)
 	{
 		StringBuilder sb = new StringBuilder();
 		if (result.factTitles.isEmpty())
@@ -460,7 +460,7 @@ public class CopilotPlugin extends Plugin
 			sb.append(" | tools: ");
 			for (int i = 0; i < result.toolLog.size(); i++)
 			{
-				sb.append(i > 0 ? ", " : "").append(toolHtml(result.toolLog.get(i)));
+				sb.append(i > 0 ? ", " : "").append(toolHtml(gson, result.toolLog.get(i)));
 			}
 		}
 		if (result.usage != null)
@@ -482,13 +482,11 @@ public class CopilotPlugin extends Plugin
 			+ escapedText + "</u></a>";
 	}
 
-	private static final Gson META_GSON = new Gson();
-
 	/** One tool-log entry ("name({json})") as footer HTML. Single-argument
 	 * calls display just the value; page-backed tools (wiki_page,
 	 * item_stats) link the page like a fact. Anything unexpected falls back
 	 * to the raw entry. */
-	private static String toolHtml(String entry)
+	private static String toolHtml(Gson gson, String entry)
 	{
 		int paren = entry.indexOf('(');
 		if (paren > 0 && entry.endsWith(")"))
@@ -496,7 +494,7 @@ public class CopilotPlugin extends Plugin
 			String name = entry.substring(0, paren);
 			try
 			{
-				JsonObject args = META_GSON.fromJson(
+				JsonObject args = gson.fromJson(
 					entry.substring(paren + 1, entry.length() - 1), JsonObject.class);
 				if (args.size() == 1)
 				{
