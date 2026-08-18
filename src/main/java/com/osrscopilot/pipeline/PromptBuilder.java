@@ -57,7 +57,7 @@ class PromptBuilder
 	}
 
 	String buildUserMessage(String question, GameCapture cap, List<String> facts,
-		boolean bankInlined, boolean ownershipComplete)
+		boolean bankInlined, boolean ownershipComplete, boolean offerOwnedSearch)
 	{
 		Map<String, Object> state = new LinkedHashMap<>();
 		// Without today's date the model assumes its training-time year for
@@ -122,14 +122,21 @@ class PromptBuilder
 			else
 			{
 				bank.put("item_count", cap.bank.size());
-				// The access note must match the tools actually offered:
-				// referencing a withheld tool would send the model chasing it.
-				bank.put("access", ownershipComplete
-					? "the Ownership fact in RETRIEVED FACTS is the definitive bank "
-						+ "answer for every item the facts mention, and each tool "
-						+ "result carries the same ownership note for the items IT "
-						+ "mentions -- state ownership plainly from these, never "
-						+ "conditionally ('if you have one')"
+			// The access note must match the tools actually offered:
+			// referencing a withheld tool would send the model chasing it,
+			// and offering one silently invites redundant re-verification.
+			String factsAreDefinitive =
+				"the Ownership fact in RETRIEVED FACTS is the definitive bank "
+					+ "answer for every item the facts mention, and each tool "
+					+ "result carries the same ownership note for the items IT "
+					+ "mentions -- state ownership plainly from these, never "
+					+ "conditionally ('if you have one')";
+			bank.put("access", !offerOwnedSearch
+				? factsAreDefinitive
+				: ownershipComplete
+					? factsAreDefinitive + "; for items the facts do NOT "
+						+ "mention, use ONE search_owned_items call with all "
+						+ "queries batched"
 					: "ownership of items the facts mention is in RETRIEVED FACTS, "
 						+ "and each tool result carries an ownership note for the "
 						+ "items IT mentions; for anything still uncovered use ONE "

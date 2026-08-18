@@ -109,10 +109,12 @@ public class CopilotPipeline
 		private Map<String, long[]> ownedIndex;
 		private Map<String, String> ownedNames;
 		private boolean bankInlined;
-		/** Ownership is fully in context (inlined bank, or an ownership
-		 * fact complete for everything the facts mention): the owned-item
-		 * search tool would only invite redundant lookups, so it is
-		 * withheld. */
+		/** The owned-item search tool is withheld when the bank is inlined,
+		 * or when the facts carry a Recommended equipment list with a
+		 * complete ownership slice -- re-verifying gear already visible in
+		 * context is redundant. Otherwise it is offered: with a summarized
+		 * bank and no gear list, the facts' ownership covers only
+		 * incidental page items. */
 		private boolean offerOwnedSearch;
 	}
 
@@ -320,7 +322,14 @@ public class CopilotPipeline
 		{
 			ownershipComplete = prefetcher.addOwnershipFromFacts(facts, p.ownedIndex, p.ownedNames);
 		}
-		p.offerOwnedSearch = !p.bankInlined && !ownershipComplete;
+		// The search tool is withheld only when the facts carry a gear list
+		// (Recommended equipment section) whose ownership slice is complete:
+		// re-verifying a visible gear list is the observed overuse. Without
+		// a gear list, "complete" covers only incidental page items, and a
+		// loadout answer needs equipment the facts never mention.
+		boolean equipmentListed = facts.stream()
+			.anyMatch(f -> f.startsWith("### Recommended equipment: "));
+		p.offerOwnedSearch = !p.bankInlined && !(ownershipComplete && equipmentListed);
 
 		p.factBlocks = facts.size();
 		p.factTitles = new ArrayList<>();
@@ -331,7 +340,7 @@ public class CopilotPipeline
 				.replaceFirst("^#+\\s*", ""));
 		}
 		p.prompt = promptBuilder.buildUserMessage(question, cap, facts,
-			p.bankInlined, ownershipComplete);
+			p.bankInlined, ownershipComplete, p.offerOwnedSearch);
 		return p;
 	}
 
