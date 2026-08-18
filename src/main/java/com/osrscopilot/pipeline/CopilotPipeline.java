@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 
@@ -177,6 +179,11 @@ public class CopilotPipeline
 	 * Scorching bow: ..."); scanning further mostly picks up supporting
 	 * cast (teleports, side quests, alternatives). */
 	private static final int SUBJECT_SCAN_CHARS = 600;
+	/** An answer that opens with a list or table is enumerating (an
+	 * inventory, a route); enumerated names are supporting cast by
+	 * construction, so the subject scan stops at the first such row. */
+	private static final Pattern SUBJECT_SCAN_STOP =
+		Pattern.compile("(?m)^\\s*(?:[-*|]|\\d+\\.)\\s");
 	/** Per kind, at most this many answer-introduced names join the
 	 * subject. Question entities always come first, and prefetch budgets
 	 * (3-4 per kind) mean anything past a few inherited names is dead
@@ -206,6 +213,11 @@ public class CopilotPipeline
 		{
 			String opening = answer.length() > SUBJECT_SCAN_CHARS
 				? answer.substring(0, SUBJECT_SCAN_CHARS) : answer;
+			Matcher stop = SUBJECT_SCAN_STOP.matcher(opening);
+			if (stop.find())
+			{
+				opening = opening.substring(0, stop.start());
+			}
 			EntityResolver.Resolution named = resolver.resolve(opening,
 				cap.questStates != null ? cap.questStates.keySet() : Set.of(), true);
 			appendCapped(named.items, subject.items);

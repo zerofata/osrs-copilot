@@ -33,9 +33,9 @@ import okhttp3.OkHttpClient;
  *                     "EVENT {json}" attaches a recent game event to the next
  *                     question; "ASSERT {json}" checks the previous question's
  *                     route; "ANSWER text" seeds the previous question's
- *                     answer so routeOnly/promptOnly runs exercise
- *                     answer-derived subject inheritance (full runs use the
- *                     model's real answer and ignore the seed);
+ *                     answer ("\n" becomes a newline) so routeOnly/promptOnly
+ *                     runs exercise answer-derived subject inheritance (full
+ *                     runs use the model's real answer and ignore the seed);
  *                     # comments and blank lines skipped)
  *   --routeOnly true  run only the deterministic router + assertions -- no
  *                     LLM calls, free, fast route regression check
@@ -433,7 +433,7 @@ public class PipelineEvalRunner
 				{
 					throw new IllegalArgumentException("ANSWER before any question");
 				}
-				items.get(items.size() - 1).answer = line.substring(7);
+				items.get(items.size() - 1).answer = line.substring(7).replace("\\n", "\n");
 				continue;
 			}
 			boolean followUp = line.startsWith("> ");

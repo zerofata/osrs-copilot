@@ -69,3 +69,23 @@ ASSERT {"pages": ["Bank"]}
 ANSWER A spare Ring of charos can go; both Creature of Fenkenstrain and Garden of Tranquillity are finished. The Crystal chime is only needed against warped creatures. It's recoverable from Dr Fenkenstrain. It also reduces charter and mine cart costs.
 > Hm, how do I get started with sailing / what's the most efficient thing to start off with
 ASSERT {"skills": ["Sailing"], "not_items": ["Ring of charos", "Crystal chime"], "not_quests": ["Creature of Fenkenstrain", "Garden of Tranquillity"], "not_pages": ["Dr Fenkenstrain", "Mine cart"]}
+
+# An answer that opens with an enumeration (inventory list, route steps)
+# must not hand the enumerated names to the next turn as inherited subject:
+# only the prose preamble is subject. (A farming-run plan's inventory list
+# once became three full item bundles and a quest bundle -- 85k input
+# tokens on the follow-up.)
+Can you orchestrate a farming run for me
+ASSERT {"pages": ["Farming runs"]}
+ANSWER Here's your farming run plan.\n- Magic secateurs (equip when harvesting)\n- Lunar staff for fairy rings\n- Ring of dueling(5) for banking\n1. Trollheim herb patch (Eadgar's Ruse done): plant Dwarf weed.
+> how long does that take?
+ASSERT {"pages": ["Farming runs"], "not_items": ["Magic secateurs", "Lunar staff", "Ring of dueling"], "not_quests": ["Eadgar's Ruse"]}
+
+# A follow-up that restates the activity in its own words ("tree route")
+# routes the guide page itself instead of inheriting the previous answer's
+# supporting cast.
+Can you orchestrate a farming run for me
+ASSERT {"pages": ["Farming runs"]}
+ANSWER Here's your farming run plan.\n- Magic secateurs (equip when harvesting)\n- Lunar staff for fairy rings\n- Ring of dueling(5) for banking\n1. Trollheim herb patch (Eadgar's Ruse done): plant Dwarf weed.
+> Ah I meant a tree route specifically
+ASSERT {"pages": ["Farming runs"], "not_items": ["Magic secateurs", "Lunar staff", "Ring of dueling"], "not_quests": ["Eadgar's Ruse"]}

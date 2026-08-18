@@ -45,6 +45,12 @@ class Router
 	private static final Pattern DIARY_TIER =
 		Pattern.compile("\\b(easy|medium|hard|elite)\\b", Pattern.CASE_INSENSITIVE);
 
+	/** Run planning ("herb run", "tree route") names an activity, not an
+	 * entity the resolver can find; the wiki's guide page carries the
+	 * routes, patch lists, and teleports such an answer is built from. */
+	private static final Pattern FARMING_RUN = Pattern.compile(
+		"\\b(farm(ing)?|herb|tree|fruit tree|allotment|flower) (runs?|routes?)\\b");
+
 	static final Object[][] FACILITY_RULES = {
 		{Pattern.compile("\\b(pray(er)?|altar)\\b"), "Altar"},
 		{Pattern.compile("\\bbank\\b"), "Bank"},
@@ -109,6 +115,11 @@ class Router
 		{
 			resolver.resolveInto(String.valueOf(cap.slayerTask.get("creature")),
 				questNames, r.entities);
+		}
+		if (FARMING_RUN.matcher(question.toLowerCase(Locale.ROOT)).find()
+			&& !r.entities.pages.contains("Farming runs"))
+		{
+			r.entities.pages.add("Farming runs");
 		}
 		// A follow-up inherits the conversation's subject when it points back
 		// at it -- an anaphor in the text ("what ABOUT addy darts", "which

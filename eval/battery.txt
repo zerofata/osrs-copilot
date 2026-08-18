@@ -131,6 +131,16 @@ ANSWER Nice drop! Here's how to make your Scorching bow: read Duradel's notes, t
 > what arrows can I use with this bow
 ASSERT {"items": ["Scorching bow"]}
 
+# --- Activity intents ---
+
+# Run planning names an activity, not an entity; the guide page carries
+# the routes and patch lists.
+Can you orchestrate a farming run for me
+ASSERT {"pages": ["Farming runs"]}
+
+whats a good herb run route
+ASSERT {"pages": ["Farming runs"]}
+
 # --- Slayer task reference ---
 
 # "my task" resolves the slayer-task creature from game state (the sample
