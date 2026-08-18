@@ -14,6 +14,16 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class AgentLoop
 {
+	/**
+	 * Upper bound on tool calls executed from a single model message. The
+	 * endpoint is user-configured and untrusted: without this cap, one
+	 * broken or hostile model message could fan out into hundreds of
+	 * sequential wiki requests. The batched tools keep legitimate turns
+	 * well under it; excess calls get an error result (the protocol
+	 * requires a tool response per call id) telling the model to answer.
+	 */
+	private static final int MAX_TOOL_CALLS_PER_TURN = 8;
+
 	interface Tool
 	{
 		Object call(JsonObject args) throws Exception;
@@ -88,14 +98,22 @@ class AgentLoop
 
 				Object output;
 				Tool tool = tools.get(name);
-				try
+				if (i >= MAX_TOOL_CALLS_PER_TURN)
 				{
-					output = tool != null ? tool.call(args)
-						: Map.of("error", "unknown tool: " + name);
+					output = Map.of("error", "tool call budget for this turn exceeded; "
+						+ "answer from what you have");
 				}
-				catch (Exception e)
+				else
 				{
-					output = Map.of("error", e.getClass().getSimpleName() + ": " + e.getMessage());
+					try
+					{
+						output = tool != null ? tool.call(args)
+							: Map.of("error", "unknown tool: " + name);
+					}
+					catch (Exception e)
+					{
+						output = Map.of("error", e.getClass().getSimpleName() + ": " + e.getMessage());
+					}
 				}
 				String outputJson = output instanceof String ? (String) output : gson.toJson(output);
 				result.toolLog.add(name + "(" + gson.toJson(args) + ")");
