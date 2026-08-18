@@ -11,10 +11,10 @@ import com.osrscopilot.pipeline.HttpException;
 import com.osrscopilot.pipeline.Llm;
 import com.osrscopilot.pipeline.StreamListener;
 import java.awt.image.BufferedImage;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,14 +27,18 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.WidgetClosed;
+import net.runelite.api.events.WidgetLoaded;
 import net.runelite.client.RuneLite;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -69,6 +73,10 @@ public class CopilotPlugin extends Plugin
 {
 	private static final File DATA_DIR = new File(RuneLite.RUNELITE_DIR, "osrs-copilot");
 	private static final File CACHE_DIR = new File(DATA_DIR, "cache");
+
+	/** InterfaceID.BANK; a raw int like the container ids, to stay
+	 * compatible across API versions. */
+	private static final int BANK_GROUP = 12;
 
 	@Inject
 	private Client client;
@@ -119,6 +127,11 @@ public class CopilotPlugin extends Plugin
 	private volatile String pendingQuestion;
 	private String pendingSnapshotLabel;
 	private BankStore bankStore;
+	private BankMutations bankMutations;
+	/** Arms the drift audit for the next bank capture; set at startup and
+	 * whenever the bank interface closes, cleared once the visit's first
+	 * capture has been audited. */
+	private boolean bankDriftAuditArmed = true;
 	private EventRecorder events;
 	private GameStateReader reader;
 
@@ -148,6 +161,7 @@ public class CopilotPlugin extends Plugin
 	{
 		DATA_DIR.mkdirs();
 		bankStore = new BankStore(DATA_DIR, gson);
+		bankMutations = new BankMutations(bankStore, itemManager);
 		events = new EventRecorder(client, gson, config, DATA_DIR);
 		reader = new GameStateReader(client, configManager, config, bankStore, events);
 
@@ -581,8 +595,24 @@ public class CopilotPlugin extends Plugin
 		int id = event.getContainerId();
 		if (id == GameStateReader.BANK_ID)
 		{
-			bankStore.update(reader.itemList(event.getItemContainer()));
+			// Authoritative capture. The drift audit -- how far the tracked
+			// prediction strayed while the bank was closed, the measure of
+			// whether BankMutations is right in real play -- runs only on
+			// the visit's first capture: later ones fire per withdrawal and
+			// deposit, and diffing those merely echoes each interaction.
+			List<Map<String, Object>> fresh = reader.itemList(event.getItemContainer());
+			if (bankDriftAuditArmed)
+			{
+				bankDriftAuditArmed = false;
+				String drift = BankMutations.drift(bankStore.contents(), fresh);
+				if (drift != null)
+				{
+					log.debug("Bank snapshot drift at capture: {}", drift);
+				}
+			}
+			bankStore.update(fresh);
 		}
+		bankMutations.containerChanged(id, event.getItemContainer());
 		if (events.logOpen())
 		{
 			Map<String, Object> data = new LinkedHashMap<>();
@@ -644,6 +674,7 @@ public class CopilotPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
+		bankMutations.menuClicked(event.getMenuOption());
 		if (!config.logMenuClicks())
 		{
 			return;
@@ -651,6 +682,44 @@ public class CopilotPlugin extends Plugin
 		events.log("click", Map.of(
 			"option", String.valueOf(event.getMenuOption()),
 			"target", String.valueOf(event.getMenuTarget())));
+	}
+
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event)
+	{
+		if (event.getGroupId() == BankMutations.DEPOSIT_BOX_GROUP)
+		{
+			bankMutations.depositBoxOpened(
+				client.getItemContainer(GameStateReader.INV_ID),
+				client.getItemContainer(GameStateReader.WORN_ID));
+		}
+	}
+
+	@Subscribe
+	public void onWidgetClosed(WidgetClosed event)
+	{
+		if (event.getGroupId() == BankMutations.DEPOSIT_BOX_GROUP)
+		{
+			bankMutations.depositBoxClosed();
+		}
+		if (event.getGroupId() == BANK_GROUP)
+		{
+			bankDriftAuditArmed = true;
+		}
+	}
+
+	@Subscribe
+	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)
+	{
+		// The client fires an all-slots-EMPTY storm during login; those are
+		// not real offer changes and must not wipe tracked collectables.
+		if (client.getGameState() != GameState.LOGGED_IN)
+		{
+			return;
+		}
+		GrandExchangeOffer offer = event.getOffer();
+		bankMutations.offerChanged(event.getSlot(), offer.getState(),
+			offer.getItemId(), offer.getQuantitySold(), offer.getTotalQuantity());
 	}
 
 	// ------------------------------------------------------------------
@@ -663,10 +732,8 @@ public class CopilotPlugin extends Plugin
 		{
 			GameCapture cap = reader.buildCapture();
 			File out = new File(DATA_DIR, "snapshot-" + label + "-" + System.currentTimeMillis() + ".json");
-			try (BufferedWriter w = new BufferedWriter(new FileWriter(out)))
-			{
-				w.write(gson.newBuilder().setPrettyPrinting().create().toJson(cap));
-			}
+			Files.write(out.toPath(), gson.newBuilder().setPrettyPrinting().create()
+				.toJson(cap).getBytes(StandardCharsets.UTF_8));
 			log.info("Snapshot written: {}", out.getAbsolutePath());
 			return out;
 		}

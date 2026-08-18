@@ -3,8 +3,10 @@ package com.osrscopilot;
 import com.google.gson.Gson;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -104,7 +106,8 @@ class EventRecorder
 			}
 		}
 		File logFile = new File(dataDir, "events-" + System.currentTimeMillis() + ".jsonl");
-		eventLog = new BufferedWriter(new FileWriter(logFile, true));
+		eventLog = Files.newBufferedWriter(logFile.toPath(), StandardCharsets.UTF_8,
+			StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 	}
 
 	void closeLog() throws IOException
