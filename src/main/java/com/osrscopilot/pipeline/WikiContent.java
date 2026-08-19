@@ -44,9 +44,12 @@ class WikiContent
 	private static final long CONTENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 	private static final int CONTENT_CACHE_MAX_ENTRIES = 256;
 
-	/** Standard wiki appendix sections; never worth a heading slot. */
+	/** Standard wiki appendix and boilerplate sections; never worth a
+	 * heading slot in the TOC line, and dropped first when a page fact is
+	 * over budget. */
 	private static final Set<String> NOISE_SECTIONS = Set.of(
-		"changes", "references", "trivia", "gallery", "see also", "external links");
+		"changes", "references", "trivia", "gallery", "see also", "external links",
+		"official worlds", "music", "developers");
 
 	private final Http http;
 
@@ -332,7 +335,7 @@ class WikiContent
 					+ "&redirects=1&page=" + Http.enc(title) + "&section=" + s.get("index").getAsString());
 				String text = sec.getAsJsonObject("parse").getAsJsonObject("wikitext")
 					.get("*").getAsString();
-				return truncate(text, charLimit);
+				return truncate(scrubWikitext(text), charLimit);
 			}
 		}
 		catch (Exception e)
@@ -356,7 +359,7 @@ class WikiContent
 		{
 			String text = rawWikitext(title);
 			text = inlineSubpages(title, text, charLimit);
-			return withQuerySections(title, text, charLimit);
+			return withQuerySections(title, scrubWikitext(text), charLimit);
 		}
 		catch (Exception e)
 		{
@@ -384,6 +387,149 @@ class WikiContent
 	/** Top-level headings ("== X ==") in extract or wikitext form. */
 	private static final Pattern TOP_HEADING =
 		Pattern.compile("(?m)^== *([^=\\n]+?) *== *$");
+
+	// ------------------------------------------------------------------
+	// Wikitext scrubbing and section-aware budgeting
+	// ------------------------------------------------------------------
+
+	private static final Pattern GALLERY_BLOCK =
+		Pattern.compile("(?is)<gallery[^>]*>.*?</gallery>");
+	/** Cell prefix attributes that carry no content ("data-sort-value=..."). */
+	private static final Pattern SORT_VALUE_ATTR =
+		Pattern.compile("data-sort-value=\"[^\"\\n]*\" *\\| *");
+
+	/**
+	 * Removes wikitext with zero semantic content for a text model: image
+	 * and file links (with their captions), gallery blocks, citation
+	 * templates (tweet/news/forum references with archive URLs), and
+	 * sort-value cell attributes. On the Tombs of Amascut page these were
+	 * ~15% of the fact and carried nothing an answer could use.
+	 */
+	static String scrubWikitext(String text)
+	{
+		text = GALLERY_BLOCK.matcher(text).replaceAll("");
+		text = stripBalanced(text, "[[file:", "[[", "]]");
+		text = stripBalanced(text, "[[image:", "[[", "]]");
+		text = stripBalanced(text, "{{cite", "{{", "}}");
+		text = SORT_VALUE_ATTR.matcher(text).replaceAll("");
+		return text;
+	}
+
+	/**
+	 * Removes every occurrence of a balanced construct that starts with
+	 * startToken (matched case-insensitively), tracking nesting -- file
+	 * captions legitimately contain [[links]] and citation templates can
+	 * nest templates. An unclosed construct is left untouched rather than
+	 * eating the rest of the page.
+	 */
+	private static String stripBalanced(String text, String startToken, String open, String close)
+	{
+		String lower = text.toLowerCase(Locale.ROOT);
+		StringBuilder out = new StringBuilder(text.length());
+		int pos = 0;
+		while (true)
+		{
+			int start = lower.indexOf(startToken, pos);
+			if (start < 0)
+			{
+				out.append(text, pos, text.length());
+				return out.toString();
+			}
+			int depth = 1;
+			int i = start + open.length();
+			while (i < text.length() && depth > 0)
+			{
+				if (lower.startsWith(open, i))
+				{
+					depth++;
+					i += open.length();
+				}
+				else if (lower.startsWith(close, i))
+				{
+					depth--;
+					i += close.length();
+				}
+				else
+				{
+					i++;
+				}
+			}
+			out.append(text, pos, start);
+			pos = depth == 0 ? i : start + open.length();
+			if (depth != 0)
+			{
+				out.append(text, start, pos);
+			}
+		}
+	}
+
+	/**
+	 * Spends an over-budget page's char limit on WHOLE sections instead of
+	 * cutting at a byte position. Position-cut truncation let one bloated
+	 * early section (ToA's invocation table: 61% of the fact) starve every
+	 * section after it, and ended facts mid-table -- dangling wikitext the
+	 * model misreads. Here: the lead always ships, known-noise sections are
+	 * dropped first, remaining sections are admitted whole in page order,
+	 * and a single section bigger than half the budget is considered LAST
+	 * so it can't crowd out the rest of the page. Anything skipped is still
+	 * named in the TOC line and one wiki_page section call away.
+	 *
+	 * Degenerate pages (no headings, or one giant section holding all the
+	 * substance) fall back to position-cut: a cut table beats an empty fact.
+	 */
+	static String budgetBySections(String text, int limit)
+	{
+		if (text.length() <= limit)
+		{
+			return text;
+		}
+		List<Integer> starts = new ArrayList<>();
+		List<String> headings = new ArrayList<>();
+		Matcher m = TOP_HEADING.matcher(text);
+		while (m.find())
+		{
+			starts.add(m.start());
+			headings.add(m.group(1).trim().toLowerCase(Locale.ROOT));
+		}
+		if (starts.isEmpty())
+		{
+			return truncate(text, limit);
+		}
+		String lead = text.substring(0, starts.get(0));
+		if (lead.length() >= limit)
+		{
+			return truncate(text, limit);
+		}
+		List<String> ordered = new ArrayList<>();
+		List<String> deferred = new ArrayList<>();
+		for (int i = 0; i < starts.size(); i++)
+		{
+			if (NOISE_SECTIONS.contains(headings.get(i)))
+			{
+				continue;
+			}
+			int end = i + 1 < starts.size() ? starts.get(i + 1) : text.length();
+			String section = text.substring(starts.get(i), end);
+			// A giant section is weighed after everything else: admitted
+			// only into whatever budget the rest of the page left over.
+			(section.length() > limit / 2 ? deferred : ordered).add(section);
+		}
+		ordered.addAll(deferred);
+		StringBuilder out = new StringBuilder(lead);
+		int admitted = 0;
+		for (String section : ordered)
+		{
+			if (out.length() + section.length() <= limit)
+			{
+				out.append(section);
+				admitted++;
+			}
+		}
+		// No section fit at all: the page's substance lives in one giant
+		// section (pure-table pages), and a bare lead reads as "the wiki
+		// has nothing here". A position-cut section carries more substance.
+		return admitted == 0 && !ordered.isEmpty() ? truncate(text, limit) : out.toString();
+	}
 
 	/** The page's own table of contents, from the FULL text before any
 	 * truncation. Sits at the top like on the wiki itself, so a reader of
@@ -416,7 +562,7 @@ class WikiContent
 	private String withQuerySections(String title, String text, int charLimit)
 	{
 		boolean present = text.contains(USED_IN_REC_EQUIP);
-		String out = tocLine(text) + truncate(text, charLimit);
+		String out = tocLine(text) + budgetBySections(text, charLimit);
 		if (!present)
 		{
 			return out;
