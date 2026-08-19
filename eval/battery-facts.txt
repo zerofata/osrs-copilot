@@ -16,6 +16,11 @@ ASSERT {"monsters": ["Bloodveld"], "needs": ["strategy"], "facts": ["Monster inf
 What's the best gear for Vorkath?
 ASSERT {"monsters": ["Vorkath"], "facts": ["Monster info: Vorkath", "Strategy: Vorkath", "Recommended equipment: Vorkath"]}
 
+# Strategy guide for a PAGE-shaped entity (raid) via the strategies index --
+# guides hang off raids/minigames/activities, not just monsters.
+can I do tombs of amascut and what setup should i use?
+ASSERT {"pages": ["Tombs of Amascut"], "facts": ["Page: Tombs of Amascut", "Strategy: Tombs of Amascut", "Recommended equipment: Tombs of Amascut"]}
+
 # quest bucket (requirements come from structured data, not page prose).
 # Phrased as players phrase it: "Dragon Slayer" must reach the quest, not
 # the Slayer skill.

@@ -59,6 +59,11 @@ ASSERT {"pages": ["The Gauntlet"], "not_pages": ["Kill count"]}
 what does kc mean
 ASSERT {"pages": ["Kill count"]}
 
+# Raids resolve as pages, not monsters; "what setup" must still carry
+# strategy so the guide subpage prefetches from the strategies index.
+can I do tombs of amascut and what setup should i use?
+ASSERT {"pages": ["Tombs of Amascut"], "needs": ["strategy"]}
+
 # Untradeables resolve as items via the item infobox index; the GE catalogue
 # never lists them.
 how do i get a fire cape

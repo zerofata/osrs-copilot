@@ -179,7 +179,30 @@ class Prefetcher
 					continue;
 				}
 			}
-			addFact(facts, "Page: " + page, wiki.page(page));
+			// Strategy guides hang off more than monsters -- raids,
+			// minigames, activities (Tombs of Amascut, Wintertodt) resolve
+			// as pages. Same index as the monster loop, but page-shaped
+			// entities were never blind-fetched, so this fires only on a
+			// positive index hit -- index unavailable changes nothing.
+			boolean pageStrategy = (needs.contains(Router.NEED_STRATEGY)
+				|| needs.contains(Router.NEED_MECHANICS))
+				&& Boolean.TRUE.equals(hasStrategiesPage(page));
+			String pageText = wiki.page(page);
+			if (pageText != null && !pageStrategy
+				&& Boolean.TRUE.equals(hasStrategiesPage(page)))
+			{
+				// The wiki_page affordance, TOC-line style: the model learns
+				// the guide exists at zero request cost.
+				pageText = "[Strategy guide page: " + page + "/Strategies]\n" + pageText;
+			}
+			addFact(facts, "Page: " + page, pageText);
+			if (pageStrategy)
+			{
+				String strategyPage = page + "/Strategies";
+				addFact(facts, "Strategy: " + page, wiki.page(strategyPage));
+				addFact(facts, "Recommended equipment: " + page,
+					wiki.sectionByHeading(strategyPage, EQUIPMENT_HEADING, EQUIPMENT_CHAR_LIMIT));
+			}
 			// Untradeable equipment (Arclight, Emberlight, barrows gloves...)
 			// resolves as a page, not an item -- it still has an infobox.
 			addFact(facts, "Equipment stats: " + page, wiki.itemStats(page));

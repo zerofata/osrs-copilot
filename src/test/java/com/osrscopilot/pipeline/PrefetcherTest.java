@@ -271,7 +271,11 @@ public class PrefetcherTest
 			String page(String title)
 			{
 				fetched.add(title);
-				return index != null && index.contains(title) ? "Guide: " + title : null;
+				if (title.endsWith("/Strategies"))
+				{
+					return index != null && index.contains(title) ? "Guide: " + title : null;
+				}
+				return "Article: " + title;
 			}
 
 			@Override
@@ -354,6 +358,64 @@ public class PrefetcherTest
 		WikiApi wiki = strategiesWiki(fetched, java.util.Set.of("Vorkath/Strategies"));
 		List<String> facts = prefetchMonsterRoute(wiki, "Bloodveld");
 		assertFalse(facts.stream().anyMatch(f -> f.contains("strategy_guide_page")));
+	}
+
+	// --- strategies for page-shaped entities (raids, minigames, activities) ---
+
+	private static List<String> prefetchPageRoute(WikiApi wiki, String page, String... needs)
+	{
+		CopilotPipeline.Route route = new CopilotPipeline.Route();
+		route.entities = new EntityResolver.Resolution();
+		route.entities.pages.add(page);
+		route.needs = List.of(needs);
+		route.facilityPages = List.of();
+		return new Prefetcher(wiki, new Gson())
+			.prefetch(route, new GameCapture(), Map.of(), Map.of(), true);
+	}
+
+	@Test
+	public void indexedRaidGuideIsPrefetchedOnStrategyRoutes()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched,
+			java.util.Set.of("Tombs of Amascut/Strategies"));
+		List<String> facts = prefetchPageRoute(wiki, "Tombs of Amascut", Router.NEED_STRATEGY);
+		assertTrue(fetched.contains("Tombs of Amascut/Strategies"));
+		assertTrue(facts.stream().anyMatch(f -> f.startsWith("### Strategy: Tombs of Amascut")));
+	}
+
+	@Test
+	public void pagesWithoutGuidesNeverBlindFetchEvenOnStrategyRoutes()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched,
+			java.util.Set.of("Tombs of Amascut/Strategies"));
+		prefetchPageRoute(wiki, "Varrock Diary", Router.NEED_STRATEGY);
+		assertFalse(fetched.contains("Varrock Diary/Strategies"));
+	}
+
+	@Test
+	public void unavailableIndexMeansNoPageGuideFetchAtAll()
+	{
+		// Pages were never blind-fetched before the index existed, so an
+		// unavailable index must not start now.
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched, null);
+		prefetchPageRoute(wiki, "Tombs of Amascut", Router.NEED_STRATEGY);
+		assertFalse(fetched.contains("Tombs of Amascut/Strategies"));
+	}
+
+	@Test
+	public void pageGuideIsAdvertisedWhenStrategyIsNotNeeded()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched,
+			java.util.Set.of("Tombs of Amascut/Strategies"));
+		List<String> facts = prefetchPageRoute(wiki, "Tombs of Amascut");
+		String pageFact = facts.stream()
+			.filter(f -> f.startsWith("### Page: Tombs of Amascut")).findFirst().orElse("");
+		assertTrue(pageFact.contains("[Strategy guide page: Tombs of Amascut/Strategies]"));
+		assertFalse(fetched.contains("Tombs of Amascut/Strategies"));
 	}
 
 	// --- sourcePage: which wiki page a fact title credits ---

@@ -56,14 +56,14 @@ public final class VocabSnapshotTool
 
 		// Thresholds are ~85% of the live counts measured 2026-08-16
 		// (mapping 4652, monsters 1617, items 11432, locations 895,
-		// wordlist 10000; strategy subpages 79 measured 2026-08-19). These
+		// wordlist 10000; strategy subpages 128 measured 2026-08-20). These
 		// datasets only ever grow with game updates; a dip below means the
 		// query broke, not the game shrank.
 		tool.write(outDir, "ge_mapping.json", tool.geMapping(), 4000, "GE mapping entries");
 		Set<String> monsters = tool.monsterNameSet();
 		tool.write(outDir, "monsters_v2.json",
 			new Sized(gson.toJson(monsters), monsters.size()), 1400, "monster names");
-		tool.write(outDir, "strategies.json", tool.strategiesIndex(monsters), 65, "strategy subpages");
+		tool.write(outDir, "strategies.json", tool.strategiesIndex(monsters), 105, "strategy subpages");
 		tool.write(outDir, "items.json", tool.itemIndex(), 10000, "item index rows");
 		tool.write(outDir, "locations-v2.json", tool.locationIndex(), 750, "location points");
 		tool.write(outDir, "english_10k.txt", tool.wordlist(), 9000, "wordlist lines");
@@ -156,15 +156,37 @@ public final class VocabSnapshotTool
 	}
 
 	/**
-	 * Which {Monster}/Strategies subpages exist, batch-checked 50 titles per
-	 * request (~35 requests, weekly, on the CI runner -- never on clients).
-	 * Clients use the index to skip guaranteed-404 strategy fetches and to
-	 * advertise existing guide pages at zero request cost. Redirect titles
-	 * count as existing: fetching one lands on strategy content.
+	 * Every /Strategies guide subpage that exists, from two sweeps run
+	 * weekly on the CI runner (never on clients). Strategies hang off far
+	 * more than monsters -- raids, minigames, activities (Tombs of
+	 * Amascut, Wintertodt, Inferno) -- so a title search finds every REAL
+	 * page with the suffix (~3 paginated requests). Search skips redirect
+	 * titles, which still fetch fine (Dust devil/Strategies redirects to
+	 * its guide), so monster-derived titles are additionally batch
+	 * existence-checked, 50 per request (~35 requests). Clients use the
+	 * union to skip guaranteed-404 strategy fetches and to advertise
+	 * existing guide pages at zero request cost.
 	 */
 	private Sized strategiesIndex(Set<String> monsterNames) throws IOException
 	{
 		Set<String> exists = new TreeSet<>();
+		Integer offset = 0;
+		while (offset != null)
+		{
+			JsonObject r = http.getJson(WIKI_API + "?action=query&list=search&format=json"
+				+ "&srlimit=50&sroffset=" + offset
+				+ "&srsearch=" + Http.enc("intitle:\"Strategies\""));
+			for (JsonElement e : r.getAsJsonObject("query").getAsJsonArray("search"))
+			{
+				String title = e.getAsJsonObject().get("title").getAsString();
+				if (title.endsWith("/Strategies"))
+				{
+					exists.add(title);
+				}
+			}
+			offset = r.has("continue")
+				? r.getAsJsonObject("continue").get("sroffset").getAsInt() : null;
+		}
 		List<String> batch = new ArrayList<>(50);
 		for (String name : monsterNames)
 		{
