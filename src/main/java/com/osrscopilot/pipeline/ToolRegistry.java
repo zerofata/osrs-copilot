@@ -9,7 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * The tools offered to the synth model: their OpenAI function-calling specs
@@ -19,11 +18,6 @@ import java.util.regex.Pattern;
  */
 class ToolRegistry
 {
-	/** Budget for a single-section fetch (wikitext, tables intact). Matches
-	 * the prefetcher's equipment-section budget: one section of one page,
-	 * requested deliberately, may run long. */
-	private static final int SECTION_CHAR_LIMIT = 12000;
-
 	private final WikiApi wiki;
 	private final Gson gson;
 
@@ -40,17 +34,8 @@ class ToolRegistry
 			"Search the OSRS Wiki for pages. Returns page titles and short snippets ONLY, "
 				+ "not page content -- follow up with wiki_page to read a page.",
 			"query"));
-		// Long pages truncate with a note naming the dropped sections; the
-		// optional "section" argument is the follow-up that reads one, as
-		// wikitext so tables (loot, achievements) survive.
-		JsonObject pageSpec = toolSpec("wiki_page",
-			"Get the text of an OSRS Wiki page (item, monster, quest, guide). Long pages "
-				+ "are truncated with a note listing the section headings not shown; pass one "
-				+ "of those headings as \"section\" to fetch just that section, tables included.",
-			"title");
-		pageSpec.getAsJsonObject("function").getAsJsonObject("parameters")
-			.getAsJsonObject("properties").add("section", singleType("string"));
-		specs.add(pageSpec);
+		specs.add(toolSpec("wiki_page",
+			"Get the text of an OSRS Wiki page (item, monster, quest, guide).", "title"));
 		specs.add(toolSpec("item_drop_sources",
 			"List monsters and activities that drop an item, with quantities and drop rarity.",
 			"item_name"));
@@ -147,14 +132,6 @@ class ToolRegistry
 			args -> wiki.search(str(args, "query"))));
 		tools.put("wiki_page", annotated(owned, ownedNames, annotateOwnership, args -> {
 			String title = str(args, "title");
-			String section = str(args, "section");
-			if (!section.isEmpty())
-			{
-				String text = wiki.sectionByHeading(title, Pattern.compile(
-					Pattern.quote(section), Pattern.CASE_INSENSITIVE), SECTION_CHAR_LIMIT);
-				return text != null ? text : Map.of("error", "No section '" + section
-					+ "' on '" + title + "'. Fetch the page itself to see its sections.");
-			}
 			String text = wiki.page(title);
 			return text != null ? text
 				: Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
