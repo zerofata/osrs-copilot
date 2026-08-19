@@ -114,7 +114,7 @@ class Prefetcher
 			}
 			if (needs.contains(Router.NEED_ITEM_SOURCES) || needs.contains(Router.NEED_DROP_TABLE))
 			{
-				addFact(facts, "How to obtain: " + item, wiki.itemDropSources(item));
+				addFact(facts, "How to obtain: " + item, wiki.itemSources(item));
 			}
 			if (needs.contains(Router.NEED_PRICES))
 			{

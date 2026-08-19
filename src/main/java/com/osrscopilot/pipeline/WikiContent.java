@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -33,15 +34,19 @@ class WikiContent
 	private static final int WIKITEXT_CHAR_LIMIT = 12000;
 
 	/**
-	 * Short-lived cache over wiki GETs. Follow-up questions inherit the
-	 * conversation's subject and re-prefetch the same pages every turn; a
-	 * five-turn chat about one boss must not fetch its strategy page five
-	 * times. Wiki content cannot meaningfully change within minutes, so the
-	 * repeats are pure upstream load. Deliberately NOT applied to the prices
-	 * API (prices move) or snapshots (own 7-day disk cache).
+	 * Cache over wiki GETs. Follow-up questions inherit the conversation's
+	 * subject and re-prefetch the same pages every turn; a five-turn chat
+	 * about one boss must not fetch its strategy page five times. Wiki
+	 * content rarely changes within a day, and the cache is in-memory, so
+	 * a client restart clears it regardless. Deliberately NOT applied to
+	 * the prices API (prices move) or snapshots (own 7-day disk cache).
 	 */
-	private static final long CONTENT_CACHE_TTL_MS = 5 * 60 * 1000;
+	private static final long CONTENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 	private static final int CONTENT_CACHE_MAX_ENTRIES = 256;
+
+	/** Standard wiki appendix sections; never worth a heading slot. */
+	private static final Set<String> NOISE_SECTIONS = Set.of(
+		"changes", "references", "trivia", "gallery", "see also", "external links");
 
 	private final Http http;
 
@@ -103,7 +108,9 @@ class WikiContent
 		return cachedGet(WIKI_API + "?action=query&format=json&" + params);
 	}
 
-	/** Search the wiki. Returns [{title, snippet}]. */
+	/** Search the wiki. Returns [{title, snippet, headings}]. Headings (top
+	 * hits only) show each page's structure up front, so the follow-up can
+	 * be a targeted section fetch instead of a blind full-page read. */
 	List<Map<String, Object>> search(String query)
 	{
 		try
@@ -114,9 +121,18 @@ class WikiContent
 			{
 				JsonObject h = hit.getAsJsonObject();
 				Map<String, Object> entry = new LinkedHashMap<>();
-				entry.put("title", h.get("title").getAsString());
+				String title = h.get("title").getAsString();
+				entry.put("title", title);
 				entry.put("snippet", h.get("snippet").getAsString()
 					.replace("<span class=\"searchmatch\">", "").replace("</span>", ""));
+				if (out.size() < 3)
+				{
+					List<String> headings = topSections(title);
+					if (!headings.isEmpty())
+					{
+						entry.put("headings", headings);
+					}
+				}
 				out.add(entry);
 			}
 			return out;
@@ -124,6 +140,40 @@ class WikiContent
 		catch (Exception e)
 		{
 			return List.of(Map.of("error", "search failed: " + e.getMessage()));
+		}
+	}
+
+	/** Top-level section headings of a page, appendix noise excluded.
+	 * Empty on failure: headings decorate search results and error
+	 * messages, and are never worth failing the caller over. */
+	List<String> topSections(String title)
+	{
+		try
+		{
+			JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=sections&format=json"
+				+ "&redirects=1&page=" + Http.enc(title));
+			List<String> out = new ArrayList<>();
+			for (JsonElement e : r.getAsJsonObject("parse").getAsJsonArray("sections"))
+			{
+				JsonObject s = e.getAsJsonObject();
+				String line = s.get("line").getAsString();
+				if (s.get("toclevel").getAsInt() != 1
+					|| NOISE_SECTIONS.contains(line.toLowerCase(Locale.ROOT)))
+				{
+					continue;
+				}
+				out.add(line);
+				if (out.size() >= 12)
+				{
+					break;
+				}
+			}
+			return out;
+		}
+		catch (Exception e)
+		{
+			log.debug("sections fetch failed for {}", title, e);
+			return List.of();
 		}
 	}
 
@@ -331,6 +381,30 @@ class WikiContent
 		"(\\{\\{Used in recommended equipment[^}]*\\}\\}|==+ *Used in recommended equipment *==+)");
 	private static final int RENDERED_SECTION_CHAR_LIMIT = 2500;
 
+	/** Top-level headings ("== X ==") in extract or wikitext form. */
+	private static final Pattern TOP_HEADING =
+		Pattern.compile("(?m)^== *([^=\\n]+?) *== *$");
+
+	/** The page's own table of contents, from the FULL text before any
+	 * truncation. Sits at the top like on the wiki itself, so a reader of
+	 * a truncated page still knows every section that exists and can fetch
+	 * one via wiki_page's section argument. */
+	static String tocLine(String text)
+	{
+		List<String> toc = new ArrayList<>();
+		Matcher m = TOP_HEADING.matcher(text);
+		while (m.find() && toc.size() < 15)
+		{
+			String heading = m.group(1).trim();
+			if (!NOISE_SECTIONS.contains(heading.toLowerCase(Locale.ROOT))
+				&& !toc.contains(heading))
+			{
+				toc.add(heading);
+			}
+		}
+		return toc.size() >= 2 ? "[Sections: " + String.join("; ", toc) + "]\n\n" : "";
+	}
+
 	/**
 	 * Truncate page text to its budget, then re-attach any render-time query
 	 * section rendered for real. Appending AFTER truncation is deliberate:
@@ -342,7 +416,7 @@ class WikiContent
 	private String withQuerySections(String title, String text, int charLimit)
 	{
 		boolean present = text.contains(USED_IN_REC_EQUIP);
-		String out = truncate(text, charLimit);
+		String out = tocLine(text) + truncate(text, charLimit);
 		if (!present)
 		{
 			return out;

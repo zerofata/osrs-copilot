@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * The tools offered to the synth model: their OpenAI function-calling specs
@@ -18,6 +19,10 @@ import java.util.Map;
  */
 class ToolRegistry
 {
+	/** Budget for a single-section fetch (wikitext, tables intact). One
+	 * deliberately chosen section of one page may run long. */
+	private static final int SECTION_CHAR_LIMIT = 12000;
+
 	private final WikiApi wiki;
 	private final Gson gson;
 
@@ -34,10 +39,23 @@ class ToolRegistry
 			"Search the OSRS Wiki for pages. Returns page titles and short snippets ONLY, "
 				+ "not page content -- follow up with wiki_page to read a page.",
 			"query"));
-		specs.add(toolSpec("wiki_page",
-			"Get the text of an OSRS Wiki page (item, monster, quest, guide).", "title"));
-		specs.add(toolSpec("item_drop_sources",
-			"List monsters and activities that drop an item, with quantities and drop rarity.",
+		// Long pages truncate at a budget. The [Sections: ...] line at the
+		// top of every page fetch and the headings in search results name
+		// what exists; the "section" argument is the targeted follow-up,
+		// returned as wikitext so tables (loot, rewards) survive.
+		JsonObject pageSpec = toolSpec("wiki_page",
+			"Get the text of an OSRS Wiki page (item, monster, quest, guide). Long pages are "
+				+ "truncated; the [Sections: ...] line lists every section that exists. Pass one "
+				+ "as \"section\" to fetch just that section, tables included.",
+			"title");
+		pageSpec.getAsJsonObject("function").getAsJsonObject("parameters")
+			.getAsJsonObject("properties").add("section", singleType("string"));
+		specs.add(pageSpec);
+		specs.add(toolSpec("item_sources",
+			"How to obtain an item: monster drops and activity/reward-chest sources with drop "
+				+ "rates, creation recipes (materials, skill levels, facility), shops that stock "
+				+ "it, and whether it trades on the GE. Quest rewards are not covered; use "
+				+ "wiki_page for those.",
 			"item_name"));
 		specs.add(toolSpec("monster_drops",
 			"Full drop table of a monster with quantities and drop rarities.", "name"));
@@ -132,12 +150,26 @@ class ToolRegistry
 			args -> wiki.search(str(args, "query"))));
 		tools.put("wiki_page", annotated(owned, ownedNames, annotateOwnership, args -> {
 			String title = str(args, "title");
+			String section = str(args, "section");
+			if (!section.isEmpty())
+			{
+				String text = wiki.sectionByHeading(title, Pattern.compile(
+					Pattern.quote(section), Pattern.CASE_INSENSITIVE), SECTION_CHAR_LIMIT);
+				if (text != null)
+				{
+					return text;
+				}
+				List<String> available = wiki.topSections(title);
+				return Map.of("error", "No section '" + section + "' on '" + title + "'"
+					+ (available.isEmpty() ? "."
+						: ". Sections: " + String.join("; ", available)));
+			}
 			String text = wiki.page(title);
 			return text != null ? text
 				: Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
 		}));
-		tools.put("item_drop_sources", annotated(owned, ownedNames, annotateOwnership,
-			args -> wiki.itemDropSources(str(args, "item_name"))));
+		tools.put("item_sources", annotated(owned, ownedNames, annotateOwnership,
+			args -> wiki.itemSources(str(args, "item_name"))));
 		tools.put("monster_drops", annotated(owned, ownedNames, annotateOwnership,
 			args -> wiki.monsterDrops(str(args, "name"))));
 		tools.put("monster_info", annotated(owned, ownedNames, annotateOwnership,

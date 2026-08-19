@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  * - {@link VocabSnapshots}: bulk vocabularies from published snapshots
  *   (items, monsters, locations, GE mapping, wordlist), 7-day disk cache.
  * - {@link WikiContent}: live page content, search, title resolution, and
- *   the short-TTL LRU over wiki GETs.
+ *   the TTL'd LRU over wiki GETs.
  * - {@link WikiLookups}: structured game data from the wiki's buckets and
  *   the prices API (drops, combat profiles, equipment stats, quests, GE).
  */
@@ -128,6 +128,11 @@ public class WikiApi
 		return content.sectionByHeading(title, headingPattern, charLimit);
 	}
 
+	List<String> topSections(String title)
+	{
+		return content.topSections(title);
+	}
+
 	String wikitext(String title, int charLimit)
 	{
 		return content.wikitext(title, charLimit);
@@ -135,9 +140,9 @@ public class WikiApi
 
 	// ---- structured lookups (WikiLookups) ------------------------------
 
-	Map<String, Object> itemDropSources(String itemName)
+	Map<String, Object> itemSources(String itemName)
 	{
-		return lookups.itemDropSources(itemName);
+		return lookups.itemSources(itemName);
 	}
 
 	Map<String, Object> monsterDrops(String name)

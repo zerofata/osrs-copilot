@@ -125,53 +125,57 @@ class WikiLookups
 		return best;
 	}
 
-	/** Monsters/activities that drop an item, with quantity and rarity. */
-	Map<String, Object> itemDropSources(String itemName)
+	/**
+	 * Every way to acquire an item that the wiki holds structured data for:
+	 * drops (monsters, reward chests, activities), creation recipes, and
+	 * shop stock, plus GE tradeability. One composite lookup because an
+	 * acquisition question rarely knows in advance which route exists;
+	 * routes with no data are omitted rather than erroring one by one.
+	 * Quest and minigame rewards have no bucket and stay page-prose.
+	 */
+	Map<String, Object> itemSources(String itemName)
 	{
 		Map<String, Object> result = new LinkedHashMap<>();
 		try
 		{
-			String canonical = resolveItemName(itemName);
-			JsonObject r = content.bucket("bucket('dropsline').select('page_name','drop_json')"
-				+ ".where('item_name','" + canonical.replace("'", "\\'") + "').limit(50).run()");
-			List<Map<String, Object>> out = new ArrayList<>();
-			Set<String> seen = new HashSet<>();
-			for (JsonElement row : r.getAsJsonArray("bucket"))
-			{
-				JsonObject o = row.getAsJsonObject();
-				if (!o.has("drop_json"))
-				{
-					continue;
-				}
-				JsonObject dj = gson.fromJson(o.get("drop_json").getAsString(), JsonObject.class);
-				String source = dj.has("Dropped from") ? dj.get("Dropped from").getAsString()
-					: (o.has("page_name") ? o.get("page_name").getAsString() : "?");
-				String qty = dj.has("Drop Quantity") ? dj.get("Drop Quantity").getAsString() : "?";
-				String rarity = dj.has("Rarity") ? dj.get("Rarity").getAsString() : "?";
-				if (!seen.add(source + "|" + qty + "|" + rarity))
-				{
-					continue;
-				}
-				Map<String, Object> entry = new LinkedHashMap<>();
-				entry.put("source", source);
-				entry.put("quantity", qty);
-				entry.put("rarity", rarity);
-				out.add(entry);
-				if (out.size() >= 30)
-				{
-					break;
-				}
-			}
+			// Buckets key on the item's PAGE name, which can differ from the
+			// GE-mapping canonical: "bowfa" trades as "Bow of Faerdhinen
+			// (inactive)" but its page (and its bucket rows) is "Bow of
+			// Faerdhinen". Resolve the page first; the GE form matters only
+			// for the tradeability report at the end.
+			String page = content.resolveTitles(List.of(itemName)).get(itemName);
+			String canonical = page != null ? page : resolveItemName(itemName);
 			result.put("item", canonical);
-			result.put("sources", out);
 			if (!canonical.equalsIgnoreCase(itemName))
 			{
-				result.put("note", "'" + itemName + "' resolved to in-game item '" + canonical + "'");
+				result.put("resolved", "'" + itemName + "' resolved to '" + canonical + "'");
 			}
-			if (out.isEmpty())
+			List<Map<String, Object>> drops = dropSources(canonical);
+			if (!drops.isEmpty())
 			{
-				result.put("note", "No drop sources found for '" + canonical + "'. It may not be "
-					+ "dropped by monsters; check wiki_page for other ways to obtain it.");
+				result.put("drops", drops);
+			}
+			List<Map<String, Object>> creation = recipes(canonical);
+			if (!creation.isEmpty())
+			{
+				result.put("creation", creation);
+			}
+			List<Map<String, Object>> shops = shopStock(canonical);
+			if (!shops.isEmpty())
+			{
+				result.put("shops", shops);
+			}
+			String geName = mappingMatch(canonical) != null
+				? canonical : qualifiedVariant(canonical);
+			result.put("tradeable_on_ge", geName != null);
+			if (geName != null && !geName.equals(canonical))
+			{
+				result.put("ge_item", geName);
+			}
+			if (drops.isEmpty() && creation.isEmpty() && shops.isEmpty())
+			{
+				result.put("note", "No drop, creation, or shop sources found for '" + canonical
+					+ "'. Quest and minigame rewards are not covered here; check wiki_page.");
 			}
 		}
 		catch (Exception e)
@@ -179,6 +183,148 @@ class WikiLookups
 			result.put("error", "lookup failed: " + e.getMessage());
 		}
 		return result;
+	}
+
+	/** Dropsline rows for an item: monster and reward-chest sources. */
+	private List<Map<String, Object>> dropSources(String canonical) throws IOException
+	{
+		JsonObject r = content.bucket("bucket('dropsline').select('page_name','drop_json')"
+			+ ".where('item_name','" + canonical.replace("'", "\\'") + "').limit(50).run()");
+		List<Map<String, Object>> out = new ArrayList<>();
+		Set<String> seen = new HashSet<>();
+		for (JsonElement row : r.getAsJsonArray("bucket"))
+		{
+			JsonObject o = row.getAsJsonObject();
+			if (!o.has("drop_json"))
+			{
+				continue;
+			}
+			JsonObject dj = gson.fromJson(o.get("drop_json").getAsString(), JsonObject.class);
+			String source = dj.has("Dropped from") ? dj.get("Dropped from").getAsString()
+				: (o.has("page_name") ? o.get("page_name").getAsString() : "?");
+			String qty = dj.has("Drop Quantity") ? dj.get("Drop Quantity").getAsString() : "?";
+			String rarity = dj.has("Rarity") ? dj.get("Rarity").getAsString() : "?";
+			if (!seen.add(source + "|" + qty + "|" + rarity))
+			{
+				continue;
+			}
+			Map<String, Object> entry = new LinkedHashMap<>();
+			entry.put("source", source);
+			entry.put("quantity", qty);
+			entry.put("rarity", rarity);
+			out.add(entry);
+			if (out.size() >= 30)
+			{
+				break;
+			}
+		}
+		return out;
+	}
+
+	/** Recipe-bucket rows on the item's own page: what it is made from.
+	 * Rendered as compact strings ("100 x Crystal shard", "82 Smithing
+	 * (boostable)") -- the model needs the requirements, not the wiki's
+	 * image and cost bookkeeping. */
+	private List<Map<String, Object>> recipes(String canonical) throws IOException
+	{
+		JsonObject r = content.bucket("bucket('recipe').select('production_json')"
+			+ ".where('page_name','" + canonical.replace("'", "\\'") + "').limit(5).run()");
+		List<Map<String, Object>> out = new ArrayList<>();
+		JsonArray rows = r.getAsJsonArray("bucket");
+		if (rows == null)
+		{
+			return out;
+		}
+		for (JsonElement row : rows)
+		{
+			JsonObject o = row.getAsJsonObject();
+			if (!o.has("production_json"))
+			{
+				continue;
+			}
+			JsonObject pj = gson.fromJson(o.get("production_json").getAsString(), JsonObject.class);
+			Map<String, Object> rec = new LinkedHashMap<>();
+			List<String> materials = new ArrayList<>();
+			if (pj.has("materials") && pj.get("materials").isJsonArray())
+			{
+				for (JsonElement m : pj.getAsJsonArray("materials"))
+				{
+					JsonObject mo = m.getAsJsonObject();
+					materials.add(jstr(mo, "quantity", "?") + " x " + jstr(mo, "name", "?"));
+				}
+			}
+			List<String> skills = new ArrayList<>();
+			if (pj.has("skills") && pj.get("skills").isJsonArray())
+			{
+				for (JsonElement s : pj.getAsJsonArray("skills"))
+				{
+					JsonObject so = s.getAsJsonObject();
+					String skill = jstr(so, "level", "?") + " " + jstr(so, "name", "?");
+					if ("Yes".equalsIgnoreCase(jstr(so, "boostable", "")))
+					{
+						skill += " (boostable)";
+					}
+					skills.add(skill);
+				}
+			}
+			if (!materials.isEmpty())
+			{
+				rec.put("materials", materials);
+			}
+			if (!skills.isEmpty())
+			{
+				rec.put("skills", skills);
+			}
+			String facility = jstr(pj, "facilities", "");
+			if (!facility.isEmpty())
+			{
+				rec.put("facility", facility);
+			}
+			if (!rec.isEmpty())
+			{
+				out.add(rec);
+			}
+		}
+		return out;
+	}
+
+	/** Storeline-bucket rows: shops stocking the item, with price and stock. */
+	private List<Map<String, Object>> shopStock(String canonical) throws IOException
+	{
+		JsonObject r = content.bucket("bucket('storeline')"
+			+ ".select('sold_by','store_buy_price','store_currency','store_stock')"
+			+ ".where('sold_item','" + canonical.replace("'", "\\'") + "').limit(10).run()");
+		List<Map<String, Object>> out = new ArrayList<>();
+		JsonArray rows = r.getAsJsonArray("bucket");
+		if (rows == null)
+		{
+			return out;
+		}
+		for (JsonElement row : rows)
+		{
+			JsonObject o = row.getAsJsonObject();
+			Map<String, Object> entry = new LinkedHashMap<>();
+			entry.put("shop", jstr(o, "sold_by", "?"));
+			String price = jstr(o, "store_buy_price", "");
+			String currency = jstr(o, "store_currency", "");
+			if (!price.isEmpty())
+			{
+				entry.put("price", (price + " " + currency).trim());
+			}
+			String stock = jstr(o, "store_stock", "");
+			if (!stock.isEmpty())
+			{
+				entry.put("stock", stock);
+			}
+			out.add(entry);
+		}
+		return out;
+	}
+
+	private static String jstr(JsonObject o, String key, String fallback)
+	{
+		return o.has(key) && !o.get(key).isJsonNull() && o.get(key).isJsonPrimitive()
+			? o.get(key).getAsString() : fallback;
 	}
 
 	/** Full drop table of a monster. */

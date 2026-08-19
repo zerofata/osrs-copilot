@@ -21,3 +21,7 @@ ASSERT {"monsters": ["Vorkath"], "facts": ["Monster info: Vorkath", "Strategy: V
 # the Slayer skill.
 Can I start Dragon Slayer?
 ASSERT {"quests": ["Dragon Slayer I"], "facts": ["Quest requirements: Dragon Slayer I"]}
+
+# dropsline + recipe + storeline buckets (the composite acquisition fact).
+Where do I get addy bars?
+ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"], "facts": ["How to obtain: Adamantite bar"]}
