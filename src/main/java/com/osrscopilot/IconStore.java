@@ -156,7 +156,6 @@ final class IconStore
 		}
 		catch (InterruptedException e)
 		{
-			Thread.currentThread().interrupt();
 			return false;
 		}
 		catch (Exception e)
