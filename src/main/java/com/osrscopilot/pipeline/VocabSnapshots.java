@@ -48,6 +48,7 @@ class VocabSnapshots
 	private List<WikiApi.NamedPoint> locationIndex;
 	private List<String[]> itemNameIndex;
 	private Map<String, Integer> itemIdsByName;
+	private Set<String> strategiesPages;
 
 	VocabSnapshots(Http http, Gson gson, File cacheDir)
 	{
@@ -95,6 +96,23 @@ class VocabSnapshots
 				new TypeToken<Set<String>>() { }.getType());
 		}
 		return monsterNames;
+	}
+
+	/**
+	 * Exact wiki titles of every {Monster}/Strategies subpage that exists,
+	 * from the weekly snapshot's batch existence check. Lets the prefetcher
+	 * skip guaranteed-404 strategy fetches and advertise guide pages without
+	 * any live traffic. Callers must treat IOException as "index unknown"
+	 * and fall back to blind-fetch behavior, never as "page absent".
+	 */
+	synchronized Set<String> strategiesPages() throws IOException
+	{
+		if (strategiesPages == null)
+		{
+			strategiesPages = gson.fromJson(snapshot("strategies.json"),
+				new TypeToken<Set<String>>() { }.getType());
+		}
+		return strategiesPages;
 	}
 
 	/**

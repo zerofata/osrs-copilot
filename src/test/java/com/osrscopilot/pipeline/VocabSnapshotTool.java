@@ -56,10 +56,14 @@ public final class VocabSnapshotTool
 
 		// Thresholds are ~85% of the live counts measured 2026-08-16
 		// (mapping 4652, monsters 1617, items 11432, locations 895,
-		// wordlist 10000). These datasets only ever grow with game updates;
-		// a dip below means the query broke, not the game shrank.
+		// wordlist 10000; strategy subpages 79 measured 2026-08-19). These
+		// datasets only ever grow with game updates; a dip below means the
+		// query broke, not the game shrank.
 		tool.write(outDir, "ge_mapping.json", tool.geMapping(), 4000, "GE mapping entries");
-		tool.write(outDir, "monsters_v2.json", tool.monsterNames(), 1400, "monster names");
+		Set<String> monsters = tool.monsterNameSet();
+		tool.write(outDir, "monsters_v2.json",
+			new Sized(gson.toJson(monsters), monsters.size()), 1400, "monster names");
+		tool.write(outDir, "strategies.json", tool.strategiesIndex(monsters), 65, "strategy subpages");
 		tool.write(outDir, "items.json", tool.itemIndex(), 10000, "item index rows");
 		tool.write(outDir, "locations-v2.json", tool.locationIndex(), 750, "location points");
 		tool.write(outDir, "english_10k.txt", tool.wordlist(), 9000, "wordlist lines");
@@ -117,7 +121,7 @@ public final class VocabSnapshotTool
 	 * casing surprises. Paginated defensively: the bucket fits in one page
 	 * today (~1.6k unique names), but versioned monsters multiply rows and
 	 * nothing warns when a dataset outgrows a single request. */
-	private Sized monsterNames() throws IOException
+	private Set<String> monsterNameSet() throws IOException
 	{
 		Set<String> names = new TreeSet<>();
 		for (int offset = 0; offset < 100_000; offset += 5000)
@@ -148,7 +152,50 @@ public final class VocabSnapshotTool
 				break;
 			}
 		}
-		return new Sized(gson.toJson(names), names.size());
+		return names;
+	}
+
+	/**
+	 * Which {Monster}/Strategies subpages exist, batch-checked 50 titles per
+	 * request (~35 requests, weekly, on the CI runner -- never on clients).
+	 * Clients use the index to skip guaranteed-404 strategy fetches and to
+	 * advertise existing guide pages at zero request cost. Redirect titles
+	 * count as existing: fetching one lands on strategy content.
+	 */
+	private Sized strategiesIndex(Set<String> monsterNames) throws IOException
+	{
+		Set<String> exists = new TreeSet<>();
+		List<String> batch = new ArrayList<>(50);
+		for (String name : monsterNames)
+		{
+			batch.add(name + "/Strategies");
+			if (batch.size() == 50)
+			{
+				addExisting(batch, exists);
+				batch.clear();
+			}
+		}
+		if (!batch.isEmpty())
+		{
+			addExisting(batch, exists);
+		}
+		return new Sized(gson.toJson(exists), exists.size());
+	}
+
+	/** Adds the titles in the batch that exist on the wiki to out. */
+	private void addExisting(List<String> titles, Set<String> out) throws IOException
+	{
+		JsonObject r = http.getJson(WIKI_API + "?action=query&format=json&titles="
+			+ Http.enc(String.join("|", titles)));
+		JsonObject pages = r.getAsJsonObject("query").getAsJsonObject("pages");
+		for (String pageId : pages.keySet())
+		{
+			JsonObject p = pages.getAsJsonObject(pageId);
+			if (!p.has("missing"))
+			{
+				out.add(p.get("title").getAsString());
+			}
+		}
 	}
 
 	/** Every item as {item name (per version), canonical page} from the item

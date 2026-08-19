@@ -241,6 +241,121 @@ public class PrefetcherTest
 			added.get(0).contains("NOT OWNED (verified absent at capture): Prayer potion"));
 	}
 
+	// --- strategies index: skip dead subpage fetches, advertise live ones ---
+
+	/** WikiApi with a canned strategies index (null = index unavailable);
+	 * records every page title requested. */
+	private static WikiApi strategiesWiki(List<String> fetched, java.util.Set<String> index)
+	{
+		return new WikiApi(null, new Gson(), new File("build/tmp"))
+		{
+			@Override
+			java.util.Set<String> strategiesPages() throws java.io.IOException
+			{
+				if (index == null)
+				{
+					throw new java.io.IOException("snapshot unavailable");
+				}
+				return index;
+			}
+
+			@Override
+			Map<String, Object> monsterInfo(String name)
+			{
+				Map<String, Object> info = new LinkedHashMap<>();
+				info.put("name", name);
+				return info;
+			}
+
+			@Override
+			String page(String title)
+			{
+				fetched.add(title);
+				return index != null && index.contains(title) ? "Guide: " + title : null;
+			}
+
+			@Override
+			String page(String title, int charLimit)
+			{
+				fetched.add(title);
+				return "Article: " + title;
+			}
+
+			@Override
+			String sectionByHeading(String title, java.util.regex.Pattern heading, int charLimit)
+			{
+				return null;
+			}
+		};
+	}
+
+	private static List<String> prefetchMonsterRoute(WikiApi wiki, String monster,
+		String... needs)
+	{
+		CopilotPipeline.Route route = new CopilotPipeline.Route();
+		route.entities = new EntityResolver.Resolution();
+		route.entities.monsters.add(monster);
+		route.needs = List.of(needs);
+		route.facilityPages = List.of();
+		return new Prefetcher(wiki, new Gson())
+			.prefetch(route, new GameCapture(), Map.of(), Map.of(), true);
+	}
+
+	@Test
+	public void indexedDeadStrategySubpageIsNeverFetched()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched, java.util.Set.of("Vorkath/Strategies"));
+		List<String> facts = prefetchMonsterRoute(wiki, "Bloodveld", Router.NEED_STRATEGY);
+		assertFalse("the index says Bloodveld has no guide; a live 404 is the old behavior",
+			fetched.contains("Bloodveld/Strategies"));
+		assertTrue("the main-page strategy fallback must still arrive",
+			facts.stream().anyMatch(f -> f.startsWith("### Page: Bloodveld")));
+	}
+
+	@Test
+	public void indexedLiveStrategySubpageStillFetches()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched, java.util.Set.of("Vorkath/Strategies"));
+		List<String> facts = prefetchMonsterRoute(wiki, "Vorkath", Router.NEED_STRATEGY);
+		assertTrue(fetched.contains("Vorkath/Strategies"));
+		assertTrue(facts.stream().anyMatch(f -> f.startsWith("### Strategy: Vorkath")));
+	}
+
+	@Test
+	public void unavailableIndexKeepsBlindFetchBehavior()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched, null);
+		prefetchMonsterRoute(wiki, "Bloodveld", Router.NEED_STRATEGY);
+		assertTrue("index unknown must mean try-fetch, never assume absent",
+			fetched.contains("Bloodveld/Strategies"));
+	}
+
+	@Test
+	public void guidePageIsAdvertisedWhenStrategyIsNotNeeded()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched, java.util.Set.of("Vorkath/Strategies"));
+		List<String> facts = prefetchMonsterRoute(wiki, "Vorkath");
+		String info = facts.stream()
+			.filter(f -> f.startsWith("### Monster info: Vorkath")).findFirst().orElse("");
+		assertTrue("the model must learn the guide exists at zero request cost",
+			info.contains("strategy_guide_page") && info.contains("Vorkath/Strategies"));
+		assertFalse("advertising must not fetch anything",
+			fetched.contains("Vorkath/Strategies"));
+	}
+
+	@Test
+	public void noGuideAdvertisedWhenNoneExists()
+	{
+		List<String> fetched = new ArrayList<>();
+		WikiApi wiki = strategiesWiki(fetched, java.util.Set.of("Vorkath/Strategies"));
+		List<String> facts = prefetchMonsterRoute(wiki, "Bloodveld");
+		assertFalse(facts.stream().anyMatch(f -> f.contains("strategy_guide_page")));
+	}
+
 	// --- sourcePage: which wiki page a fact title credits ---
 
 	@Test

@@ -66,6 +66,11 @@ public class WikiApi
 		return vocab.monsterNames();
 	}
 
+	Set<String> strategiesPages() throws IOException
+	{
+		return vocab.strategiesPages();
+	}
+
 	public List<String[]> allItemNames() throws IOException
 	{
 		return vocab.allItemNames();

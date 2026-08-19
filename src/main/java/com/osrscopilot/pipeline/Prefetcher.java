@@ -70,15 +70,32 @@ class Prefetcher
 		// Core bundle: monster info always; extras per needs.
 		for (String monster : limit(ents.monsters, 3))
 		{
-			addFact(facts, "Monster info: " + monster, wiki.monsterInfo(monster));
+			boolean strategyNeeded = needs.contains(Router.NEED_STRATEGY)
+				|| needs.contains(Router.NEED_MECHANICS);
+			Map<String, Object> info = wiki.monsterInfo(monster);
+			// When strategy is NOT part of this route but a guide subpage
+			// exists, say so on the monster fact: the model can wiki_page it
+			// if the conversation turns that way -- the same affordance as
+			// the [Sections: ...] TOC line, at zero request cost.
+			if (!strategyNeeded && info != null && !info.containsKey("error")
+				&& Boolean.TRUE.equals(hasStrategiesPage(monster)))
+			{
+				info.put("strategy_guide_page", monster + "/Strategies");
+			}
+			addFact(facts, "Monster info: " + monster, info);
 			if (needs.contains(Router.NEED_DROP_TABLE) || needs.contains(Router.NEED_PRICES))
 			{
 				addFact(facts, "Drop table: " + monster, wiki.monsterDrops(monster));
 			}
-			if (needs.contains(Router.NEED_STRATEGY) || needs.contains(Router.NEED_MECHANICS))
+			if (strategyNeeded)
 			{
 				String strategyPage = monster + "/Strategies";
-				String text = wiki.page(strategyPage);
+				// The snapshot index knows which guide subpages exist, so a
+				// monster without one (Bloodveld) skips straight to the main
+				// page instead of 404ing against the live wiki first. Index
+				// unavailable -> blind fetch, exactly the old behavior.
+				String text = Boolean.FALSE.equals(hasStrategiesPage(monster))
+					? null : wiki.page(strategyPage);
 				String label = "Strategy: " + monster;
 				if (text == null)
 				{
@@ -218,6 +235,25 @@ class Prefetcher
 			}
 		}
 		return facts;
+	}
+
+	/**
+	 * Whether {monster}/Strategies exists per the snapshot index: TRUE,
+	 * FALSE, or null when the index is unavailable or stale-and-missing --
+	 * callers must treat null as "unknown" and keep blind-fetch behavior,
+	 * never as "absent".
+	 */
+	private Boolean hasStrategiesPage(String monster)
+	{
+		try
+		{
+			return wiki.strategiesPages().contains(monster + "/Strategies");
+		}
+		catch (Exception e)
+		{
+			log.debug("strategies index unavailable; keeping blind-fetch behavior", e);
+			return null;
+		}
 	}
 
 	/**
