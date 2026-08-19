@@ -132,9 +132,11 @@ ASSERT {"items": ["Rune essence"], "not_facilities": ["Bank"], "not_needs": ["tr
 Optimal setup to use for tormented demons if I'm willing to spend 20m (not on consumables though)
 ASSERT {"monsters": ["Tormented Demon"], "not_pages": ["Consumables"]}
 
-# "Without a <thing>" excludes the thing, keeps the subject.
+# "Without a <thing>" excludes the thing, keeps the subject. A resolved
+# monster plus a fight verb is fight intent even with no "how to" frame,
+# so this route now also carries strategy facts.
 can i kill vorkath without a shield
-ASSERT {"monsters": ["Vorkath"], "not_pages": ["Shield"], "not_items": ["Shield"]}
+ASSERT {"monsters": ["Vorkath"], "not_pages": ["Shield"], "not_items": ["Shield"], "needs": ["strategy", "mechanics"]}
 
 # Absence-talk is not exclusion: a content word between the cue and the
 # mention breaks the negation, and the entity's facts are still wanted.

@@ -79,21 +79,48 @@ class Router
 	static final String NEED_TRANSPORT = "transport";
 	static final String NEED_RECENT_EVENTS = "recent_events";
 
+	// Shared phrasing frames and verb lexicons. Every rule that hand-rolled
+	// its own pronoun frame ("how to kill" but not "how do i defeat") was a
+	// brittleness bug waiting for a phrasing it hadn't met; declaring the
+	// frames once means a newly discovered variant fixes every rule at once.
+	/** "how to / how do i / how can you / how should we ..." */
+	static final String HOW = "how (to|do (i|you|we)|can (i|you|we)|should (i|we)|would (i|you|we))";
+	/** "where" including the contraction-less "wheres". */
+	static final String WHERE = "where('?s)?";
+	/** Fight verbs, inflection-tolerant (kills, killed, fighting, fought...). */
+	static final String FIGHT_VERB = "(kill|beat|fight|fought|defeat|solo)(s|t?ed|ing)?";
+	/** Obtain verbs, inflection-tolerant (gets, getting, made, crafting...). */
+	static final String OBTAIN_VERB = "(get(s|ting)?|got|buy(s|ing)?|bought|find(s|ing)?|found"
+		+ "|mak(e|es|ing)|made|craft(s|ed|ing)?|obtain(s|ed|ing|able)?|farm(s|ed|ing|able)?)";
+
+	/** Fires only when a monster resolved: a named monster plus a fight verb
+	 * anywhere is near-certain fight intent, no frame required ("can i kill
+	 * vorkath without a shield"). */
+	private static final Pattern FIGHT_VERB_ANYWHERE =
+		Pattern.compile("\\b" + FIGHT_VERB + "\\b");
+
+	/** Fires only when an item resolved: the composite acquisition fact is
+	 * small, so a false positive costs little. */
+	private static final Pattern OBTAIN_VERB_ANYWHERE =
+		Pattern.compile("\\b" + OBTAIN_VERB + "\\b");
+
 	/** Needs are EXTRAS on top of each entity's core bundle, never the only
 	 * path to essential facts. */
 	private static final Object[][] NEED_RULES = {
 		{Pattern.compile("\\b(price|cost|how much|value|alch|sell)\\b"), new String[]{NEED_PRICES}},
 		{Pattern.compile("\\bworth (doing|it|killing|farming)\\b"), new String[]{NEED_DROP_TABLE, NEED_PRICES, NEED_STRATEGY}},
-		{Pattern.compile("\\b(where|how) (do|can|to|i)\\b.*\\b(get|find|make|obtain|farm)\\b"), new String[]{NEED_ITEM_SOURCES}},
-		{Pattern.compile("\\b(quickest|fastest|easiest|best) way\\b.*\\b(get|make|obtain)\\b"), new String[]{NEED_ITEM_SOURCES}},
+		{Pattern.compile("\\b(" + WHERE + "|" + HOW + ")\\b.*\\b" + OBTAIN_VERB + "\\b"),
+			new String[]{NEED_ITEM_SOURCES}},
+		{Pattern.compile("\\b(quickest|fastest|easiest|best) (way|place|method)\\b.*\\b" + OBTAIN_VERB + "\\b"),
+			new String[]{NEED_ITEM_SOURCES}},
 		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring))\\b"), new String[]{NEED_STRATEGY}},
-		{Pattern.compile("\\b(strategy|safespot|(how (to|do i|do you|can i|should i)|best way to) "
-			+ "(kill|beat|fight|defeat))\\b"), new String[]{NEED_STRATEGY, NEED_MECHANICS}},
+		{Pattern.compile("\\b(strategy|safespot|(" + HOW + "|best way to) " + FIGHT_VERB + ")\\b"),
+			new String[]{NEED_STRATEGY, NEED_MECHANICS}},
 		{Pattern.compile("\\b(afk|aggro|mechanic|spawn|attack style|weakness)\\b"), new String[]{NEED_MECHANICS}},
 		{Pattern.compile("\\b(level|xp|experience)\\b"), new String[]{NEED_XP_MATH}},
 		{Pattern.compile("\\btrain(ing)?\\b|\\blevell?ing\\b"), new String[]{NEED_TRAINING}},
 		{Pattern.compile("\\b(drop|dropped|loot)\\b"), new String[]{NEED_DROP_TABLE}},
-		{Pattern.compile("\\b(fastest|quickest|best) way\\b|\\bhow (do i|to|can i) (get|travel) to\\b|\\broute to\\b"),
+		{Pattern.compile("\\b(fastest|quickest|best) way\\b|\\b" + HOW + " (get|travel) to\\b|\\broute to\\b"),
 			new String[]{NEED_TRANSPORT}},
 	};
 
@@ -141,7 +168,8 @@ class Router
 			mergeMissing(previous.pages, r.entities.pages);
 		}
 		r.hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
-		r.needs = classifyNeeds(question, r.hasEvents);
+		r.needs = classifyNeeds(question, r.hasEvents,
+			!r.entities.monsters.isEmpty(), !r.entities.items.isEmpty());
 		// Cross-check needs against entities: transport means "how do I get
 		// THERE" and is meaningless without a resolved destination ("best way
 		// to train smithing" must not route as travel).
@@ -187,7 +215,14 @@ class Router
 		}
 	}
 
-	private static List<String> classifyNeeds(String question, boolean hasEvents)
+	/**
+	 * Pure needs classification: question text plus entity-kind flags in,
+	 * needs out. No network, no game state beyond the flags -- which is what
+	 * makes it table-testable across a phrasing corpus (RouterPhrasingTest)
+	 * without standing up the resolver.
+	 */
+	static List<String> classifyNeeds(String question, boolean hasEvents,
+		boolean monsterResolved, boolean itemResolved)
 	{
 		String ql = question.toLowerCase(Locale.ROOT);
 		List<String> needs = new ArrayList<>();
@@ -204,12 +239,32 @@ class Router
 				}
 			}
 		}
+		// Entity-conditioned rules: a resolved entity makes the intent
+		// near-certain even without a question frame ("can i kill vorkath
+		// without a shield" has no "how to" but is unmistakably fight prep).
+		if (monsterResolved && FIGHT_VERB_ANYWHERE.matcher(ql).find())
+		{
+			addMissing(needs, NEED_STRATEGY);
+			addMissing(needs, NEED_MECHANICS);
+		}
+		if (itemResolved && OBTAIN_VERB_ANYWHERE.matcher(ql).find())
+		{
+			addMissing(needs, NEED_ITEM_SOURCES);
+		}
 		if (hasEvents && (Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b")
 			.matcher(ql).find() || ql.contains("whats this") || ql.contains("what's this")))
 		{
 			needs.add(NEED_RECENT_EVENTS);
 		}
 		return needs;
+	}
+
+	private static void addMissing(List<String> needs, String need)
+	{
+		if (!needs.contains(need))
+		{
+			needs.add(need);
+		}
 	}
 
 	/** Facility intents matched in the question (routing only, no fetching). */
