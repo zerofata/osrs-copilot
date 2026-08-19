@@ -21,3 +21,8 @@ ASSERT {"monsters": ["Vorkath"], "facts": ["Monster info: Vorkath", "Strategy: V
 # the Slayer skill.
 Can I start Dragon Slayer?
 ASSERT {"quests": ["Dragon Slayer I"], "facts": ["Quest requirements: Dragon Slayer I"]}
+
+# Activity-page loot section (the lead extract ends before drop rates;
+# The Gauntlet's loot table is ~17k bytes into the page).
+wahts the normal kc you need for cg?
+ASSERT {"pages": ["The Gauntlet"], "needs": ["drop_table"], "facts": ["Loot table: The Gauntlet"]}

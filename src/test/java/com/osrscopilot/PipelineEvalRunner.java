@@ -172,6 +172,8 @@ public class PipelineEvalRunner
 			// Follow-ups inherit the previous turn's entities, as in-game.
 			EntityResolver.Resolution prev = history.isEmpty() ? null
 				: history.get(history.size() - 1).entities;
+			String prevQuestion = history.isEmpty() ? null
+				: history.get(history.size() - 1).question;
 
 			CopilotPipeline.Route route;
 			CopilotPipeline.Result result = null;
@@ -179,7 +181,7 @@ public class PipelineEvalRunner
 			{
 				if (routeOnly)
 				{
-					route = pipeline.route(item.question, cap, prev);
+					route = pipeline.route(item.question, cap, prev, prevQuestion);
 					history.add(new CopilotPipeline.Exchange(item.question,
 						item.answer != null ? item.answer : "",
 						seededSubject(pipeline, route, item, cap)));
@@ -188,7 +190,8 @@ public class PipelineEvalRunner
 				{
 					// Retrieval without synthesis: shows exactly what the model
 					// would be given, at zero LLM cost.
-					CopilotPipeline.Prepared prepared = pipeline.prepare(item.question, cap, prev);
+					CopilotPipeline.Prepared prepared = pipeline.prepare(
+						item.question, cap, prev, prevQuestion);
 					route = prepared.route;
 					history.add(new CopilotPipeline.Exchange(item.question,
 						item.answer != null ? item.answer : "",

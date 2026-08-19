@@ -41,9 +41,16 @@ ASSERT {"monsters": ["King Black Dragon"], "needs": ["strategy", "mechanics"]}
 
 # Two-letter slang resolves through wiki redirects; a three-char length
 # floor once made "cg" invisible, so such questions dragged the previous
-# turn's subject along instead of resolving their own.
+# turn's subject along instead of resolving their own. "kc" is a need
+# (drop rates), not the Kill count mechanic page.
 wahts the normal kc you need for cg?
-ASSERT {"pages": ["The Gauntlet"]}
+ASSERT {"pages": ["The Gauntlet"], "needs": ["drop_table"], "not_pages": ["Kill count"]}
+
+# Isolated "ca" is Combat Achievements. Coordinated with an item
+# ("bowfa and ca") it is Crystal armour -- the wiki redirect is the
+# achievements hub either way.
+does vorkath have any ca I should do
+ASSERT {"pages": ["Combat Achievements"], "monsters": ["Vorkath"], "not_pages": ["Crystal equipment"]}
 
 # Untradeables resolve as items via the item infobox index; the GE catalogue
 # never lists them.

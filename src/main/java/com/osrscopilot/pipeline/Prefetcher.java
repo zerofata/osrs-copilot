@@ -51,6 +51,10 @@ class Prefetcher
 	private static final Pattern EQUIPMENT_HEADING =
 		Pattern.compile("(?i)\\b(equipment|gear|setups?|loadout)\\b");
 
+	/** Activity pages keep drop rates in a loot table, not in the lead. */
+	private static final Pattern LOOT_HEADING =
+		Pattern.compile("(?i)loot table|unique rewards|\\bdrops\\b");
+
 	private final WikiApi wiki;
 	private final Gson gson;
 
@@ -166,6 +170,11 @@ class Prefetcher
 			// Untradeable equipment (Arclight, Emberlight, barrows gloves...)
 			// resolves as a page, not an item -- it still has an infobox.
 			addFact(facts, "Equipment stats: " + page, wiki.itemStats(page));
+			if (needs.contains(Router.NEED_DROP_TABLE))
+			{
+				addFact(facts, "Loot table: " + page,
+					wiki.sectionByHeading(page, LOOT_HEADING, EQUIPMENT_CHAR_LIMIT));
+			}
 			if (needs.contains(Router.NEED_TRANSPORT))
 			{
 				addTravelFact(facts, page);
