@@ -41,9 +41,17 @@ ASSERT {"monsters": ["King Black Dragon"], "needs": ["strategy", "mechanics"]}
 
 # Two-letter slang resolves through wiki redirects; a three-char length
 # floor once made "cg" invisible, so such questions dragged the previous
-# turn's subject along instead of resolving their own.
+# turn's subject along instead of resolving their own. "kc" redirects to
+# the Kill count glossary page, which is noise next to a real subject.
 wahts the normal kc you need for cg?
-ASSERT {"pages": ["The Gauntlet"]}
+ASSERT {"pages": ["The Gauntlet"], "not_pages": ["Kill count"]}
+
+on average, how many kc needed for corrupted gauntlet?
+ASSERT {"pages": ["The Gauntlet"], "not_pages": ["Kill count"]}
+
+# A glossary page IS the subject when nothing else resolves.
+what does kc mean
+ASSERT {"pages": ["Kill count"]}
 
 # Untradeables resolve as items via the item infobox index; the GE catalogue
 # never lists them.

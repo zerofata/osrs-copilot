@@ -302,7 +302,28 @@ public class EntityResolver
 			String pl = p.toLowerCase(Locale.ROOT);
 			return allNames.stream().anyMatch(other -> !pl.equals(other) && other.contains(pl));
 		});
+		// Glossary pages define a term ("kc" redirects to Kill count). The
+		// definition is the subject only when nothing else resolved; next
+		// to a real subject ("kc for corrupted gauntlet") it is noise in a
+		// page slot the subject may need.
+		if (hasSubjectBesides(result, GLOSSARY_PAGES))
+		{
+			result.pages.removeIf(GLOSSARY_PAGES::contains);
+		}
 		return result;
+	}
+
+	private static final Set<String> GLOSSARY_PAGES =
+		new HashSet<>(Arrays.asList("Kill count", "Drop rate"));
+
+	private static boolean hasSubjectBesides(Resolution result, Set<String> ignoredPages)
+	{
+		if (!result.items.isEmpty() || !result.monsters.isEmpty()
+			|| !result.quests.isEmpty() || !result.skills.isEmpty())
+		{
+			return true;
+		}
+		return result.pages.stream().anyMatch(p -> !ignoredPages.contains(p));
 	}
 
 	/** Exclusion cues. "not" covers "not on X" / "not X"; the rest are the
