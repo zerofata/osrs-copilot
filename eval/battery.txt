@@ -39,6 +39,12 @@ ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"]}
 Best strategy for kbd
 ASSERT {"monsters": ["King Black Dragon"], "needs": ["strategy", "mechanics"]}
 
+# "how do i defeat" once missed the strategy rule (it required "how to
+# kill/beat/fight"), so the fight routed with no strategy or equipment
+# facts and gear advice degraded to guesswork.
+How do i defeat the phantom muspah?
+ASSERT {"monsters": ["Phantom Muspah"], "needs": ["strategy", "mechanics"]}
+
 # Two-letter slang resolves through wiki redirects; a three-char length
 # floor once made "cg" invisible, so such questions dragged the previous
 # turn's subject along instead of resolving their own. "kc" redirects to

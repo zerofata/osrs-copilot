@@ -87,7 +87,8 @@ class Router
 		{Pattern.compile("\\b(where|how) (do|can|to|i)\\b.*\\b(get|find|make|obtain|farm)\\b"), new String[]{NEED_ITEM_SOURCES}},
 		{Pattern.compile("\\b(quickest|fastest|easiest|best) way\\b.*\\b(get|make|obtain)\\b"), new String[]{NEED_ITEM_SOURCES}},
 		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring))\\b"), new String[]{NEED_STRATEGY}},
-		{Pattern.compile("\\b(strategy|safespot|(how|best way) to (kill|beat|fight))\\b"), new String[]{NEED_STRATEGY, NEED_MECHANICS}},
+		{Pattern.compile("\\b(strategy|safespot|(how (to|do i|do you|can i|should i)|best way to) "
+			+ "(kill|beat|fight|defeat))\\b"), new String[]{NEED_STRATEGY, NEED_MECHANICS}},
 		{Pattern.compile("\\b(afk|aggro|mechanic|spawn|attack style|weakness)\\b"), new String[]{NEED_MECHANICS}},
 		{Pattern.compile("\\b(level|xp|experience)\\b"), new String[]{NEED_XP_MATH}},
 		{Pattern.compile("\\btrain(ing)?\\b|\\blevell?ing\\b"), new String[]{NEED_TRAINING}},
