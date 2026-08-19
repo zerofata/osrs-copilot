@@ -83,9 +83,20 @@ ASSERT {"pages": ["Farming runs"], "not_items": ["Magic secateurs", "Lunar staff
 
 # A follow-up that restates the activity in its own words ("tree route")
 # routes the guide page itself instead of inheriting the previous answer's
-# supporting cast.
+# supporting cast. "Ah" must stay an interjection (the wiki redirects it
+# to Alchemical Hydra).
 Can you orchestrate a farming run for me
 ASSERT {"pages": ["Farming runs"]}
 ANSWER Here's your farming run plan.\n- Magic secateurs (equip when harvesting)\n- Lunar staff for fairy rings\n- Ring of dueling(5) for banking\n1. Trollheim herb patch (Eadgar's Ruse done): plant Dwarf weed.
 > Ah I meant a tree route specifically
-ASSERT {"pages": ["Farming runs"], "not_items": ["Magic secateurs", "Lunar staff", "Ring of dueling"], "not_quests": ["Eadgar's Ruse"]}
+ASSERT {"pages": ["Farming runs"], "not_items": ["Magic secateurs", "Lunar staff", "Ring of dueling"], "not_quests": ["Eadgar's Ruse"], "not_monsters": ["Alchemical Hydra"]}
+
+# Two-letter slang ("cg") is this turn's own subject: nothing farming
+# inherits into it. The correction after it points back with "i mean",
+# keeping that subject while resolving its own entities ("bowfa", "ca").
+can you give me a step by step optimal tree farming route?
+ASSERT {"pages": ["Farming runs"]}
+> wahts the normal kc you need for cg?
+ASSERT {"pages": ["The Gauntlet"], "not_pages": ["Farming runs"], "not_quests": ["My Arm's Big Adventure"]}
+> i mean for bowfa and ca
+ASSERT {"items": ["Bow of Faerdhinen"], "pages": ["Combat Achievements", "The Gauntlet"]}

@@ -67,6 +67,13 @@ public class EntityResolver
 		+ "if while during until when where what whats what's how why which who whose "
 		+ "and or nor but not no yes vs versus "
 		+ "of in on at to from into onto with without for by about than then as "
+		// Apostrophe-less contractions and interjections: typed constantly,
+		// and some have real wiki redirects ("Im" -> Ironman Mode, "Ah" ->
+		// Alchemical Hydra) that would hijack the redirect pass.
+		+ "im ive id ill youre ur hes shes theyre weve youve "
+		+ "dont doesnt didnt isnt arent wasnt werent cant wont couldnt "
+		+ "wouldnt shouldnt havent hasnt hadnt "
+		+ "ah hm hmm eh oh ok okay um uh huh hey yo "
 		// "nearest"/"closest" belong here, not just STOPWORDS: the wiki
 		// redirects "Nearest bank" to its "Closest..." navigation page, so
 		// the two-word span leaks through content counting. No real entity
@@ -201,7 +208,11 @@ public class EntityResolver
 					continue;
 				}
 				String gram = String.join(" ", Arrays.copyOfRange(tokens, i, i + size));
-				if (size == 1 && (STOPWORDS.contains(gram) || gram.length() < 3))
+				// Single letters are noise; two-letter slang is real and
+				// resolves through redirects ("cg", "kc") or skill aliases
+				// ("hp", "rc"). GRAMMAR and the digit guard keep chat
+				// shorthand and level numbers out of the redirect pass.
+				if (size == 1 && (STOPWORDS.contains(gram) || gram.length() < 2))
 				{
 					continue;
 				}
@@ -364,6 +375,21 @@ public class EntityResolver
 	{
 		if (size == 1)
 		{
+			// A bare number is a level or quantity, never a subject; the
+			// wiki redirects "99" to Skill mastery, which would pollute
+			// every level-target question.
+			if (gram.chars().allMatch(Character::isDigit))
+			{
+				return false;
+			}
+			// A two-letter token that survived the grammar/stopword filters
+			// is game slang ("cg", "ca") whatever a wordlist says -- real
+			// two-letter English in a question is function grammar. The
+			// dictionary gate below would shelve it on any follow-up.
+			if (gram.length() == 2)
+			{
+				return true;
+			}
 			if (!english.isEmpty() && english.contains(gram))
 			{
 				return !vocabHit && !STOPWORDS.contains(gram);

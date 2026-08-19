@@ -35,10 +35,12 @@ class Router
 
 	/** Words that point back at the conversation instead of standing alone.
 	 * Their presence means the previous turn's subject is still live and its
-	 * entities should carry into this turn's retrieval. */
+	 * entities should carry into this turn's retrieval. Corrections ("i
+	 * mean for bowfa") point back by nature: they restate the previous
+	 * question, so its subject must survive into this one. */
 	private static final Pattern ANAPHORIC = Pattern.compile(
 		"\\b(it|its|that|those|them|these|this|ones?|same|again|instead|"
-		+ "what about|how about|and if|what if)\\b");
+		+ "i meant?|what about|how about|and if|what if)\\b");
 
 	/** Diary tiers are a closed vocabulary; the match only applies when a
 	 * resolved page is a diary, so "hard" in other questions is inert. */

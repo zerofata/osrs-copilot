@@ -39,6 +39,12 @@ ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"]}
 Best strategy for kbd
 ASSERT {"monsters": ["King Black Dragon"], "needs": ["strategy", "mechanics"]}
 
+# Two-letter slang resolves through wiki redirects; a three-char length
+# floor once made "cg" invisible, so such questions dragged the previous
+# turn's subject along instead of resolving their own.
+wahts the normal kc you need for cg?
+ASSERT {"pages": ["The Gauntlet"]}
+
 # Untradeables resolve as items via the item infobox index; the GE catalogue
 # never lists them.
 how do i get a fire cape
@@ -61,8 +67,10 @@ ASSERT {"monsters": ["Dagannoth"], "needs": ["drop_table", "prices", "strategy"]
 How many bones do I need to bury for next prayer level
 ASSERT {"skills": ["Prayer"], "needs": ["xp_math"]}
 
+# "99" is a real wiki redirect (Skill mastery) but a bare number is a
+# level target, never a subject.
 whats the best way to train smithing to 99
-ASSERT {"skills": ["Smithing"], "needs": ["training"], "not_facilities": ["Anvil", "Furnace"], "not_needs": ["transport"]}
+ASSERT {"skills": ["Smithing"], "needs": ["training"], "not_facilities": ["Anvil", "Furnace"], "not_needs": ["transport"], "not_pages": ["Skill mastery"]}
 
 # Group-vs-solo etiquette resolves the place itself.
 do players normally group or solo gwd
