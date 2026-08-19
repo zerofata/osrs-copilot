@@ -93,12 +93,10 @@ ASSERT {"pages": ["Farming runs"], "not_items": ["Magic secateurs", "Lunar staff
 
 # Two-letter slang ("cg") is this turn's own subject: nothing farming
 # inherits into it. The correction after it points back with "i mean",
-# keeping that subject while resolving its own entities. "ca" next to
-# bowfa is Crystal armour, not Combat Achievements; the kc need carries
-# from the question being corrected.
+# keeping that subject while resolving its own entities ("bowfa", "ca").
 can you give me a step by step optimal tree farming route?
 ASSERT {"pages": ["Farming runs"]}
 > wahts the normal kc you need for cg?
-ASSERT {"pages": ["The Gauntlet"], "needs": ["drop_table"], "not_pages": ["Farming runs", "Kill count"], "not_quests": ["My Arm's Big Adventure"]}
+ASSERT {"pages": ["The Gauntlet"], "not_pages": ["Farming runs"], "not_quests": ["My Arm's Big Adventure"]}
 > i mean for bowfa and ca
-ASSERT {"items": ["Bow of Faerdhinen"], "pages": ["Crystal equipment", "The Gauntlet"], "needs": ["drop_table"], "not_pages": ["Combat Achievements"]}
+ASSERT {"items": ["Bow of Faerdhinen"], "pages": ["Combat Achievements", "The Gauntlet"]}

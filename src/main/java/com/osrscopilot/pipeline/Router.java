@@ -91,7 +91,7 @@ class Router
 		{Pattern.compile("\\b(afk|aggro|mechanic|spawn|attack style|weakness)\\b"), new String[]{NEED_MECHANICS}},
 		{Pattern.compile("\\b(level|xp|experience)\\b"), new String[]{NEED_XP_MATH}},
 		{Pattern.compile("\\btrain(ing)?\\b|\\blevell?ing\\b"), new String[]{NEED_TRAINING}},
-		{Pattern.compile("\\b(drop|dropped|loot|kc|kill counts?)\\b"), new String[]{NEED_DROP_TABLE}},
+		{Pattern.compile("\\b(drop|dropped|loot)\\b"), new String[]{NEED_DROP_TABLE}},
 		{Pattern.compile("\\b(fastest|quickest|best) way\\b|\\bhow (do i|to|can i) (get|travel) to\\b|\\broute to\\b"),
 			new String[]{NEED_TRANSPORT}},
 	};
@@ -105,12 +105,6 @@ class Router
 
 	CopilotPipeline.Route route(String question, GameCapture cap,
 		EntityResolver.Resolution previous) throws IOException
-	{
-		return route(question, cap, previous, null);
-	}
-
-	CopilotPipeline.Route route(String question, GameCapture cap,
-		EntityResolver.Resolution previous, String previousQuestion) throws IOException
 	{
 		CopilotPipeline.Route r = new CopilotPipeline.Route();
 		Set<String> questNames = cap.questStates != null ? cap.questStates.keySet() : Set.of();
@@ -147,19 +141,6 @@ class Router
 		}
 		r.hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
 		r.needs = classifyNeeds(question, r.hasEvents);
-		// A correction restates the previous question's intent ("kc for
-		// cg" / "i mean for bowfa"): its needs still apply.
-		if (previousQuestion != null && previous != null
-			&& ANAPHORIC.matcher(question.toLowerCase(Locale.ROOT)).find())
-		{
-			for (String need : classifyNeeds(previousQuestion, r.hasEvents))
-			{
-				if (!r.needs.contains(need))
-				{
-					r.needs.add(need);
-				}
-			}
-		}
 		// Cross-check needs against entities: transport means "how do I get
 		// THERE" and is meaningless without a resolved destination ("best way
 		// to train smithing" must not route as travel).

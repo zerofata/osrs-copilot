@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -303,48 +302,7 @@ public class EntityResolver
 			String pl = p.toLowerCase(Locale.ROOT);
 			return allNames.stream().anyMatch(other -> !pl.equals(other) && other.contains(pl));
 		});
-		// "ca" is a wiki homograph: Combat Achievements in isolation,
-		// Crystal armour when listed with an item ("bowfa and ca").
-		if (result.pages.contains("Combat Achievements") && !result.items.isEmpty()
-			&& CA_WITH_ITEM.matcher(norm(question)).find())
-		{
-			result.pages.remove("Combat Achievements");
-			if (!result.pages.contains("Crystal equipment"))
-			{
-				result.pages.add("Crystal equipment");
-			}
-		}
-		// Mechanic pages the wiki uses as slang targets ("kc" -> Kill count).
-		// They answer nothing once a real subject resolved, and they occupy
-		// a page slot the subject needs.
-		if (hasSubjectBesides(result, MECHANIC_PAGES))
-		{
-			result.pages.removeIf(MECHANIC_PAGES::contains);
-		}
 		return result;
-	}
-
-	private static final Pattern CA_WITH_ITEM =
-		Pattern.compile("\\b\\S+ and ca\\b|\\bca and \\S+\\b");
-
-	private static final Set<String> MECHANIC_PAGES =
-		new HashSet<>(Arrays.asList("Kill count", "Drop rate"));
-
-	private static boolean hasSubjectBesides(Resolution result, Set<String> ignorePages)
-	{
-		if (!result.items.isEmpty() || !result.monsters.isEmpty()
-			|| !result.quests.isEmpty() || !result.skills.isEmpty())
-		{
-			return true;
-		}
-		for (String page : result.pages)
-		{
-			if (!ignorePages.contains(page))
-			{
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/** Exclusion cues. "not" covers "not on X" / "not X"; the rest are the

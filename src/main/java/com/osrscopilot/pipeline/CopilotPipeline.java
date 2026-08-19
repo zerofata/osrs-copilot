@@ -172,13 +172,7 @@ public class CopilotPipeline
 	public Route route(String question, GameCapture cap, EntityResolver.Resolution previous)
 		throws IOException
 	{
-		return route(question, cap, previous, null);
-	}
-
-	public Route route(String question, GameCapture cap, EntityResolver.Resolution previous,
-		String previousQuestion) throws IOException
-	{
-		return router.route(question, cap, previous, previousQuestion);
+		return router.route(question, cap, previous);
 	}
 
 	/** The subject usually opens the answer ("Here's how to make your
@@ -308,14 +302,8 @@ public class CopilotPipeline
 	public Prepared prepare(String question, GameCapture cap, EntityResolver.Resolution previous)
 		throws IOException
 	{
-		return prepare(question, cap, previous, null);
-	}
-
-	public Prepared prepare(String question, GameCapture cap, EntityResolver.Resolution previous,
-		String previousQuestion) throws IOException
-	{
 		Prepared p = new Prepared();
-		p.route = route(question, cap, previous, previousQuestion);
+		p.route = route(question, cap, previous);
 		p.ownedIndex = Ownership.buildIndex(cap);
 		p.ownedNames = Ownership.buildNames(cap);
 		p.bankInlined = !"summarized".equals(p.route.bankMode);
@@ -376,9 +364,7 @@ public class CopilotPipeline
 
 		Exchange last = history != null && !history.isEmpty()
 			? history.get(history.size() - 1) : null;
-		Prepared prepared = prepare(question, cap,
-			last != null ? last.entities : null,
-			last != null ? last.question : null);
+		Prepared prepared = prepare(question, cap, last != null ? last.entities : null);
 		Route route = prepared.route;
 		String userMessage = prepared.prompt;
 
