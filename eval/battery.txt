@@ -142,12 +142,20 @@ ASSERT {"items": ["Scorching bow"]}
 # --- Activity intents ---
 
 # Run planning names an activity, not an entity; the guide page carries
-# the routes and patch lists.
+# the routes, the patch-locations page the per-patch table.
 Can you orchestrate a farming run for me
-ASSERT {"pages": ["Farming runs"]}
+ASSERT {"pages": ["Farming runs", "Farming/Patch locations"]}
 
 whats a good herb run route
-ASSERT {"pages": ["Farming runs"]}
+ASSERT {"pages": ["Farming runs", "Farming/Patch locations"]}
+
+# The gate requires a farming noun: birdhouse runs are Hunter, and "run"
+# as a bare verb is not an activity.
+whens my next birdhouse run
+ASSERT {"not_pages": ["Farming runs", "Farming/Patch locations"]}
+
+do i need to run stamina potions for vorkath?
+ASSERT {"monsters": ["Vorkath"], "not_pages": ["Farming runs", "Farming/Patch locations"]}
 
 # --- Slayer task reference ---
 

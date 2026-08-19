@@ -282,7 +282,9 @@ class WikiContent
 					+ "&redirects=1&page=" + Http.enc(title) + "&section=" + s.get("index").getAsString());
 				String text = sec.getAsJsonObject("parse").getAsJsonObject("wikitext")
 					.get("*").getAsString();
-				return truncate(text, charLimit);
+				return text.length() > charLimit
+					? text.substring(0, charLimit) + "\n[Section truncated at budget.]"
+					: text;
 			}
 		}
 		catch (Exception e)
@@ -342,7 +344,7 @@ class WikiContent
 	private String withQuerySections(String title, String text, int charLimit)
 	{
 		boolean present = text.contains(USED_IN_REC_EQUIP);
-		String out = truncate(text, charLimit);
+		String out = truncateNoted(text, charLimit);
 		if (!present)
 		{
 			return out;
@@ -428,5 +430,41 @@ class WikiContent
 	private static String truncate(String s, int limit)
 	{
 		return s.length() > limit ? s.substring(0, limit) : s;
+	}
+
+	/** Section headings in both plaintext extracts and raw wikitext
+	 * ("== Loot table ==", "==== Weapons ===="). */
+	private static final Pattern SECTION_HEADING =
+		Pattern.compile("(?m)^=+ *([^=\\n]+?) *=+ *$");
+
+	/**
+	 * Truncation that admits it: the note names the section headings lost
+	 * to the cut so the model can fetch one through wiki_page's "section"
+	 * argument. A silent cut reads as a complete page and turns missing
+	 * content into "the wiki doesn't say" (The Gauntlet's extract is 11.4k
+	 * chars; its Loot table and Combat Achievements sections both sat past
+	 * the 7k budget).
+	 */
+	static String truncateNoted(String s, int limit)
+	{
+		if (s.length() <= limit)
+		{
+			return s;
+		}
+		List<String> dropped = new ArrayList<>();
+		Matcher m = SECTION_HEADING.matcher(s.substring(limit));
+		while (m.find() && dropped.size() < 12)
+		{
+			String heading = m.group(1).trim();
+			if (!dropped.contains(heading))
+			{
+				dropped.add(heading);
+			}
+		}
+		return s.substring(0, limit) + (dropped.isEmpty()
+			? "\n\n[Page truncated at budget.]"
+			: "\n\n[Page truncated at budget. Sections not shown: "
+				+ String.join("; ", dropped)
+				+ ". Fetch one via wiki_page with the \"section\" argument.]");
 	}
 }

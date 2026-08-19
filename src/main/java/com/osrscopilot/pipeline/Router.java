@@ -48,10 +48,15 @@ class Router
 		Pattern.compile("\\b(easy|medium|hard|elite)\\b", Pattern.CASE_INSENSITIVE);
 
 	/** Run planning ("herb run", "tree route") names an activity, not an
-	 * entity the resolver can find; the wiki's guide page carries the
-	 * routes, patch lists, and teleports such an answer is built from. */
+	 * entity the resolver can find; the guide page carries the routes and
+	 * the patch-locations page the per-patch table a route is built from.
+	 * The leading farming noun is required, so "birdhouse run" (Hunter)
+	 * and "do I need to run" (a verb) stay out. */
 	private static final Pattern FARMING_RUN = Pattern.compile(
 		"\\b(farm(ing)?|herb|tree|fruit tree|allotment|flower) (runs?|routes?)\\b");
+
+	private static final List<String> FARMING_RUN_PAGES =
+		List.of("Farming runs", "Farming/Patch locations");
 
 	static final Object[][] FACILITY_RULES = {
 		{Pattern.compile("\\b(pray(er)?|altar)\\b"), "Altar"},
@@ -118,10 +123,15 @@ class Router
 			resolver.resolveInto(String.valueOf(cap.slayerTask.get("creature")),
 				questNames, r.entities);
 		}
-		if (FARMING_RUN.matcher(question.toLowerCase(Locale.ROOT)).find()
-			&& !r.entities.pages.contains("Farming runs"))
+		if (FARMING_RUN.matcher(question.toLowerCase(Locale.ROOT)).find())
 		{
-			r.entities.pages.add("Farming runs");
+			for (String page : FARMING_RUN_PAGES)
+			{
+				if (!r.entities.pages.contains(page))
+				{
+					r.entities.pages.add(page);
+				}
+			}
 		}
 		// A follow-up inherits the conversation's subject when it points back
 		// at it -- an anaphor in the text ("what ABOUT addy darts", "which
