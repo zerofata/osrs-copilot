@@ -567,6 +567,10 @@ public class CopilotPlugin extends Plugin
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		events.log("gameState", Map.of("state", event.getGameState().name()));
+		if (event.getGameState() == GameState.LOGGED_IN)
+		{
+			pipeline.onLogin();
+		}
 	}
 
 	@Subscribe

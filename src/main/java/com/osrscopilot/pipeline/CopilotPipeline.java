@@ -143,6 +143,13 @@ public class CopilotPipeline
 		this.promptBuilder = new PromptBuilder(gson, wiki, hiscores);
 	}
 
+	/** Call when the player logs in: hiscores persist only on logout/hop,
+	 * so login is the one moment a refetch can return anything new. */
+	public void onLogin()
+	{
+		hiscores.invalidate();
+	}
+
 	/** Warm vocabulary caches (call off-thread, e.g. at plugin start). */
 	public void warmCaches()
 	{

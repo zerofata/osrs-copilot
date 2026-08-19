@@ -11,18 +11,20 @@ import lombok.extern.slf4j.Slf4j;
  * scores. Kill counts live server-side and are invisible to the client, yet
  * they are the ground truth for the player's experience -- without them the
  * model fills the gap with "assume beginner", which is worse than useless.
- * Fetched deterministically by player name, briefly cached.
+ *
+ * Cached per player for the whole login session: hiscores only persist on
+ * logout/world hop, so while logged in the cached value mirrors the source
+ * exactly and a refetch can never return anything newer. The plugin
+ * invalidates on login, which is the one moment fresh data can exist.
  */
 @Slf4j
 class Hiscores
 {
 	private static final String URL =
 		"https://secure.runescape.com/m=hiscore_oldschool/index_lite.json?player=";
-	private static final long TTL_MS = 10 * 60 * 1000;
 
 	private final Http http;
 	private String cachedPlayer;
-	private long cachedAtMs;
 	private Map<String, Long> cachedScores;
 
 	Hiscores(Http http)
@@ -43,11 +45,10 @@ class Hiscores
 		}
 		// Client names may use non-breaking spaces.
 		player = player.replace('\u00A0', ' ');
-		if (player.equals(cachedPlayer) && System.currentTimeMillis() - cachedAtMs < TTL_MS)
+		if (player.equals(cachedPlayer))
 		{
 			return cachedScores;
 		}
-		Map<String, Long> scores = null;
 		try
 		{
 			JsonObject r = http.getJson(URL + Http.enc(player));
@@ -61,15 +62,23 @@ class Hiscores
 					found.put(a.get("name").getAsString(), score);
 				}
 			}
-			scores = found.isEmpty() ? null : found;
+			cachedPlayer = player;
+			cachedScores = found.isEmpty() ? null : found;
 		}
 		catch (Exception e)
 		{
+			// Not cached: a session-long cache must not pin a transient
+			// failure; the next question retries.
 			log.debug("hiscores lookup failed for {}", player, e);
+			return null;
 		}
-		cachedPlayer = player;
-		cachedAtMs = System.currentTimeMillis();
-		cachedScores = scores;
 		return cachedScores;
+	}
+
+	/** Called on login: the only moment the hiscores can have changed. */
+	synchronized void invalidate()
+	{
+		cachedPlayer = null;
+		cachedScores = null;
 	}
 }
