@@ -79,13 +79,8 @@ class ToolRegistry
 		specs.add(toolSpec("quest_status",
 			"Check whether the player has finished, started, or not started a specific quest.",
 			"quest_name"));
-		// XP gaps grow ~7% per level, so every remembered or extrapolated
-		// figure is wrong; the table is pure math and the player's XP is in
-		// the capture, so the exact answer is free.
 		JsonObject xpSpec = toolSpec("xp_to_level",
-			"Exact XP the player still needs to reach a target level (2-99) in a skill, from "
-				+ "the official XP table and the player's live XP. Use this for EVERY "
-				+ "xp-to-a-level figure -- never estimate XP gaps yourself.",
+			"Gives the total xp required to reach requested level in skill.",
 			"skill");
 		JsonObject xpParams = xpSpec.getAsJsonObject("function").getAsJsonObject("parameters");
 		xpParams.getAsJsonObject("properties").add("target_level", singleType("integer"));
