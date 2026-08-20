@@ -253,6 +253,10 @@ class Prefetcher
 					math.put("current_level", next[0]);
 					math.put("next_level", next[1]);
 					math.put("xp_needed_for_next_level", next[2]);
+					// Only the NEXT level is precomputed; a question naming a
+					// farther target ("I need 72") must not be answered by
+					// extrapolating from this fact.
+					math.put("xp_to_any_other_level", "call the xp_to_level tool");
 					addFact(facts, "XP math: " + skill, math);
 				}
 			}

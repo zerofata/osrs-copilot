@@ -68,6 +68,61 @@ public class ToolRegistryTest
 		}
 	}
 
+	// ---- xp_to_level -----------------------------------------------------
+
+	private static Object xpCall(Map<String, Integer> skillXp, String skill, Object target)
+		throws Exception
+	{
+		GameCapture cap = new GameCapture();
+		cap.skillXp = skillXp;
+		JsonObject args = new JsonObject();
+		args.addProperty("skill", skill);
+		if (target instanceof Number)
+		{
+			args.addProperty("target_level", (Number) target);
+		}
+		return new ToolRegistry(null, new Gson())
+			.buildTools(cap, Map.of(), Map.of(), false, false)
+			.get("xp_to_level").call(args);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	public void xpToLevelComputesTheExactGapFromTheOfficialTable() throws Exception
+	{
+		// The real failure this guards: at 787,792 Herblore XP (level 70)
+		// asking for 72, the model doubled the next-level gap and said ~54k.
+		// The official table says level 72 = 899,257 total.
+		Map<String, Object> out = (Map<String, Object>)
+			xpCall(Map.of("Herblore", 787_792), "herblore", 72);
+		assertEquals("Herblore", out.get("skill"));
+		assertEquals(70, out.get("current_level"));
+		assertEquals(111_465, out.get("xp_needed"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	public void xpToLevelReportsAnAlreadyReachedTargetInsteadOfANegativeGap() throws Exception
+	{
+		Map<String, Object> out = (Map<String, Object>)
+			xpCall(Map.of("Herblore", 787_792), "Herblore", 60);
+		assertEquals(0, out.get("xp_needed"));
+		assertTrue(out.containsKey("note"));
+	}
+
+	@Test
+	public void xpToLevelRejectsUnknownSkillsMissingTargetsAndAbsentCaptureData()
+		throws Exception
+	{
+		assertTrue(((Map<?, ?>) xpCall(Map.of("Herblore", 1), "Herblaw", 72))
+			.containsKey("error"));
+		assertTrue(((Map<?, ?>) xpCall(Map.of("Herblore", 1), "Herblore", null))
+			.containsKey("error"));
+		assertTrue(((Map<?, ?>) xpCall(Map.of("Herblore", 1), "Herblore", 100))
+			.containsKey("error"));
+		assertTrue(((Map<?, ?>) xpCall(null, "Herblore", 72)).containsKey("error"));
+	}
+
 	// ---- ownership annotation on tool results ---------------------------
 
 	/** WikiApi serving fixed content and a fixed item vocabulary. */

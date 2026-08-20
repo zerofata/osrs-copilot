@@ -79,6 +79,18 @@ class ToolRegistry
 		specs.add(toolSpec("quest_status",
 			"Check whether the player has finished, started, or not started a specific quest.",
 			"quest_name"));
+		// XP gaps grow ~7% per level, so every remembered or extrapolated
+		// figure is wrong; the table is pure math and the player's XP is in
+		// the capture, so the exact answer is free.
+		JsonObject xpSpec = toolSpec("xp_to_level",
+			"Exact XP the player still needs to reach a target level (2-99) in a skill, from "
+				+ "the official XP table and the player's live XP. Use this for EVERY "
+				+ "xp-to-a-level figure -- never estimate XP gaps yourself.",
+			"skill");
+		JsonObject xpParams = xpSpec.getAsJsonObject("function").getAsJsonObject("parameters");
+		xpParams.getAsJsonObject("properties").add("target_level", singleType("integer"));
+		xpParams.getAsJsonArray("required").add("target_level");
+		specs.add(xpSpec);
 		// Only offered when ownership is NOT already fully in context (bank
 		// inlined, or the ownership fact complete for everything the facts
 		// mention): a tool over visible data invites redundant lookups.
@@ -215,6 +227,53 @@ class ToolRegistry
 			return partial.isEmpty()
 				? Map.of("error", "no quest matching '" + str(args, "quest_name") + "'")
 				: partial;
+		});
+		tools.put("xp_to_level", args -> {
+			if (cap.skillXp == null || cap.skillXp.isEmpty())
+			{
+				return Map.of("error", "skill XP not available this session");
+			}
+			String skill = str(args, "skill");
+			String sl = skill.toLowerCase(Locale.ROOT);
+			Map.Entry<String, Integer> match = null;
+			for (Map.Entry<String, Integer> e : cap.skillXp.entrySet())
+			{
+				if (e.getKey().toLowerCase(Locale.ROOT).equals(sl))
+				{
+					match = e;
+					break;
+				}
+			}
+			if (match == null)
+			{
+				return Map.of("error", "no skill named '" + skill + "'");
+			}
+			int target;
+			try
+			{
+				target = args.get("target_level").getAsInt();
+			}
+			catch (Exception e)
+			{
+				return Map.of("error", "provide 'target_level': the level to reach (2-99)");
+			}
+			if (target < 2 || target > 99)
+			{
+				return Map.of("error", "target_level must be 2-99");
+			}
+			int xp = match.getValue();
+			Map<String, Object> out = new LinkedHashMap<>();
+			out.put("skill", match.getKey());
+			out.put("current_xp", xp);
+			out.put("current_level", XpTable.toNextLevel(xp)[0]);
+			out.put("target_level", target);
+			int needed = XpTable.xpForLevel(target) - xp;
+			out.put("xp_needed", Math.max(0, needed));
+			if (needed <= 0)
+			{
+				out.put("note", "target level already reached");
+			}
+			return out;
 		});
 		if (offerOwnedSearch)
 		{
