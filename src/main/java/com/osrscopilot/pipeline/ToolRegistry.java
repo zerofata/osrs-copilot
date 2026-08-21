@@ -80,7 +80,9 @@ class ToolRegistry
 			"Check whether the player has finished, started, or not started a specific quest.",
 			"quest_name"));
 		JsonObject xpSpec = toolSpec("xp_to_level",
-			"Gives the total xp required to reach requested level in skill.",
+			"Gives the total xp required to reach requested level in skill. Use it for every "
+				+ "xp-to-a-level figure rather than estimating; the XP math fact only "
+				+ "precomputes the next level.",
 			"skill");
 		JsonObject xpParams = xpSpec.getAsJsonObject("function").getAsJsonObject("parameters");
 		xpParams.getAsJsonObject("properties").add("target_level", singleType("integer"));
