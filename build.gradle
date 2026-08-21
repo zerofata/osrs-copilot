@@ -72,6 +72,12 @@ tasks.register('vocabSnapshot', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'com.osrscopilot.pipeline.VocabSnapshotTool'
 	args layout.buildDirectory.dir('vocab').get().asFile.absolutePath
+	// Seconds slept before each wiki request. Local runs default to full
+	// speed; the weekly CI job passes a pace so its ~50 requests spread
+	// over minutes instead of bursting.
+	if (project.hasProperty('snapshotPaceSeconds')) {
+		args project.property('snapshotPaceSeconds')
+	}
 }
 
 // Renders the chat panel offscreen to PNGs for UI review.

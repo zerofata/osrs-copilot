@@ -21,6 +21,12 @@ ASSERT {"monsters": ["Vorkath"], "facts": ["Monster info: Vorkath", "Strategy: V
 can I do tombs of amascut and what setup should i use?
 ASSERT {"pages": ["Tombs of Amascut"], "facts": ["Page: Tombs of Amascut", "Strategy: Tombs of Amascut", "Recommended equipment: Tombs of Amascut"]}
 
+# Slayer task guide via the slayer-task index: "my task" injects the
+# sample snapshot's Bloodveld assignment and fetches its task page, whose
+# variants table and location comparison no other fact carries.
+what should i do for my slayer task?
+ASSERT {"monsters": ["Bloodveld"], "needs": ["slayer_task"], "facts": ["Slayer task guide: Bloodveld"]}
+
 # quest bucket (requirements come from structured data, not page prose).
 # Phrased as players phrase it: "Dragon Slayer" must reach the quest, not
 # the Slayer skill.

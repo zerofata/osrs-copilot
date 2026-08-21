@@ -84,6 +84,11 @@ class Router
 	static final String NEED_TRAINING = "training";
 	static final String NEED_TRANSPORT = "transport";
 	static final String NEED_RECENT_EVENTS = "recent_events";
+	static final String NEED_SLAYER_TASK = "slayer_task";
+
+	/** Any slayer mention: with a monster subject, the "Slayer task/..."
+	 * guide page (task-only variants, location comparison) is on point. */
+	private static final Pattern SLAYER_MENTION = Pattern.compile("\\bslayer\\b");
 
 	// Shared phrasing frames and verb lexicons. Every rule that hand-rolled
 	// its own pronoun frame ("how to kill" but not "how do i defeat") was a
@@ -146,8 +151,9 @@ class Router
 			previous != null && previous.anyEntity());
 		// "my task" names an entity the player never types: resolve the task
 		// creature from game state so it retrieves like any other monster.
-		if (cap.slayerTask != null && cap.slayerTask.get("creature") != null
-			&& referencesSlayerTask(question, r.entities))
+		boolean taskReferenced = cap.slayerTask != null && cap.slayerTask.get("creature") != null
+			&& referencesSlayerTask(question, r.entities);
+		if (taskReferenced)
 		{
 			resolver.resolveInto(String.valueOf(cap.slayerTask.get("creature")),
 				questNames, r.entities);
@@ -176,6 +182,15 @@ class Router
 		r.hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
 		r.needs = classifyNeeds(question, r.hasEvents,
 			!r.entities.monsters.isEmpty(), !r.entities.items.isEmpty());
+		// A slayer-flavored question about a monster (asked, inherited, or
+		// injected from the player's assignment) wants the "Slayer task/..."
+		// guide: which variants count, where each is best killed. Not part
+		// of classifyNeeds: the task-reference half depends on game state.
+		if (!r.entities.monsters.isEmpty() && (taskReferenced
+			|| SLAYER_MENTION.matcher(question.toLowerCase(Locale.ROOT)).find()))
+		{
+			r.needs.add(NEED_SLAYER_TASK);
+		}
 		// Cross-check needs against entities: transport means "how do I get
 		// THERE" and is meaningless without a resolved destination ("best way
 		// to train smithing" must not route as travel).

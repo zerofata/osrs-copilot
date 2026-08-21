@@ -19,6 +19,23 @@ import static org.junit.Assert.assertTrue;
  */
 public class PrefetcherTest
 {
+	@Test
+	public void taskPageMatchingBridgesCategoryPlurals()
+	{
+		java.util.Set<String> index = new java.util.TreeSet<>(List.of(
+			"Slayer task/Greater demons", "Slayer task/Ankou",
+			"Slayer task/Aberrant spectres", "Slayer task/TzHaar"));
+		// Singular monster to plural category, unchanged names, and the
+		// capture's own plural creature string all resolve.
+		assertEquals("Slayer task/Greater demons",
+			Prefetcher.matchTaskPage("Greater demon", index));
+		assertEquals("Slayer task/Ankou", Prefetcher.matchTaskPage("Ankou", index));
+		assertEquals("Slayer task/TzHaar", Prefetcher.matchTaskPage("TzHaar", index));
+		assertEquals("Slayer task/Aberrant spectres",
+			Prefetcher.matchTaskPage("Aberrant spectres", index));
+		assertEquals(null, Prefetcher.matchTaskPage("Zulrah", index));
+	}
+
 	/** WikiApi whose item vocabulary is a fixed list; nothing fetches. */
 	private static WikiApi vocabOf(String... names)
 	{

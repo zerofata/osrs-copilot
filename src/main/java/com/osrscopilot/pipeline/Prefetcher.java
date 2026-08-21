@@ -72,6 +72,8 @@ class Prefetcher
 		{
 			boolean strategyNeeded = needs.contains(Router.NEED_STRATEGY)
 				|| needs.contains(Router.NEED_MECHANICS);
+			boolean taskNeeded = needs.contains(Router.NEED_SLAYER_TASK);
+			String taskGuide = slayerTaskPage(monster);
 			Map<String, Object> info = wiki.monsterInfo(monster);
 			// When strategy is NOT part of this route but a guide subpage
 			// exists, say so on the monster fact: the model can wiki_page it
@@ -82,7 +84,21 @@ class Prefetcher
 			{
 				info.put("strategy_guide_page", monster + "/Strategies");
 			}
+			if (!taskNeeded && taskGuide != null && info != null && !info.containsKey("error"))
+			{
+				info.put("slayer_task_guide_page", taskGuide);
+			}
 			addFact(facts, "Monster info: " + monster, info);
+			if (taskNeeded && taskGuide != null)
+			{
+				// The task guide's variants table (which monsters count,
+				// their slayer XP) and location comparison are exactly the
+				// on-task questions the main page never answers. The label
+				// carries the page's own category tail ("Greater demons")
+				// so the fact links back to its source title.
+				addFact(facts, "Slayer task guide: "
+					+ taskGuide.substring("Slayer task/".length()), wiki.page(taskGuide));
+			}
 			if (needs.contains(Router.NEED_DROP_TABLE) || needs.contains(Router.NEED_PRICES))
 			{
 				addFact(facts, "Drop table: " + monster, wiki.monsterDrops(monster));
@@ -277,6 +293,42 @@ class Prefetcher
 			log.debug("strategies index unavailable; keeping blind-fetch behavior", e);
 			return null;
 		}
+	}
+
+	/**
+	 * The "Slayer task/..." guide page for a creature, or null when none
+	 * exists (or the index is unavailable -- task pages were never
+	 * blind-fetched, so unknown safely means skip). Task pages are named
+	 * by category plural ("Slayer task/Greater demons") while resolved
+	 * monsters are singular; the index's redirect aliases plus a plural
+	 * probe bridge the gap.
+	 */
+	private String slayerTaskPage(String monster)
+	{
+		try
+		{
+			return matchTaskPage(monster, wiki.slayerTaskPages());
+		}
+		catch (Exception e)
+		{
+			log.debug("slayer task index unavailable; skipping task guide", e);
+			return null;
+		}
+	}
+
+	static String matchTaskPage(String monster, Set<String> index)
+	{
+		String n = EntityResolver.norm(monster);
+		for (String title : index)
+		{
+			String tail = EntityResolver.norm(title.substring("Slayer task/".length()));
+			if (tail.equals(n) || tail.equals(n + "s") || tail.equals(n + "es")
+				|| (n.endsWith("s") && tail.equals(n.substring(0, n.length() - 1))))
+			{
+				return title;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -532,6 +584,10 @@ class Prefetcher
 				return name;
 			case "Strategy":
 				return name + "/Strategies";
+			// The label's name is the page's own category tail, so this
+			// reconstructs the exact fetched title.
+			case "Slayer task guide":
+				return "Slayer task/" + name;
 			case "Training guide":
 				return name + " training";
 			default:

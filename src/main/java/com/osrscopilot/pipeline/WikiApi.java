@@ -71,6 +71,11 @@ public class WikiApi
 		return vocab.strategiesPages();
 	}
 
+	Set<String> slayerTaskPages() throws IOException
+	{
+		return vocab.slayerTaskPages();
+	}
+
 	public List<String[]> allItemNames() throws IOException
 	{
 		return vocab.allItemNames();

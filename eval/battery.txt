@@ -173,9 +173,19 @@ ASSERT {"pages": ["Farming runs"]}
 # --- Slayer task reference ---
 
 # "my task" resolves the slayer-task creature from game state (the sample
-# snapshot's task is Bloodveld).
+# snapshot's task is Bloodveld) and routes the task guide page.
 best setup for my slayer task
-ASSERT {"monsters": ["Bloodveld"], "needs": ["strategy"]}
+ASSERT {"monsters": ["Bloodveld"], "needs": ["strategy", "slayer_task"]}
+
+# A slayer-flavored question naming its monster wants the task guide too:
+# which variants count, where each is best killed.
+best slayer setup for greater demons
+ASSERT {"monsters": ["Greater demon"], "needs": ["strategy", "slayer_task"]}
+
+# No slayer mention and no task reference: plain fight questions stay
+# task-guide-free -- the player may well be off-task.
+whats the best gear for greater demons
+ASSERT {"monsters": ["Greater demon"], "not_needs": ["slayer_task"]}
 
 # A denied task ("not on task") must not inject the task creature; with
 # nothing else resolved, the follow-up inherits the conversation's subject.

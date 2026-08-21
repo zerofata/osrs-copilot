@@ -38,8 +38,12 @@ jobs:
       # Gradle distribution and the whole RuneLite dependency tree.
       - uses: gradle/actions/setup-gradle@v4
 
+      # Paced: ~50 wiki requests spread 20s apart (~17 minutes) instead of
+      # bursting. Nothing here is latency-sensitive; being a polite API
+      # consumer is the whole premise of this job. Local/dev runs of the
+      # same task default to full speed.
       - name: Build snapshots
-        run: ./gradlew vocabSnapshot --console=plain
+        run: ./gradlew vocabSnapshot -PsnapshotPaceSeconds=20 --console=plain
 
       - name: Publish to vocab-data branch
         run: |

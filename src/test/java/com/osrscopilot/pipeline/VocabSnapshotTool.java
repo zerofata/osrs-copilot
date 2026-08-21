@@ -40,19 +40,29 @@ public final class VocabSnapshotTool
 
 	private final Http http;
 	private final Gson gson;
+	/** Milliseconds slept before each wiki request. Zero for local test
+	 * runs; CI passes ~20s so the weekly gather spreads over ~15-20
+	 * minutes instead of bursting fifty requests at the wiki. */
+	private final long paceMs;
 
-	private VocabSnapshotTool(Http http, Gson gson)
+	private VocabSnapshotTool(Http http, Gson gson, long paceMs)
 	{
 		this.http = http;
 		this.gson = gson;
+		this.paceMs = paceMs;
 	}
 
 	public static void main(String[] args) throws Exception
 	{
 		File outDir = new File(args.length > 0 ? args[0] : "build/vocab");
 		outDir.mkdirs();
+		long paceMs = (args.length > 1 ? Long.parseLong(args[1]) : 0) * 1000;
 		Gson gson = new Gson();
-		VocabSnapshotTool tool = new VocabSnapshotTool(new Http(new OkHttpClient(), gson), gson);
+		VocabSnapshotTool tool = new VocabSnapshotTool(new Http(new OkHttpClient(), gson), gson, paceMs);
+		if (paceMs > 0)
+		{
+			System.out.println("pacing: " + (paceMs / 1000) + "s before each request");
+		}
 
 		// Thresholds are ~85% of the live counts measured 2026-08-16
 		// (mapping 4652, monsters 1617, items 11432, locations 895,
@@ -64,6 +74,8 @@ public final class VocabSnapshotTool
 		tool.write(outDir, "monsters_v2.json",
 			new Sized(gson.toJson(monsters), monsters.size()), 1400, "monster names");
 		tool.write(outDir, "strategies.json", tool.strategiesIndex(monsters), 105, "strategy subpages");
+		// 178 live titles measured 2026-08-21, redirect aliases included.
+		tool.write(outDir, "slayer_tasks.json", tool.slayerTaskIndex(), 150, "slayer task subpages");
 		tool.write(outDir, "items.json", tool.itemIndex(), 10000, "item index rows");
 		tool.write(outDir, "locations-v2.json", tool.locationIndex(), 750, "location points");
 		tool.write(outDir, "english_10k.txt", tool.wordlist(), 9000, "wordlist lines");
@@ -105,14 +117,14 @@ public final class VocabSnapshotTool
 
 	private Sized geMapping() throws IOException
 	{
-		String json = http.getText(PRICES_API + "/v2/osrs/mapping");
+		String json = getText(PRICES_API + "/v2/osrs/mapping");
 		JsonArray parsed = gson.fromJson(json, JsonArray.class);
 		return new Sized(json, parsed.size());
 	}
 
 	private Sized wordlist() throws IOException
 	{
-		String text = http.getText(WORDLIST_URL);
+		String text = getText(WORDLIST_URL);
 		return new Sized(text, text.split("\n").length);
 	}
 
@@ -173,7 +185,7 @@ public final class VocabSnapshotTool
 		Integer offset = 0;
 		while (offset != null)
 		{
-			JsonObject r = http.getJson(WIKI_API + "?action=query&list=search&format=json"
+			JsonObject r = getJson(WIKI_API + "?action=query&list=search&format=json"
 				+ "&srlimit=50&sroffset=" + offset
 				+ "&srsearch=" + Http.enc("intitle:\"Strategies\""));
 			for (JsonElement e : r.getAsJsonObject("query").getAsJsonArray("search"))
@@ -204,10 +216,40 @@ public final class VocabSnapshotTool
 		return new Sized(gson.toJson(exists), exists.size());
 	}
 
+	/**
+	 * Every "Slayer task/..." guide subpage, redirect aliases included
+	 * ("Slayer task/Bloodveld" and ".../Bloodvelds" both resolve): the
+	 * aliases are free matching surface for clients mapping a creature
+	 * name to its task guide. One paginated prefix query.
+	 */
+	private Sized slayerTaskIndex() throws IOException
+	{
+		Set<String> titles = new TreeSet<>();
+		String cont = null;
+		do
+		{
+			JsonObject r = getJson(WIKI_API + "?action=query&list=allpages&format=json"
+				+ "&apprefix=" + Http.enc("Slayer task/") + "&aplimit=500"
+				+ (cont != null ? "&apcontinue=" + Http.enc(cont) : ""));
+			for (JsonElement e : r.getAsJsonObject("query").getAsJsonArray("allpages"))
+			{
+				String title = e.getAsJsonObject().get("title").getAsString();
+				// The bare "Slayer task/" root is in the listing too.
+				if (title.length() > "Slayer task/".length())
+				{
+					titles.add(title);
+				}
+			}
+			cont = r.has("continue")
+				? r.getAsJsonObject("continue").get("apcontinue").getAsString() : null;
+		} while (cont != null);
+		return new Sized(gson.toJson(titles), titles.size());
+	}
+
 	/** Adds the titles in the batch that exist on the wiki to out. */
 	private void addExisting(List<String> titles, Set<String> out) throws IOException
 	{
-		JsonObject r = http.getJson(WIKI_API + "?action=query&format=json&titles="
+		JsonObject r = getJson(WIKI_API + "?action=query&format=json&titles="
 			+ Http.enc(String.join("|", titles)));
 		JsonObject pages = r.getAsJsonObject("query").getAsJsonObject("pages");
 		for (String pageId : pages.keySet())
@@ -354,7 +396,7 @@ public final class VocabSnapshotTool
 		String cont = null;
 		do
 		{
-			JsonObject r = http.getJson(WIKI_API + "?action=query&list=categorymembers&format=json"
+			JsonObject r = getJson(WIKI_API + "?action=query&list=categorymembers&format=json"
 				+ "&cmtitle=" + Http.enc("Category:" + category) + "&cmlimit=500"
 				+ (cont != null ? "&cmcontinue=" + Http.enc(cont) : ""));
 			for (JsonElement e : r.getAsJsonObject("query").getAsJsonArray("categorymembers"))
@@ -369,6 +411,34 @@ public final class VocabSnapshotTool
 
 	private JsonObject bucket(String query) throws IOException
 	{
-		return http.getJson(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
+		return getJson(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
+	}
+
+	private JsonObject getJson(String url) throws IOException
+	{
+		pace();
+		return http.getJson(url);
+	}
+
+	private String getText(String url) throws IOException
+	{
+		pace();
+		return http.getText(url);
+	}
+
+	private void pace() throws IOException
+	{
+		if (paceMs <= 0)
+		{
+			return;
+		}
+		try
+		{
+			Thread.sleep(paceMs);
+		}
+		catch (InterruptedException e)
+		{
+			throw new IOException("interrupted while pacing", e);
+		}
 	}
 }

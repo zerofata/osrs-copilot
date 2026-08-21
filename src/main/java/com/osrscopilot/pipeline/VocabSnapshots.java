@@ -49,6 +49,7 @@ class VocabSnapshots
 	private List<String[]> itemNameIndex;
 	private Map<String, Integer> itemIdsByName;
 	private Set<String> strategiesPages;
+	private Set<String> slayerTaskPages;
 
 	VocabSnapshots(Http http, Gson gson, File cacheDir)
 	{
@@ -113,6 +114,23 @@ class VocabSnapshots
 				new TypeToken<Set<String>>() { }.getType());
 		}
 		return strategiesPages;
+	}
+
+	/**
+	 * Exact wiki titles of every "Slayer task/..." guide subpage, redirect
+	 * aliases included, from the weekly snapshot's prefix listing. Lets the
+	 * prefetcher fetch a task guide only when one exists, with zero live
+	 * traffic. Callers must treat IOException as "index unknown", never as
+	 * "page absent".
+	 */
+	synchronized Set<String> slayerTaskPages() throws IOException
+	{
+		if (slayerTaskPages == null)
+		{
+			slayerTaskPages = gson.fromJson(snapshot("slayer_tasks.json"),
+				new TypeToken<Set<String>>() { }.getType());
+		}
+		return slayerTaskPages;
 	}
 
 	/**
