@@ -52,6 +52,20 @@ ASSERT {"pages": ["Player-owned house"]}
 > what ones closer to a bank?
 ASSERT {"pages": ["Player-owned house"], "facilities": ["Bank"], "not_pages": ["Bank"]}
 
+# Locative "there" points back at the previous subject, so the follow-up
+# keeps the monster even though it resolves its own item.
+whats the best gear for vorkath
+ASSERT {"monsters": ["Vorkath"]}
+> is a tbow good there?
+ASSERT {"monsters": ["Vorkath"], "items": ["Twisted bow"]}
+
+# Existential "there" ("is there a...") points at nothing: a follow-up
+# with its own subject starts clean, nothing inherits.
+whats the best gear for vorkath
+ASSERT {"monsters": ["Vorkath"]}
+> is there a quick way to get to zulrah?
+ASSERT {"monsters": ["Zulrah"], "not_monsters": ["Vorkath"]}
+
 # Filler nouns in a follow-up must not become pages under desperation
 # ("master list of all combined resources" once resolved pages Master,
 # List, and Resources, crowding the sloop out of the page budget).

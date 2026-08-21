@@ -40,7 +40,13 @@ class Router
 	 * question, so its subject must survive into this one. */
 	private static final Pattern ANAPHORIC = Pattern.compile(
 		"\\b(it|its|that|those|them|these|this|ones?|same|again|instead|"
-		+ "i meant?|what about|how about|and if|what if)\\b");
+		+ "i meant?|what about|how about|and if|what if)\\b"
+		// Locative "there" points back at the previous subject's place ("is
+		// a tbow good there"). Existential "there" refers to nothing ("is
+		// there a way to...") and is recognized by its frozen frames: a
+		// be-verb or modal before it, or be/article/any/no after it.
+		+ "|(?<!\\b(?:is|are|was|were|will|would|can|could|should|do|does|did) )"
+		+ "\\bthere\\b(?!'s)(?! (?:is|are|was|were|be|a|an|any\\w*|no)\\b)");
 
 	/** Diary tiers are a closed vocabulary; the match only applies when a
 	 * resolved page is a diary, so "hard" in other questions is inert. */
