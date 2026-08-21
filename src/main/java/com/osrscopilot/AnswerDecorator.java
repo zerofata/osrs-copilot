@@ -93,12 +93,15 @@ final class AnswerDecorator
 	/**
 	 * Assemble the name vocabularies in precedence order: a name known
 	 * several ways keeps its richest meaning (quest state over item over
-	 * plain page link). itemIds maps lowercase tradeable names to item IDs
-	 * so unowned items can carry their sprite; owned items bring their IDs
+	 * plain page link). monsterNames is the full plain-monster vocabulary,
+	 * so answers that introduce a monster the route never resolved still
+	 * link it. itemIds maps lowercase tradeable names to item IDs so
+	 * unowned items can carry their sprite; owned items bring their IDs
 	 * from the capture itself.
 	 */
 	static AnswerDecorator build(GameCapture cap, EntityResolver.Resolution entities,
-		List<String[]> itemNames, Map<String, Integer> itemIds, IconStore icons)
+		List<String> monsterNames, List<String[]> itemNames,
+		Map<String, Integer> itemIds, IconStore icons)
 	{
 		Theme theme = Theme.active();
 		Map<String, Rule> byName = new LinkedHashMap<>();
@@ -132,6 +135,13 @@ final class AnswerDecorator
 				{
 					add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null);
 				}
+			}
+		}
+		if (monsterNames != null)
+		{
+			for (String name : monsterNames)
+			{
+				add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null);
 			}
 		}
 		if (itemNames != null)
@@ -249,7 +259,7 @@ final class AnswerDecorator
 				{
 					continue;
 				}
-				if (fragmentOfLargerName(html, end))
+				if (fragmentOfLargerName(html, end) || tailOfLargerName(html, i))
 				{
 					continue;
 				}
@@ -343,6 +353,54 @@ final class AnswerDecorator
 		Matcher m = PROPER_NOUN_CONTINUES.matcher(html);
 		m.region(end, html.length());
 		return m.lookingAt();
+	}
+
+	/**
+	 * A capitalized word, optional lowercase connectors, then whitespace,
+	 * ending exactly where the match starts.
+	 */
+	private static final Pattern PROPER_NOUN_PRECEDES =
+		Pattern.compile("(?<!\\p{L})\\p{Lu}[\\p{L}'-]*(?:\\s+(?:of|the|de))*\\s+\\z");
+
+	/**
+	 * Mirror of {@link #fragmentOfLargerName}: the match is the tail of a
+	 * longer title-case phrase ("demons" in "Greater demons", "Slayer" in
+	 * "Dragon Slayer II"). The rule's page describes the fragment's own
+	 * referent, not the longer name's, so linking would mislabel it. When
+	 * the longer phrase is itself a known name, its rule has already
+	 * claimed the whole span (rules match longest-first) and overlap
+	 * rejection stops this check from ever seeing the fragment.
+	 *
+	 * Unlike the forward guard, a preceding capital is only evidence when
+	 * it sits mid-sentence: sentence-opening words are capitalized no
+	 * matter what they are ("The demons", "Use an Abyssal whip"), so a
+	 * capital straight after start-of-text, punctuation, or a tag proves
+	 * nothing and must not suppress. The residual risk -- a proper phrase
+	 * that itself opens a sentence -- is accepted: suppressing there would
+	 * cost far more real links than it saves mislabels.
+	 */
+	private static boolean tailOfLargerName(String html, int start)
+	{
+		Matcher m = PROPER_NOUN_PRECEDES.matcher(html);
+		// The preceding word sits within a few dozen chars; a bounded
+		// region keeps the scan O(1) per candidate match.
+		m.region(Math.max(0, start - 48), start);
+		m.useTransparentBounds(true);
+		if (!m.find())
+		{
+			return false;
+		}
+		int i = m.start();
+		while (i > 0 && Character.isWhitespace(html.charAt(i - 1)))
+		{
+			i--;
+		}
+		if (i == 0)
+		{
+			return false;
+		}
+		char before = html.charAt(i - 1);
+		return Character.isLetterOrDigit(before) || before == ',';
 	}
 
 	private static boolean anyMarked(boolean[] marked, int start, int end)

@@ -51,7 +51,7 @@ public final class DecoratorScan
 			+ "- Bow of Faerdhinen only if you get crystal armour\n"
 			+ "- Bring sharks to eat while fighting the tormented demons\n";
 
-		String html = AnswerDecorator.build(cap, entities, tradeable, Map.of(), null)
+		String html = AnswerDecorator.build(cap, entities, List.of(), tradeable, Map.of(), null)
 			.decorate(MarkdownHtml.toHtml(answer));
 		out.println(html);
 	}

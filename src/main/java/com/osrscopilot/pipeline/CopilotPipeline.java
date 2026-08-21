@@ -286,6 +286,32 @@ public class CopilotPipeline
 		}
 	}
 
+	/** Every plain monster name, for UI entity linking: answers introduce
+	 * monsters the route never resolved ("kill Greater demons" in a Slayer
+	 * answer). Variant pages with parenthetical disambiguators are excluded
+	 * -- prose never writes "Black demon (The Grand Tree)". Best-effort:
+	 * empty when the snapshot is unavailable. */
+	public List<String> knownMonsterNames()
+	{
+		try
+		{
+			List<String> out = new ArrayList<>();
+			for (String name : wiki.monsterNames())
+			{
+				if (name.indexOf('(') < 0)
+				{
+					out.add(name);
+				}
+			}
+			return out;
+		}
+		catch (Exception e)
+		{
+			log.debug("monster names unavailable for decoration", e);
+			return List.of();
+		}
+	}
+
 	/** Lowercase tradeable name to item ID, for rendering item sprites from
 	 * the client's game cache. Best-effort: empty when unavailable. */
 	public Map<String, Integer> knownItemIds()

@@ -59,7 +59,7 @@ public class IconStoreTest
 		cap.equipment = List.of(Map.of("id", WHIP, "name", "Abyssal whip", "quantity", 1));
 
 		String html = AnswerDecorator
-			.build(cap, new EntityResolver.Resolution(), List.of(), Map.of(), store)
+			.build(cap, new EntityResolver.Resolution(), List.of(), List.of(), Map.of(), store)
 			.decorate("Bring your Abyssal whip.");
 		assertTrue("owned item icon must come from its captured ID",
 			html.contains("item-" + WHIP + ".png"));
@@ -72,13 +72,14 @@ public class IconStoreTest
 		List<String[]> names = List.<String[]>of(new String[]{"Abyssal whip", "Abyssal whip"});
 		String html = AnswerDecorator
 			.build(new GameCapture(), new EntityResolver.Resolution(),
-				names, Map.of("abyssal whip", WHIP), store)
+				List.of(), names, Map.of("abyssal whip", WHIP), store)
 			.decorate("Save up for an Abyssal whip.");
 		assertTrue("unowned tradeable icon must come from the GE mapping ID",
 			html.contains("item-" + WHIP + ".png"));
 
 		String noId = AnswerDecorator
-			.build(new GameCapture(), new EntityResolver.Resolution(), names, Map.of(), store)
+			.build(new GameCapture(), new EntityResolver.Resolution(),
+				List.of(), names, Map.of(), store)
 			.decorate("Save up for an Abyssal whip.");
 		assertFalse("no ID means no icon, never a guess", noId.contains("<img"));
 	}

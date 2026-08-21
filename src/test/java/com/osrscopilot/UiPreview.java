@@ -115,7 +115,7 @@ public final class UiPreview
 		// a previous dev-client session left on disk, else no icons.
 		IconStore icons = new IconStore(new java.io.File("eval/icon-cache"),
 			null, null, null);
-		String decorated = AnswerDecorator.build(cap, ents, tradeable, Map.of(), icons)
+		String decorated = AnswerDecorator.build(cap, ents, List.of(), tradeable, Map.of(), icons)
 			.decorate(MarkdownHtml.toHtml(answer));
 		panel.showAnswerDone(answer, decorated, 12.4, true,
 			"facts: Monster info: Tormented Demon; Strategy: Tormented Demon; "

@@ -406,7 +406,8 @@ public class CopilotPlugin extends Plugin
 			{
 				decorated = AnswerDecorator
 					.build(capture, result.route != null ? result.route.entities : null,
-						pipeline.knownItemNames(), pipeline.knownItemIds(), iconStore)
+						pipeline.knownMonsterNames(), pipeline.knownItemNames(),
+						pipeline.knownItemIds(), iconStore)
 					.decorate(MarkdownHtml.toHtml(result.answer));
 			}
 			catch (Exception e)
