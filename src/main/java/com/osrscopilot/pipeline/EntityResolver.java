@@ -43,18 +43,20 @@ public class EntityResolver
 
 	/** Grammar/meta words used to judge whether a multi-word span is "mostly
 	 * real words" and worth a redirect attempt. Single-token candidacy is
-	 * decided by dictionary membership, not this list -- except "go" and
-	 * "up", which sit here because they are question-meta like "get"/"way"
-	 * and both have hostile redirects ("Go" -> Burthorpe Games Room's board
-	 * game, "Up" -> Underground Pass). */
+	 * decided by dictionary membership, not this list -- plus a curated set
+	 * of question-meta words with hostile redirects, learned from live
+	 * sessions: "Go" -> the Games Room board game, "Up" -> Underground
+	 * Pass, "Want" -> Wanted!, "Loadout" -> Bank tags, and "Inventory" /
+	 * "Well" are real pages a gear question never means. */
 	private static final Set<String> STOPWORDS = new HashSet<>(Arrays.asList(
 		("a an the i my me you your it its this that these those is are was be been "
 		+ "do does did can could should would will whats what's what how where when why which who "
 		+ "best good better fast fastest quick quickest way ways get got make making need needs "
-		+ "build building built nearest closest go up "
+		+ "build building built nearest closest go up want well "
 		+ "worth for with without and or not no yes of in on at to from into vs versus about "
 		+ "more less most many much have has had if while during active right now current level "
 		+ "levels xp exp experience quest quests boss monster gear setup strategy guide tips "
+		+ "inventory loadout "
 		+ "kill killing fight fighting drop drops dropped use using item items stuff thing things "
 		+ "money gp gold profit hour hr afk safe easy hard next "
 		+ "player players people normally usually give giving steps step finish finished "

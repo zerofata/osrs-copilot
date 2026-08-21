@@ -199,3 +199,14 @@ ASSERT {"monsters": ["Aberrant spectre"], "not_monsters": ["Bloodveld"]}
 # into the prefetch.
 where should i go for my slayer task?
 ASSERT {"monsters": ["Bloodveld"], "needs": ["slayer_task"], "not_pages": ["Burthorpe Games Room"]}
+
+# A fully-slang question resolves every entity via redirects, so the local
+# vocab pass sees nothing and desperation stays on -- its dictionary-word
+# guesses must not ride the same batch as subjects. This live question once
+# routed Wanted! ("i want"), Inventory, Bank tags ("loadout"), and Well
+# ("as well"). The follow-up restates "loadout"; it must inherit the raid,
+# not re-resolve Bank tags.
+Can you make me an inventory loadout for tombs of amascut, i want to use my crystal armor and bowfa as well
+ASSERT {"items": ["Bow of Faerdhinen"], "pages": ["Tombs of Amascut", "Crystal equipment"], "needs": ["strategy"], "not_pages": ["Inventory", "Bank tags", "Well"], "not_quests": ["Wanted!"]}
+> using your loadout what do I use for which boss?
+ASSERT {"pages": ["Tombs of Amascut"], "not_pages": ["Bank tags"]}
