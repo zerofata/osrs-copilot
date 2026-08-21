@@ -193,3 +193,9 @@ What gear should I bring for aberrant spectres?
 ASSERT {"monsters": ["Aberrant spectre"]}
 > im not on task tho?
 ASSERT {"monsters": ["Aberrant spectre"], "not_monsters": ["Bloodveld"]}
+
+# "go" is question-meta, not a subject: the wiki redirects "Go" to the
+# Burthorpe Games Room's board game, which once rode this exact question
+# into the prefetch.
+where should i go for my slayer task?
+ASSERT {"monsters": ["Bloodveld"], "needs": ["slayer_task"], "not_pages": ["Burthorpe Games Room"]}

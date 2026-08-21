@@ -114,3 +114,24 @@ ASSERT {"pages": ["Farming runs"]}
 ASSERT {"pages": ["The Gauntlet"], "not_pages": ["Farming runs"], "not_quests": ["My Arm's Big Adventure"]}
 > i mean for bowfa and ca
 ASSERT {"items": ["Bow of Faerdhinen"], "pages": ["Combat Achievements", "The Gauntlet"]}
+
+# Answer prose gets no single-word redirect guesses: a live GLM answer
+# opening "Go to the Stronghold Slayer Cave" once inherited the Burthorpe
+# Games Room (the wiki redirects the board game "Go") and a bare
+# Stronghold page ("slayer" claims its token, orphaning "stronghold").
+# Multi-word names still inherit: Meiyerditch Labs is the real
+# alternative the follow-up may ask about.
+what should i do for my slayer task?
+ASSERT {"monsters": ["Bloodveld"], "needs": ["slayer_task"]}
+ANSWER **Your task: 55 Bloodvelds remaining.**\n\n**Go to the Stronghold Slayer Cave** -- it's the best spot available to you. Meiyerditch Labs (the top location) needs partial Sins of the Father, which you haven't started.
+> how do i get there?
+ASSERT {"monsters": ["Bloodveld"], "quests": ["Sins of the Father"], "pages": ["Meiyerditch Laboratories"], "not_pages": ["Burthorpe Games Room", "Stronghold"]}
+
+# "Heads up" in an answer must not inherit the Underground Pass quest
+# (the wiki redirects "Up"). The follow-up's own two-letter slang ("ge")
+# still resolves -- non-dictionary tokens keep their redirect guess.
+best way to level my herblore? I need 72
+ASSERT {"skills": ["Herblore"]}
+ANSWER **Heads up:** Your game client shows Herblore at **level 66**, but the XP tracker reads level 78. Best option: Mastering Mixology, no herbs or secondaries needed.
+> How much would that cost from the ge?
+ASSERT {"pages": ["Grand Exchange", "Mastering Mixology"], "not_quests": ["Underground Pass"]}

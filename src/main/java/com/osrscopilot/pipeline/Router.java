@@ -148,7 +148,8 @@ class Router
 		CopilotPipeline.Route r = new CopilotPipeline.Route();
 		Set<String> questNames = cap.questStates != null ? cap.questStates.keySet() : Set.of();
 		r.entities = resolver.resolve(question, questNames,
-			previous != null && previous.anyEntity());
+			previous != null && previous.anyEntity()
+				? EntityResolver.Source.FOLLOW_UP : EntityResolver.Source.QUESTION);
 		// "my task" names an entity the player never types: resolve the task
 		// creature from game state so it retrieves like any other monster.
 		boolean taskReferenced = cap.slayerTask != null && cap.slayerTask.get("creature") != null

@@ -226,7 +226,8 @@ public class CopilotPipeline
 				opening = opening.substring(0, stop.start());
 			}
 			EntityResolver.Resolution named = resolver.resolve(opening,
-				cap.questStates != null ? cap.questStates.keySet() : Set.of(), true);
+				cap.questStates != null ? cap.questStates.keySet() : Set.of(),
+				EntityResolver.Source.ANSWER);
 			appendCapped(named.items, subject.items);
 			appendCapped(named.monsters, subject.monsters);
 			appendCapped(named.quests, subject.quests);

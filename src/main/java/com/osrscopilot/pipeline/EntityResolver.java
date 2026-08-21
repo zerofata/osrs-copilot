@@ -43,12 +43,15 @@ public class EntityResolver
 
 	/** Grammar/meta words used to judge whether a multi-word span is "mostly
 	 * real words" and worth a redirect attempt. Single-token candidacy is
-	 * decided by dictionary membership, not this list. */
+	 * decided by dictionary membership, not this list -- except "go" and
+	 * "up", which sit here because they are question-meta like "get"/"way"
+	 * and both have hostile redirects ("Go" -> Burthorpe Games Room's board
+	 * game, "Up" -> Underground Pass). */
 	private static final Set<String> STOPWORDS = new HashSet<>(Arrays.asList(
 		("a an the i my me you your it its this that these those is are was be been "
 		+ "do does did can could should would will whats what's what how where when why which who "
 		+ "best good better fast fastest quick quickest way ways get got make making need needs "
-		+ "build building built nearest closest "
+		+ "build building built nearest closest go up "
 		+ "worth for with without and or not no yes of in on at to from into vs versus about "
 		+ "more less most many much have has had if while during active right now current level "
 		+ "levels xp exp experience quest quests boss monster gear setup strategy guide tips "
@@ -80,6 +83,31 @@ public class EntityResolver
 		// name begins or ends on a locational superlative.
 		+ "between above below over under across behind among upon after before near "
 		+ "nearest closest there here also just really please any some").split(" ")));
+
+	/**
+	 * What kind of text is being resolved. The vocabulary pass is safe on
+	 * anything; this only decides how eagerly the redirect pass may guess,
+	 * because guessing costs differ by register: a player's question is
+	 * slang-dense and worth wide guesses, model answer prose is ordinary
+	 * English where wide guesses manufacture junk ("Go" -> the Burthorpe
+	 * Games Room board game).
+	 */
+	public enum Source
+	{
+		/** A context-free player question: nothing resolved means nothing
+		 * to talk about, so even bare dictionary words are worth trying
+		 * ("fury", "whip"). */
+		QUESTION,
+		/** A follow-up in a conversation that already has a subject: the
+		 * need desperation exists to fill is already met, so dictionary
+		 * words are not tried. */
+		FOLLOW_UP,
+		/** Model-written answer prose (subject inheritance): single words
+		 * are prose, not slang -- no single-token redirect guesses at all.
+		 * Real answer-introduced subjects are multi-word proper names
+		 * ("Meiyerditch Labs"), which still resolve. */
+		ANSWER
+	}
 
 	public static class Resolution
 	{
@@ -161,18 +189,18 @@ public class EntityResolver
 
 	public Resolution resolve(String question, Collection<String> questNames) throws IOException
 	{
-		return resolve(question, questNames, false);
+		return resolve(question, questNames, Source.QUESTION);
 	}
 
 	/**
-	 * @param hasContext true when the conversation already has a resolved
-	 * subject. The desperation widening (trying bare dictionary words as
-	 * redirects) exists to find SOMETHING in a context-free question; on a
-	 * follow-up it only manufactures junk -- "master list of all resources"
-	 * once resolved pages Master, List, and Resources, crowding the real
+	 * @param source the text's register (see {@link Source}). The
+	 * desperation widening (trying bare dictionary words as redirects)
+	 * exists to find SOMETHING in a context-free question; anywhere else it
+	 * only manufactures junk -- "master list of all resources" once
+	 * resolved pages Master, List, and Resources, crowding the real
 	 * subject out of the prefetch budget.
 	 */
-	public Resolution resolve(String question, Collection<String> questNames, boolean hasContext)
+	public Resolution resolve(String question, Collection<String> questNames, Source source)
 		throws IOException
 	{
 		ensureVocabs();
@@ -261,7 +289,8 @@ public class EntityResolver
 			// Inherited conversation context counts as "already resolved":
 			// it satisfies the same need desperation exists to fill.
 			if (!chosen.containsKey(gram)
-				&& isRedirectCandidate(span[1], gramTokens, gram, english, vocabHit || hasContext))
+				&& isRedirectCandidate(span[1], gramTokens, gram, english,
+					vocabHit || source != Source.QUESTION, source))
 			{
 				chosen.put(gram, span);
 			}
@@ -392,10 +421,18 @@ public class EntityResolver
 	 * common words crowd out real entities.
 	 */
 	private static boolean isRedirectCandidate(int size, String[] gramTokens, String gram,
-		Set<String> english, boolean vocabHit)
+		Set<String> english, boolean subjectKnown, Source source)
 	{
 		if (size == 1)
 		{
+			// Answer prose has no single-word slang, only single English
+			// words -- and the wiki has a redirect for a shocking number of
+			// them ("Go", "Up", "Cave"). Real answer-introduced subjects
+			// are multi-word names, which the branch below still tries.
+			if (source == Source.ANSWER)
+			{
+				return false;
+			}
 			// A bare number is a level or quantity, never a subject; the
 			// wiki redirects "99" to Skill mastery, which would pollute
 			// every level-target question.
@@ -403,17 +440,19 @@ public class EntityResolver
 			{
 				return false;
 			}
-			// A two-letter token that survived the grammar/stopword filters
-			// is game slang ("cg", "ca") whatever a wordlist says -- real
-			// two-letter English in a question is function grammar. The
-			// dictionary gate below would shelve it on any follow-up.
+			// At two letters the wordlist can't judge slang: it contains
+			// junk entries like "cg" and "ge" that would shelve real
+			// player shorthand behind the dictionary gate. The curated
+			// lists decide instead -- real two-letter English is function
+			// grammar (GRAMMAR) or question-meta (STOPWORDS: "go", "up"),
+			// both filtered before this point.
 			if (gram.length() == 2)
 			{
 				return true;
 			}
 			if (!english.isEmpty() && english.contains(gram))
 			{
-				return !vocabHit && !STOPWORDS.contains(gram);
+				return !subjectKnown && !STOPWORDS.contains(gram);
 			}
 			return true;
 		}
