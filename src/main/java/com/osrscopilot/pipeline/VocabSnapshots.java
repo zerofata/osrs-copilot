@@ -142,12 +142,14 @@ class VocabSnapshots
 	 * dictionary words breaks real references ("Varrock diary", "prayer
 	 * level"). Same principle as the resolver's desperation rule.
 	 *
-	 * Entries whose canonical page the wiki marks "(unobtainable item)" or
-	 * "(interface item)" are excluded outright: a player can never mean
-	 * them, and their names are real speech ("Dart", "Cooking pot",
-	 * "Master farmer") -- claiming a mention locally blocks the redirect
-	 * pass from resolving it to the real thing ("addy darts" once resolved
-	 * to Dart (unobtainable item) instead of the Addy darts redirect).
+	 * Entries whose canonical page the wiki marks as a non-world sprite
+	 * (interface, unobtainable, animation, beta-only) are excluded
+	 * outright: a player can never mean them, and their names are real
+	 * speech ("Dart", "Torch", "Magic carpet") -- claiming a mention
+	 * locally blocks the redirect pass from resolving it to the real thing
+	 * ("addy darts" once resolved to Dart (unobtainable item) instead of
+	 * the Addy darts redirect). Matched anywhere in the disambiguator, not
+	 * just as a suffix: "Torch (animation item, Sea Slug)".
 	 */
 	synchronized List<String[]> knownItemNames() throws IOException
 	{
@@ -171,7 +173,7 @@ class VocabSnapshots
 				{
 					continue;
 				}
-				if (it[1].endsWith("(unobtainable item)") || it[1].endsWith("(interface item)"))
+				if (fakeItemPage(it[1]))
 				{
 					continue;
 				}
@@ -186,6 +188,14 @@ class VocabSnapshots
 			log.warn("item infobox index unavailable; untradeables resolve as pages only", e);
 		}
 		return out;
+	}
+
+	private static boolean fakeItemPage(String page)
+	{
+		return page.contains("(unobtainable item")
+			|| page.contains("(interface item")
+			|| page.contains("(animation item")
+			|| page.contains("(RuneScape 2 Beta");
 	}
 
 	/** 10k most common English words; used by the resolver to spot slang
