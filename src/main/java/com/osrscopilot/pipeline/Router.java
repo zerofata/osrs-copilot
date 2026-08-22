@@ -130,6 +130,10 @@ class Router
 		{Pattern.compile("\\b(quickest|fastest|easiest|best) (way|place|method)\\b.*\\b" + OBTAIN_VERB + "\\b"),
 			new String[]{NEED_ITEM_SOURCES}},
 		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring))\\b"), new String[]{NEED_STRATEGY}},
+		// "prep for toa" wants the guide's requirements and gear tables.
+		// Safe on non-combat subjects: the strategy extras only fetch when
+		// a /Strategies page exists in the snapshot index.
+		{Pattern.compile("\\b(prep|prepping|prepare|preparing) for\\b"), new String[]{NEED_STRATEGY}},
 		{Pattern.compile("\\b(strategy|safespot|(" + HOW + "|best way to) " + FIGHT_VERB + ")\\b"),
 			new String[]{NEED_STRATEGY, NEED_MECHANICS}},
 		{Pattern.compile("\\b(afk|aggro|mechanic|spawn|attack style|weakness)\\b"), new String[]{NEED_MECHANICS}},

@@ -217,3 +217,9 @@ ASSERT {"pages": ["Tombs of Amascut"], "not_pages": ["Bank tags"]}
 # subject still arrives: the wiki's own "Best bow" redirect is an item.
 whats the best bow in the game?
 ASSERT {"items": ["Twisted bow"], "not_pages": ["Old School RuneScape", "Bow"]}
+
+# "prepare for" is strategy intent even with no gear/fight word: a live
+# question phrased this way got no strategy prefetch and the model had to
+# chase the guide itself. "farm"/"today"/"prepare" must resolve nothing.
+what can I farm today to prepare for toa?
+ASSERT {"pages": ["Tombs of Amascut"], "needs": ["strategy"]}
