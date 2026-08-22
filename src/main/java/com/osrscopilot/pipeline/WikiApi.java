@@ -96,6 +96,11 @@ public class WikiApi
 		return vocab.englishWords();
 	}
 
+	Set<String> commonEnglishWords()
+	{
+		return vocab.commonEnglishWords();
+	}
+
 	List<NamedPoint> locationIndex() throws IOException
 	{
 		return vocab.locationIndex();

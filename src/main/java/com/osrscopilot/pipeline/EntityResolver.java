@@ -41,22 +41,26 @@ public class EntityResolver
 		"hp", "hitpoints", "con", "construction", "range", "ranged", "ranging", "ranged",
 		"mage", "magic");
 
-	/** Grammar/meta words used to judge whether a multi-word span is "mostly
-	 * real words" and worth a redirect attempt. Single-token candidacy is
-	 * decided by dictionary membership, not this list -- plus a curated set
-	 * of question-meta words with hostile redirects, learned from live
-	 * sessions: "Go" -> the Games Room board game, "Up" -> Underground
-	 * Pass, "Want" -> Wanted!, "Loadout" -> Bank tags, and "Inventory" /
-	 * "Well" are real pages a gear question never means. */
+	/** Question-meta vocabulary: the words players use to ASK about the game
+	 * rather than to name things in it -- question grammar ("whats",
+	 * "best"), quantity talk ("worth", "profit"), and gaming-register nouns
+	 * ("gear", "setup", "loadout" -- absent from English wordlists but
+	 * still never a subject). Used to skip single tokens in the vocabulary
+	 * pass and to judge whether a multi-word span is "mostly real words".
+	 * Ordinary common English needs no entry here: the frequency band in
+	 * isRedirectCandidate rejects it structurally. The exception is
+	 * two-letter words ("go", "up"), which the frequency band cannot judge
+	 * -- at that length the wordlist holds junk and real slang alike, so
+	 * curation decides and hostile redirects (the Games Room board game,
+	 * Underground Pass) are blocked here. */
 	private static final Set<String> STOPWORDS = new HashSet<>(Arrays.asList(
 		("a an the i my me you your it its this that these those is are was be been "
 		+ "do does did can could should would will whats what's what how where when why which who "
 		+ "best good better fast fastest quick quickest way ways get got make making need needs "
-		+ "build building built nearest closest go up want well "
+		+ "build building built nearest closest go up "
 		+ "worth for with without and or not no yes of in on at to from into vs versus about "
 		+ "more less most many much have has had if while during active right now current level "
-		+ "levels xp exp experience quest quests boss monster gear setup strategy guide tips "
-		+ "inventory loadout "
+		+ "levels xp exp experience quest quests boss monster gear setup loadout strategy guide tips "
 		+ "kill killing fight fighting drop drops dropped use using item items stuff thing things "
 		+ "money gp gold profit hour hr afk safe easy hard next "
 		+ "player players people normally usually give giving steps step finish finished "
@@ -175,7 +179,9 @@ public class EntityResolver
 	public void resolveInto(String text, Collection<String> questNames, Resolution into)
 		throws IOException
 	{
-		Resolution extra = resolve(text, questNames);
+		// QUESTION register: game-state text is a bare trusted name
+		// ("Greater demons") and gets the full resolution a question would.
+		Resolution extra = resolve(text, questNames, Source.QUESTION);
 		for (String kind : new String[]{"items", "monsters", "quests", "skills", "pages"})
 		{
 			List<String> target = into.byKind(kind);
@@ -187,11 +193,6 @@ public class EntityResolver
 				}
 			}
 		}
-	}
-
-	public Resolution resolve(String question, Collection<String> questNames) throws IOException
-	{
-		return resolve(question, questNames, Source.QUESTION);
 	}
 
 	/**
@@ -206,6 +207,20 @@ public class EntityResolver
 		throws IOException
 	{
 		ensureVocabs();
+		Map<String, String> questVocab = questVocab(questNames);
+
+		String[] tokens = norm(question).split(" +");
+		Resolution result = new Resolution();
+		boolean[] used = new boolean[tokens.length];
+		// {start, size} spans the vocabulary pass could not claim.
+		List<int[]> unresolved = vocabularyPass(tokens, used, questVocab, result);
+		redirectPass(tokens, used, unresolved, questVocab, result, source);
+		dropShadowedPages(result);
+		return result;
+	}
+
+	private static Map<String, String> questVocab(Collection<String> questNames)
+	{
 		Map<String, String> questVocab = new HashMap<>();
 		for (String q : questNames)
 		{
@@ -223,12 +238,16 @@ public class EntityResolver
 				questVocab.putIfAbsent(n.substring(0, n.length() - 2), q);
 			}
 		}
+		return questVocab;
+	}
 
-		String[] tokens = norm(question).split(" +");
-		Resolution result = new Resolution();
-		boolean[] used = new boolean[tokens.length];
-		List<int[]> unresolved = new ArrayList<>();  // {start, size}
-
+	/** N-gram scan against the local vocabularies, longest span first.
+	 * Marks claimed tokens in {@code used} and returns the spans left for
+	 * the redirect pass. */
+	private List<int[]> vocabularyPass(String[] tokens, boolean[] used,
+		Map<String, String> questVocab, Resolution result)
+	{
+		List<int[]> unresolved = new ArrayList<>();
 		for (int size = 4; size >= 1; size--)
 		{
 			for (int i = 0; i + size <= tokens.length; i++)
@@ -267,15 +286,24 @@ public class EntityResolver
 				}
 			}
 		}
+		return unresolved;
+	}
 
+	/** Wiki redirect pass over the spans the vocabularies left behind:
+	 * candidate selection is register-aware (see isRedirectCandidate),
+	 * acceptance longest-span-first as in the vocabulary pass. */
+	private void redirectPass(String[] tokens, boolean[] used, List<int[]> unresolved,
+		Map<String, String> questVocab, Resolution result, Source source) throws IOException
+	{
 		boolean vocabHit = !result.items.isEmpty() || !result.monsters.isEmpty()
 			|| !result.quests.isEmpty() || !result.skills.isEmpty();
 
-		// Redirect pass: candidate spans that don't overlap a confirmed match.
+		// Candidate spans that don't overlap a confirmed match.
 		// Short spans are the likeliest slang, so prefer them.
 		unresolved.sort((a, b) -> Integer.compare(a[1], b[1]));
 		Map<String, int[]> chosen = new LinkedHashMap<>();
 		Set<String> english = wiki.englishWords();
+		Set<String> common = wiki.commonEnglishWords();
 		for (int[] span : unresolved)
 		{
 			if (anyUsed(used, span[0], span[1]))
@@ -291,7 +319,7 @@ public class EntityResolver
 			// Inherited conversation context counts as "already resolved":
 			// it satisfies the same need desperation exists to fill.
 			if (!chosen.containsKey(gram)
-				&& isRedirectCandidate(span[1], gramTokens, gram, english,
+				&& isRedirectCandidate(span[1], gramTokens, gram, english, common,
 					vocabHit || source != Source.QUESTION, source))
 			{
 				chosen.put(gram, span);
@@ -311,6 +339,21 @@ public class EntityResolver
 			{
 				continue;
 			}
+			// An English word must prove itself by landing on a typed
+			// entity: "fury" -> Amulet of fury resolves, but "bow" -> Bow
+			// and "inventory" -> Inventory are the word's ordinary sense
+			// wearing a page title, junk by construction. Slang keeps
+			// generic pages ("toa" -> Tombs of Amascut), two-letter
+			// shorthand is exempt with the wordlist unable to judge it
+			// ("ge" -> Grand Exchange), and facility nouns are exempt
+			// because their pages ARE generic ("house" -> Player-owned
+			// house).
+			String gram = hit.getKey();
+			if (span[1] == 1 && gram.length() > 2 && english.contains(gram)
+				&& !facilityNoun(gram) && "pages".equals(hit.getValue()[0]))
+			{
+				continue;
+			}
 			Arrays.fill(used, span[0], span[0] + span[1], true);
 			List<String> list = result.byKind(hit.getValue()[0]);
 			if (!list.contains(hit.getValue()[1]))
@@ -318,9 +361,13 @@ public class EntityResolver
 				list.add(hit.getValue()[1]);
 			}
 		}
+	}
 
-		// Drop generic page hits contained inside a stronger match
-		// ("Bar" vs "Adamantite bar", "King" vs "Dagannoth Kings").
+	/** Drop generic page hits contained inside a stronger match
+	 * ("Bar" vs "Adamantite bar", "King" vs "Dagannoth Kings"), and
+	 * glossary pages when a real subject resolved. */
+	private static void dropShadowedPages(Resolution result)
+	{
 		List<String> allNames = new ArrayList<>();
 		for (String kind : new String[]{"items", "monsters", "quests", "pages"})
 		{
@@ -341,7 +388,6 @@ public class EntityResolver
 		{
 			result.pages.removeIf(GLOSSARY_PAGES::contains);
 		}
-		return result;
 	}
 
 	private static final Set<String> GLOSSARY_PAGES =
@@ -364,13 +410,6 @@ public class EntityResolver
 	private static final Set<String> NEGATIONS = new HashSet<>(Arrays.asList(
 		"not", "without", "excluding", "except", "besides", "minus", "ignoring"));
 
-	/**
-	 * True when the span sits under a negation ("not on consumables",
-	 * "except for the amulet"): the player is excluding the thing, so it
-	 * must not drive prefetch. Only function words may intervene between the
-	 * cue and the mention; a content word ("don't HAVE the armor") breaks
-	 * the chain, so absence-talk still resolves its entity.
-	 */
 	/** True when the question mentions the word at least once NOT under a
 	 * negation cue ("on task" yes; "not on task" no). Lets keyword rules
 	 * outside the vocabulary pass share the resolver's negation semantics. */
@@ -387,6 +426,13 @@ public class EntityResolver
 		return false;
 	}
 
+	/**
+	 * True when the span sits under a negation ("not on consumables",
+	 * "except for the amulet"): the player is excluding the thing, so it
+	 * must not drive prefetch. Only function words may intervene between the
+	 * cue and the mention; a content word ("don't HAVE the armor") breaks
+	 * the chain, so absence-talk still resolves its entity.
+	 */
 	private static boolean negated(String[] tokens, int start)
 	{
 		for (int back = 1; back <= 3 && start - back >= 0; back++)
@@ -416,21 +462,39 @@ public class EntityResolver
 		return GRAMMAR.contains(gramTokens[0]) || GRAMMAR.contains(gramTokens[gramTokens.length - 1]);
 	}
 
+	/** Common nouns whose game-facility sense dominates in a game question:
+	 * "my bank", "closer to a bank", "difference between houses" are about
+	 * the facilities, not the English words. Exempt from the common-band
+	 * block and from the typed-entity requirement (their pages are generic),
+	 * but still desperation-only like any dictionary word. Closed set --
+	 * each entry earns its place with a battery case. */
+	private static final Set<String> FACILITY_NOUNS =
+		new HashSet<>(Arrays.asList("bank", "house"));
+
+	private static boolean facilityNoun(String gram)
+	{
+		return FACILITY_NOUNS.contains(gram)
+			|| (gram.endsWith("s") && FACILITY_NOUNS.contains(gram.substring(0, gram.length() - 1)));
+	}
+
 	/**
-	 * Non-dictionary tokens are almost certainly slang ("kbd", "tbow", "gwd").
-	 * Dictionary tokens ("fury", "whip") are only tried when nothing else in
-	 * the question resolved -- desperation widens the net without letting
-	 * common words crowd out real entities.
+	 * Single-token candidacy follows one principle: absence from English is
+	 * evidence of slang, so the redirect is trusted ("kbd", "tbow", "toa");
+	 * membership in English demands proof. Common-band words ("up", "want",
+	 * "game") never qualify -- their ordinary sense always dominates, and
+	 * the wiki redirects a shocking number of them to real entities ("Want"
+	 * -> Wanted!, "Up" -> Underground Pass). Rare-band words ("fury",
+	 * "bow") are tried only in desperation, and their hit must additionally
+	 * land on a typed entity (see the acceptance loop in resolve()).
 	 */
 	private static boolean isRedirectCandidate(int size, String[] gramTokens, String gram,
-		Set<String> english, boolean subjectKnown, Source source)
+		Set<String> english, Set<String> common, boolean subjectKnown, Source source)
 	{
 		if (size == 1)
 		{
 			// Answer prose has no single-word slang, only single English
-			// words -- and the wiki has a redirect for a shocking number of
-			// them ("Go", "Up", "Cave"). Real answer-introduced subjects
-			// are multi-word names, which the branch below still tries.
+			// words. Real answer-introduced subjects are multi-word names,
+			// which the branch below still tries.
 			if (source == Source.ANSWER)
 			{
 				return false;
@@ -442,19 +506,23 @@ public class EntityResolver
 			{
 				return false;
 			}
-			// At two letters the wordlist can't judge slang: it contains
+			// At two letters the wordlist can't judge anything: it holds
 			// junk entries like "cg" and "ge" that would shelve real
-			// player shorthand behind the dictionary gate. The curated
-			// lists decide instead -- real two-letter English is function
-			// grammar (GRAMMAR) or question-meta (STOPWORDS: "go", "up"),
-			// both filtered before this point.
+			// player shorthand, AND common words like "ca" that ARE real
+			// shorthand here (Combat Achievements). Curation owns this
+			// length -- function grammar lives in GRAMMAR, question-meta
+			// ("go", "up") in STOPWORDS, both filtered before this point.
 			if (gram.length() == 2)
 			{
 				return true;
 			}
+			if (common.contains(gram) && !facilityNoun(gram))
+			{
+				return false;
+			}
 			if (!english.isEmpty() && english.contains(gram))
 			{
-				return !subjectKnown && !STOPWORDS.contains(gram);
+				return !subjectKnown;
 			}
 			return true;
 		}
@@ -490,11 +558,11 @@ public class EntityResolver
 			// item)"), and a bare skill name always means the skill.
 			if (SKILL_ALIASES.containsKey(candidate))
 			{
-				return new String[]{"skills", title(SKILL_ALIASES.get(candidate))};
+				return new String[]{"skills", capitalize(SKILL_ALIASES.get(candidate))};
 			}
 			if (SKILLS.contains(candidate))
 			{
-				return new String[]{"skills", title(candidate)};
+				return new String[]{"skills", capitalize(candidate)};
 			}
 			if (itemVocab.containsKey(candidate))
 			{
@@ -578,7 +646,9 @@ public class EntityResolver
 		return out;
 	}
 
-	private static Map<String, String> fromToMap(JsonObject q, String key)
+	/** Parses a MediaWiki "normalized"/"redirects" hop array into a
+	 * from -> to map. Shared with WikiContent's redirect resolution. */
+	static Map<String, String> fromToMap(JsonObject q, String key)
 	{
 		Map<String, String> map = new HashMap<>();
 		if (q.has(key))
@@ -611,11 +681,6 @@ public class EntityResolver
 	}
 
 	private static String capitalize(String s)
-	{
-		return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
-	}
-
-	private static String title(String s)
 	{
 		return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
 	}

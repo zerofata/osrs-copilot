@@ -210,3 +210,10 @@ Can you make me an inventory loadout for tombs of amascut, i want to use my crys
 ASSERT {"items": ["Bow of Faerdhinen"], "pages": ["Tombs of Amascut", "Crystal equipment"], "needs": ["strategy"], "not_pages": ["Inventory", "Bank tags", "Well"], "not_quests": ["Wanted!"]}
 > using your loadout what do I use for which boss?
 ASSERT {"pages": ["Tombs of Amascut"], "not_pages": ["Bank tags"]}
+
+# Common-band English never guesses ("game", rank 305, once resolved the
+# page Old School RuneScape) and a rare-band word's redirect must land on
+# a typed entity (bare "bow" -> the generic Bow page is rejected). The
+# subject still arrives: the wiki's own "Best bow" redirect is an item.
+whats the best bow in the game?
+ASSERT {"items": ["Twisted bow"], "not_pages": ["Old School RuneScape", "Bow"]}

@@ -45,6 +45,7 @@ class VocabSnapshots
 	private List<Map<String, Object>> geMapping;
 	private Set<String> monsterNames;
 	private Set<String> englishWords;
+	private Set<String> commonEnglishWords;
 	private List<WikiApi.NamedPoint> locationIndex;
 	private List<String[]> itemNameIndex;
 	private Map<String, Integer> itemIdsByName;
@@ -221,28 +222,54 @@ class VocabSnapshots
 	 * fetch failure -- the resolver degrades gracefully. */
 	synchronized Set<String> englishWords()
 	{
-		if (englishWords == null)
+		loadWordlist();
+		return englishWords;
+	}
+
+	/** The high-frequency band of the wordlist (it is frequency-ordered,
+	 * most common first). Every hostile redirect observed in live sessions
+	 * came from this band ("up" is rank 54, "want" 254, "game" 305), while
+	 * genuine game-flavoured English sits far below it ("bow" 6335, "cave"
+	 * 7512) or is absent entirely ("whip", "fury"). */
+	synchronized Set<String> commonEnglishWords()
+	{
+		loadWordlist();
+		return commonEnglishWords;
+	}
+
+	private void loadWordlist()
+	{
+		if (englishWords != null)
 		{
-			try
+			return;
+		}
+		englishWords = new HashSet<>();
+		commonEnglishWords = new HashSet<>();
+		try
+		{
+			for (String w : snapshot("english_10k.txt").split("\n"))
 			{
-				String text = snapshot("english_10k.txt");
-				englishWords = new HashSet<>();
-				for (String w : text.split("\n"))
+				if (!w.trim().isEmpty())
 				{
-					if (!w.trim().isEmpty())
+					englishWords.add(w.trim());
+					if (englishWords.size() <= COMMON_ENGLISH_BAND)
 					{
-						englishWords.add(w.trim());
+						commonEnglishWords.add(w.trim());
 					}
 				}
 			}
-			catch (IOException e)
-			{
-				log.warn("Wordlist unavailable", e);
-				englishWords = new HashSet<>();
-			}
 		}
-		return englishWords;
+		catch (IOException e)
+		{
+			log.warn("Wordlist unavailable", e);
+		}
 	}
+
+	/** Rank cutoff for the common band: observed hostiles top out at rank
+	 * 305, so 1,000 gives 3x margin. The only game-adjacent word inside the
+	 * band is "staff" (511), which is a real item and resolves through the
+	 * vocabulary pass instead. */
+	private static final int COMMON_ENGLISH_BAND = 1000;
 
 	/**
 	 * Named places with world coordinates, joined from the wiki's location
