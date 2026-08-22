@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.runelite.api.Skill;
 
 /**
  * Entity-aware answer styling: quest names colored by the player's actual
@@ -81,14 +82,13 @@ final class AnswerDecorator
 	private static final int ICON_SQUARE = 14;
 	private static final int ITEM_ICON_W = 16;
 
-	/** All 24 skills. Their icons come from RuneLite's own SkillIconManager,
-	 * so the set is exactly what the client knows. */
-	private static final List<String> SKILLS = List.of(
-		"Attack", "Strength", "Defence", "Ranged", "Prayer", "Magic",
-		"Runecraft", "Hitpoints", "Crafting", "Mining", "Smithing", "Fishing",
-		"Cooking", "Firemaking", "Woodcutting", "Agility", "Herblore",
-		"Thieving", "Fletching", "Slayer", "Farming", "Construction", "Hunter",
-		"Sailing");
+	/** Every skill the client knows, from the same enum IconStore draws the
+	 * icons from -- a new skill arrives in both places at once. OVERALL is
+	 * the deprecated pseudo-skill with no icon or page. */
+	private static final List<String> SKILLS = java.util.Arrays.stream(Skill.values())
+		.filter(s -> !"OVERALL".equals(s.name()))
+		.map(Skill::getName)
+		.collect(java.util.stream.Collectors.toList());
 
 	/**
 	 * Assemble the name vocabularies in precedence order: a name known

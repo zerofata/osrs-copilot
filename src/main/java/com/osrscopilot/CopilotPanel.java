@@ -7,9 +7,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Insets;
-import java.awt.RenderingHints;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -646,20 +644,7 @@ class CopilotPanel extends PluginPanel
 		{
 			if (bg != null)
 			{
-				Graphics2D g2 = (Graphics2D) g.create();
-				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-					RenderingHints.VALUE_ANTIALIAS_ON);
-				g2.setColor(bg);
-				g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
-				if (bevel != null)
-				{
-					// Stone-bevel: a light inner line under the dark outer one.
-					g2.setColor(bevel);
-					g2.drawRoundRect(1, 1, getWidth() - 3, getHeight() - 3, arc, arc);
-				}
-				g2.setColor(edge);
-				g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
-				g2.dispose();
+				SwingUtil.paintRounded(g, this, arc, bg, edge, bevel);
 			}
 			super.paintComponent(g);
 		}
@@ -719,12 +704,8 @@ class CopilotPanel extends PluginPanel
 		@Override
 		protected void paintComponent(Graphics g)
 		{
-			Graphics2D g2 = (Graphics2D) g.create();
-			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-				RenderingHints.VALUE_ANTIALIAS_ON);
-			g2.setColor(!isEnabled() ? bgDisabled : hover ? bgHover : bg);
-			g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
-			g2.dispose();
+			SwingUtil.paintRounded(g, this, arc,
+				!isEnabled() ? bgDisabled : hover ? bgHover : bg, null, null);
 			SwingUtil.smooth(g);
 			super.paintComponent(g);
 		}
@@ -748,14 +729,8 @@ class CopilotPanel extends PluginPanel
 		@Override
 		protected void paintComponent(Graphics g)
 		{
-			Graphics2D g2 = (Graphics2D) g.create();
-			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-				RenderingHints.VALUE_ANTIALIAS_ON);
-			g2.setColor(theme.inputBg);
-			g2.fillRoundRect(0, 0, getWidth(), getHeight(), theme.arc, theme.arc);
-			g2.setColor(hasFocus() ? theme.inputFocusEdge : theme.inputEdge);
-			g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, theme.arc, theme.arc);
-			g2.dispose();
+			SwingUtil.paintRounded(g, this, theme.arc, theme.inputBg,
+				hasFocus() ? theme.inputFocusEdge : theme.inputEdge, null);
 			SwingUtil.smooth(g);
 			super.paintComponent(g);
 		}

@@ -80,7 +80,7 @@ final class Theme
 	{
 	}
 
-	private static volatile Theme active = gameNative();
+	private static volatile Theme active = build(0);
 
 	static Theme active()
 	{
@@ -97,11 +97,11 @@ final class Theme
 		switch (name)
 		{
 			case "modern":
-				return modern();
+				return build(1);
 			case "parchment":
-				return parchment();
+				return build(2);
 			default:
-				return gameNative();
+				return build(0);
 		}
 	}
 
@@ -111,168 +111,80 @@ final class Theme
 	}
 
 	/**
-	 * Dark surfaces (native to the RuneLite client), but every accent drawn
-	 * from the game: RuneScape fonts for chrome, the interface orange-gold
-	 * as the only accent, questions as chat lines, answers as journal cards,
-	 * entity colors matched to the in-game quest list.
+	 * All three palettes in one table, one field per row, so a value change
+	 * or a new field can never silently miss a theme. Columns:
+	 *
+	 * [0] game-native -- dark surfaces (native to the RuneLite client), but
+	 *     every accent drawn from the game: RuneScape fonts for chrome, the
+	 *     interface orange-gold as the only accent, questions as chat lines,
+	 *     answers as journal cards, entity colors matched to the in-game
+	 *     quest list (softened for a dark surface).
+	 * [1] modern -- monochrome chrome, neutral surfaces, no brand accent at
+	 *     all: the only color on screen is semantic (quest states, item
+	 *     ownership), so meaning is the sole thing that glows.
+	 * [2] parchment -- full skeuomorphism: parchment message cards with
+	 *     stone-bevel edges and quest-journal dark text, chat-blue questions
+	 *     and dialogue-box speaker red for answers, squared corners --
+	 *     closest to the in-game interface look, on a dark-brown field.
 	 */
-	static Theme gameNative()
+	private static Theme build(int i)
 	{
+		Font bold = FontManager.getRunescapeBoldFont();
+		Font small = FontManager.getRunescapeSmallFont();
 		Theme t = new Theme();
-		t.chromeFont = FontManager.getRunescapeBoldFont();
-		t.statusFont = FontManager.getRunescapeSmallFont();
-		t.accent = new Color(0xff981f);
-		t.surface = new Color(0x1e1b16);
-		t.chromeBg = new Color(0x26221b);
-		t.buttonBg = new Color(0x3a3226);
-		t.buttonHover = new Color(0x4a4030);
-		t.buttonFg = new Color(0xff981f);
-		t.primaryBg = new Color(0xff981f);
-		t.primaryHover = new Color(0xffb04a);
-		t.primaryFg = new Color(0x211a10);
-		t.inputBg = new Color(0x1e1b16);
-		t.inputEdge = new Color(0x4a3f2a);
-		t.inputFocusEdge = new Color(0xb8781c);
-		t.inputText = new Color(0xe6d9b8);
-		t.statusFg = new Color(0xb8a888);
-		t.scrollThumb = new Color(0x4a4030);
-		t.arc = 8;
-		t.userAsChatLine = true;
-		t.userCardBg = null;
-		t.userCardEdge = null;
-		t.botCardBg = new Color(0x262019);
-		t.botCardEdge = new Color(0x4a3b24);
-		t.bevelLight = null;
-		t.userLabelFg = new Color(0xffffff);
-		t.botLabelFg = new Color(0xff981f);
-		t.userBodyHex = "#ff981f";
-		t.botBodyHex = "#e8ddc4";
-		t.userPrefixHex = "#ffffff";
-		t.noteHex = "#a89878";
-		t.metaHex = "#8a7c60";
-		t.caretHex = "#ff981f";
-		t.welcomeTextHex = "#a89878";
-		t.tableEdgeHex = "#4a3b24";
-		t.tableHeaderHex = "#332a1d";
-		t.tableCellHex = "#241f17";
-		// The in-game quest list's own colors, softened for a dark surface.
-		t.questDoneHex = "#2ee62e";
-		t.questProgressHex = "#f0e130";
-		t.questNotStartedHex = "#ff4040";
-		t.itemCarriedHex = "#8ee88e";
-		t.itemBankedHex = "#4ed6d6";
-		t.itemUnownedHex = "#e05b5b";
-		t.plainLinkHex = "#c8b681";
+		t.chromeFont = pick(i, bold, null, bold);
+		t.statusFont = pick(i, small, null, small);
+		t.accent = pick(i, c(0xff981f), c(0xe0e0e0), c(0xffd870));
+		t.surface = pick(i, c(0x1e1b16), c(0x212121), c(0x2e2820));
+		t.chromeBg = pick(i, c(0x26221b), c(0x282828), c(0x241f18));
+		t.buttonBg = pick(i, c(0x3a3226), c(0x2a2a2a), c(0x4e4433));
+		t.buttonHover = pick(i, c(0x4a4030), c(0x343434), c(0x5e5340));
+		t.buttonFg = pick(i, c(0xff981f), c(0xbbbbbb), c(0xf0d9a0));
+		t.primaryBg = pick(i, c(0xff981f), c(0xe8e8e8), c(0x6a5a3a));
+		t.primaryHover = pick(i, c(0xffb04a), c(0xffffff), c(0x7a6a48));
+		t.primaryFg = pick(i, c(0x211a10), c(0x1e1e1e), c(0xffd870));
+		t.inputBg = pick(i, c(0x1e1b16), c(0x212121), c(0xded5b6));
+		t.inputEdge = pick(i, c(0x4a3f2a), c(0x3a3a3a), c(0x5a4a33));
+		t.inputFocusEdge = pick(i, c(0xb8781c), c(0x5a5a5a), c(0x8a6d2e));
+		t.inputText = pick(i, c(0xe6d9b8), c(0xdddddd), c(0x3a2f1b));
+		t.statusFg = pick(i, c(0xb8a888), c(0x9a9a9a), c(0xc8b681));
+		t.scrollThumb = pick(i, c(0x4a4030), c(0x424242), c(0x5a4a33));
+		t.arc = pick(i, 8, 12, 4);
+		t.userAsChatLine = pick(i, true, false, false);
+		t.userCardBg = pick(i, null, c(0x2f2f2f), c(0xd8cdad));
+		t.userCardEdge = pick(i, null, c(0x3c3c3c), c(0x5a4a33));
+		t.botCardBg = pick(i, c(0x262019), c(0x2a2a2a), c(0xe2d8ba));
+		t.botCardEdge = pick(i, c(0x4a3b24), c(0x363636), c(0x5a4a33));
+		t.bevelLight = pick(i, null, null, c(0xf4ecd4));
+		t.userLabelFg = pick(i, c(0xffffff), c(0x9a9a9a), c(0x16388c));
+		t.botLabelFg = pick(i, c(0xff981f), c(0x9a9a9a), c(0x7a1f1f));
+		t.userBodyHex = pick(i, "#ff981f", "#dddddd", "#16388c");
+		t.botBodyHex = pick(i, "#e8ddc4", "#dddddd", "#2e2415");
+		t.userPrefixHex = pick(i, "#ffffff", "#ffffff", "#16388c");
+		t.noteHex = pick(i, "#a89878", "#9a9a9a", "#6a5c40");
+		t.metaHex = pick(i, "#8a7c60", "#828282", "#7a6c50");
+		t.caretHex = pick(i, "#ff981f", "#cfcfcf", "#7a1f1f");
+		t.welcomeTextHex = pick(i, "#a89878", "#828282", "#c8b681");
+		t.tableEdgeHex = pick(i, "#4a3b24", "#3a3a3a", "#8a7a5c");
+		t.tableHeaderHex = pick(i, "#332a1d", "#303030", "#c9bc96");
+		t.tableCellHex = pick(i, "#241f17", "#252525", "#d8cdad");
+		t.questDoneHex = pick(i, "#2ee62e", "#6cc24a", "#1e7d1e");
+		t.questProgressHex = pick(i, "#f0e130", "#d4aa46", "#8a6d00");
+		t.questNotStartedHex = pick(i, "#ff4040", "#cc5555", "#a02121");
+		t.itemCarriedHex = pick(i, "#8ee88e", "#7ec850", "#2a7d2a");
+		t.itemBankedHex = pick(i, "#4ed6d6", "#6fa8dc", "#1e5b8a");
+		t.itemUnownedHex = pick(i, "#e05b5b", "#b07070", "#a04040");
+		t.plainLinkHex = pick(i, "#c8b681", "#b0a6e8", "#6a4fa0");
 		return t;
 	}
 
-	/**
-	 * Monochrome chrome, neutral surfaces, no brand accent at all: the only
-	 * color on screen is semantic (quest states, item ownership), so meaning
-	 * is the sole thing that glows.
-	 */
-	static Theme modern()
+	private static <T> T pick(int i, T gameNative, T modern, T parchment)
 	{
-		Theme t = new Theme();
-		t.chromeFont = null;
-		t.statusFont = null;
-		t.accent = new Color(0xe0e0e0);
-		t.surface = new Color(0x212121);
-		t.chromeBg = new Color(0x282828);
-		t.buttonBg = new Color(0x2a2a2a);
-		t.buttonHover = new Color(0x343434);
-		t.buttonFg = new Color(0xbbbbbb);
-		t.primaryBg = new Color(0xe8e8e8);
-		t.primaryHover = new Color(0xffffff);
-		t.primaryFg = new Color(0x1e1e1e);
-		t.inputBg = new Color(0x212121);
-		t.inputEdge = new Color(0x3a3a3a);
-		t.inputFocusEdge = new Color(0x5a5a5a);
-		t.inputText = new Color(0xdddddd);
-		t.statusFg = new Color(0x9a9a9a);
-		t.scrollThumb = new Color(0x424242);
-		t.arc = 12;
-		t.userAsChatLine = false;
-		t.userCardBg = new Color(0x2f2f2f);
-		t.userCardEdge = new Color(0x3c3c3c);
-		t.botCardBg = new Color(0x2a2a2a);
-		t.botCardEdge = new Color(0x363636);
-		t.bevelLight = null;
-		t.userLabelFg = new Color(0x9a9a9a);
-		t.botLabelFg = new Color(0x9a9a9a);
-		t.userBodyHex = "#dddddd";
-		t.botBodyHex = "#dddddd";
-		t.userPrefixHex = "#ffffff";
-		t.noteHex = "#9a9a9a";
-		t.metaHex = "#828282";
-		t.caretHex = "#cfcfcf";
-		t.welcomeTextHex = "#828282";
-		t.tableEdgeHex = "#3a3a3a";
-		t.tableHeaderHex = "#303030";
-		t.tableCellHex = "#252525";
-		t.questDoneHex = "#6cc24a";
-		t.questProgressHex = "#d4aa46";
-		t.questNotStartedHex = "#cc5555";
-		t.itemCarriedHex = "#7ec850";
-		t.itemBankedHex = "#6fa8dc";
-		t.itemUnownedHex = "#b07070";
-		t.plainLinkHex = "#b0a6e8";
-		return t;
+		return i == 1 ? modern : i == 2 ? parchment : gameNative;
 	}
 
-	/**
-	 * Full skeuomorphism: parchment message cards with stone-bevel edges and
-	 * quest-journal dark text, chat-blue questions, squared corners --
-	 * closest to the in-game interface look, floating on a dark-brown field.
-	 */
-	static Theme parchment()
+	private static Color c(int rgb)
 	{
-		Theme t = new Theme();
-		t.chromeFont = FontManager.getRunescapeBoldFont();
-		t.statusFont = FontManager.getRunescapeSmallFont();
-		t.accent = new Color(0xffd870);
-		t.surface = new Color(0x2e2820);
-		t.chromeBg = new Color(0x241f18);
-		t.buttonBg = new Color(0x4e4433);
-		t.buttonHover = new Color(0x5e5340);
-		t.buttonFg = new Color(0xf0d9a0);
-		t.primaryBg = new Color(0x6a5a3a);
-		t.primaryHover = new Color(0x7a6a48);
-		t.primaryFg = new Color(0xffd870);
-		t.inputBg = new Color(0xded5b6);
-		t.inputEdge = new Color(0x5a4a33);
-		t.inputFocusEdge = new Color(0x8a6d2e);
-		t.inputText = new Color(0x3a2f1b);
-		t.statusFg = new Color(0xc8b681);
-		t.scrollThumb = new Color(0x5a4a33);
-		t.arc = 4;
-		t.userAsChatLine = false;
-		t.userCardBg = new Color(0xd8cdad);
-		t.userCardEdge = new Color(0x5a4a33);
-		t.botCardBg = new Color(0xe2d8ba);
-		t.botCardEdge = new Color(0x5a4a33);
-		t.bevelLight = new Color(0xf4ecd4);
-		// Dialogue-box speaker red for the answerer, public-chat blue for you.
-		t.userLabelFg = new Color(0x16388c);
-		t.botLabelFg = new Color(0x7a1f1f);
-		t.userBodyHex = "#16388c";
-		t.botBodyHex = "#2e2415";
-		t.userPrefixHex = "#16388c";
-		t.noteHex = "#6a5c40";
-		t.metaHex = "#7a6c50";
-		t.caretHex = "#7a1f1f";
-		t.welcomeTextHex = "#c8b681";
-		t.tableEdgeHex = "#8a7a5c";
-		t.tableHeaderHex = "#c9bc96";
-		t.tableCellHex = "#d8cdad";
-		// Quest-journal semantics, darkened to read on parchment.
-		t.questDoneHex = "#1e7d1e";
-		t.questProgressHex = "#8a6d00";
-		t.questNotStartedHex = "#a02121";
-		t.itemCarriedHex = "#2a7d2a";
-		t.itemBankedHex = "#1e5b8a";
-		t.itemUnownedHex = "#a04040";
-		t.plainLinkHex = "#6a4fa0";
-		return t;
+		return new Color(rgb);
 	}
 }

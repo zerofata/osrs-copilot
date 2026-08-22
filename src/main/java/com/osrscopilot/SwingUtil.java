@@ -132,4 +132,27 @@ final class SwingUtil
 	{
 		return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 	}
+
+	/** The panel's one shape, painted once: antialiased rounded fill, an
+	 * optional light inner line (stone bevel), an optional outer edge. */
+	static void paintRounded(Graphics g, javax.swing.JComponent c, int arc,
+		java.awt.Color fill, java.awt.Color edge, java.awt.Color innerBevel)
+	{
+		Graphics2D g2 = (Graphics2D) g.create();
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+			RenderingHints.VALUE_ANTIALIAS_ON);
+		g2.setColor(fill);
+		g2.fillRoundRect(0, 0, c.getWidth(), c.getHeight(), arc, arc);
+		if (innerBevel != null)
+		{
+			g2.setColor(innerBevel);
+			g2.drawRoundRect(1, 1, c.getWidth() - 3, c.getHeight() - 3, arc, arc);
+		}
+		if (edge != null)
+		{
+			g2.setColor(edge);
+			g2.drawRoundRect(0, 0, c.getWidth() - 1, c.getHeight() - 1, arc, arc);
+		}
+		g2.dispose();
+	}
 }
