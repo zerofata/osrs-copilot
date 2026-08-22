@@ -1,5 +1,6 @@
 package com.osrscopilot.pipeline;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -153,10 +154,8 @@ class WikiContent
 	{
 		try
 		{
-			JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=sections&format=json"
-				+ "&redirects=1&page=" + Http.enc(title));
 			List<String> out = new ArrayList<>();
-			for (JsonElement e : r.getAsJsonObject("parse").getAsJsonArray("sections"))
+			for (JsonElement e : pageSections(title))
 			{
 				JsonObject s = e.getAsJsonObject();
 				String line = s.get("line").getAsString();
@@ -300,18 +299,25 @@ class WikiContent
 		return pageBytes > 0 && (double) extract.length() / pageBytes < HUSK_RATIO;
 	}
 
+	/** The wiki's own document structure for a page
+	 * (action=parse&prop=sections), shared by the TOC and section fetches. */
+	private JsonArray pageSections(String title) throws IOException
+	{
+		JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=sections&format=json"
+			+ "&redirects=1&page=" + Http.enc(title));
+		return r.getAsJsonObject("parse").getAsJsonArray("sections");
+	}
+
 	/**
 	 * Fetch one section of a page by heading, using the wiki's own document
-	 * structure (action=parse&prop=sections). Returns null when the page has
-	 * no matching section -- callers treat that as "nothing to add".
+	 * structure. Returns null when the page has no matching section --
+	 * callers treat that as "nothing to add".
 	 */
 	String sectionByHeading(String title, Pattern headingPattern, int charLimit)
 	{
 		try
 		{
-			JsonObject r = cachedGet(WIKI_API + "?action=parse&prop=sections&format=json"
-				+ "&redirects=1&page=" + Http.enc(title));
-			for (JsonElement e : r.getAsJsonObject("parse").getAsJsonArray("sections"))
+			for (JsonElement e : pageSections(title))
 			{
 				JsonObject s = e.getAsJsonObject();
 				if (!headingPattern.matcher(s.get("line").getAsString()).find())

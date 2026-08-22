@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
 /**
@@ -39,28 +40,28 @@ public final class Ownership
 	static Map<String, long[]> buildIndex(GameCapture cap)
 	{
 		Map<String, long[]> owned = new LinkedHashMap<>();
-		for (List<Map<String, Object>> container :
-			Arrays.asList(cap.bank, cap.inventory, cap.equipment))
-		{
-			if (container == null)
-			{
-				continue;
-			}
-			for (Map<String, Object> item : container)
-			{
-				String name = String.valueOf(item.get("name"));
-				long qty = item.get("quantity") instanceof Number
-					? ((Number) item.get("quantity")).longValue() : 1;
-				owned.merge(name.toLowerCase(Locale.ROOT), new long[]{qty},
-					(a, b) -> new long[]{a[0] + b[0]});
-			}
-		}
+		eachOwnedItem(cap, (name, item) -> {
+			long qty = item.get("quantity") instanceof Number
+				? ((Number) item.get("quantity")).longValue() : 1;
+			owned.merge(name.toLowerCase(Locale.ROOT), new long[]{qty},
+				(a, b) -> new long[]{a[0] + b[0]});
+		});
 		return owned;
 	}
 
 	static Map<String, String> buildNames(GameCapture cap)
 	{
 		Map<String, String> names = new LinkedHashMap<>();
+		eachOwnedItem(cap, (name, item) ->
+			names.putIfAbsent(name.toLowerCase(Locale.ROOT), name));
+		return names;
+	}
+
+	/** The one walk over everything the player holds (bank, inventory,
+	 * equipment; absent containers skipped) behind both builders above. */
+	private static void eachOwnedItem(GameCapture cap,
+		BiConsumer<String, Map<String, Object>> fn)
+	{
 		for (List<Map<String, Object>> container :
 			Arrays.asList(cap.bank, cap.inventory, cap.equipment))
 		{
@@ -70,11 +71,9 @@ public final class Ownership
 			}
 			for (Map<String, Object> item : container)
 			{
-				String name = String.valueOf(item.get("name"));
-				names.putIfAbsent(name.toLowerCase(Locale.ROOT), name);
+				fn.accept(String.valueOf(item.get("name")), item);
 			}
 		}
-		return names;
 	}
 
 	static Object check(Map<String, long[]> owned, Map<String, String> names, String itemName)

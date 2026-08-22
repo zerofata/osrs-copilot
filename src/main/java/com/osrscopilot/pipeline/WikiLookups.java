@@ -67,16 +67,8 @@ class WikiLookups
 				return qualified != null ? qualified : target;
 			}
 			String lower = name.toLowerCase(Locale.ROOT);
-			String shortestPartial = null;
-			for (Map<String, Object> it : vocab.geMapping())
-			{
-				String candidate = (String) it.get("name");
-				if (candidate.toLowerCase(Locale.ROOT).contains(lower)
-					&& (shortestPartial == null || candidate.length() < shortestPartial.length()))
-				{
-					shortestPartial = candidate;
-				}
-			}
+			String shortestPartial =
+				scanMapping(c -> c.toLowerCase(Locale.ROOT).contains(lower));
 			if (shortestPartial != null)
 			{
 				return shortestPartial;
@@ -97,27 +89,26 @@ class WikiLookups
 	/** Case-insensitive exact match against the GE mapping, or null. */
 	private String mappingMatch(String name) throws IOException
 	{
-		for (Map<String, Object> it : vocab.geMapping())
-		{
-			String candidate = (String) it.get("name");
-			if (candidate.equalsIgnoreCase(name))
-			{
-				return candidate;
-			}
-		}
-		return null;
+		return scanMapping(c -> c.equalsIgnoreCase(name));
 	}
 
 	/** Shortest "Name (qualifier)" entry in the GE mapping, or null. */
 	private String qualifiedVariant(String name) throws IOException
 	{
 		String prefix = name.toLowerCase(Locale.ROOT) + " (";
+		return scanMapping(c -> c.toLowerCase(Locale.ROOT).startsWith(prefix));
+	}
+
+	/** The one GE-mapping scan behind the matchers above: shortest entry
+	 * satisfying the predicate, or null. Shortest because qualified and
+	 * partial matches want the least-decorated variant. */
+	private String scanMapping(java.util.function.Predicate<String> match) throws IOException
+	{
 		String best = null;
 		for (Map<String, Object> it : vocab.geMapping())
 		{
 			String candidate = (String) it.get("name");
-			if (candidate.toLowerCase(Locale.ROOT).startsWith(prefix)
-				&& (best == null || candidate.length() < best.length()))
+			if (match.test(candidate) && (best == null || candidate.length() < best.length()))
 			{
 				best = candidate;
 			}
@@ -189,36 +180,53 @@ class WikiLookups
 	private List<Map<String, Object>> dropSources(String canonical) throws IOException
 	{
 		JsonObject r = content.bucket("bucket('dropsline').select('page_name','drop_json')"
-			+ ".where('item_name','" + canonical.replace("'", "\\'") + "').limit(50).run()");
+			+ ".where('item_name','" + esc(canonical) + "').limit(50).run()");
 		List<Map<String, Object>> out = new ArrayList<>();
 		Set<String> seen = new HashSet<>();
 		for (JsonElement row : r.getAsJsonArray("bucket"))
 		{
-			JsonObject o = row.getAsJsonObject();
-			if (!o.has("drop_json"))
+			Map<String, Object> entry = dropRow(row.getAsJsonObject(), "source", seen);
+			if (entry != null)
 			{
-				continue;
-			}
-			JsonObject dj = gson.fromJson(o.get("drop_json").getAsString(), JsonObject.class);
-			String source = dj.has("Dropped from") ? dj.get("Dropped from").getAsString()
-				: (o.has("page_name") ? o.get("page_name").getAsString() : "?");
-			String qty = dj.has("Drop Quantity") ? dj.get("Drop Quantity").getAsString() : "?";
-			String rarity = dj.has("Rarity") ? dj.get("Rarity").getAsString() : "?";
-			if (!seen.add(source + "|" + qty + "|" + rarity))
-			{
-				continue;
-			}
-			Map<String, Object> entry = new LinkedHashMap<>();
-			entry.put("source", source);
-			entry.put("quantity", qty);
-			entry.put("rarity", rarity);
-			out.add(entry);
-			if (out.size() >= 30)
-			{
-				break;
+				out.add(entry);
+				if (out.size() >= 30)
+				{
+					break;
+				}
 			}
 		}
 		return out;
+	}
+
+	/**
+	 * One dropsline row as {identity, quantity, rarity}, or null when the
+	 * row lacks drop_json or repeats an entry already seen. The identity
+	 * depends on the direction of the lookup: "source" reads the dropping
+	 * monster (item lookups list sources), anything else the item_name
+	 * (monster lookups list items).
+	 */
+	private Map<String, Object> dropRow(JsonObject o, String idKey, Set<String> seen)
+	{
+		if (!o.has("drop_json"))
+		{
+			return null;
+		}
+		JsonObject dj = gson.fromJson(o.get("drop_json").getAsString(), JsonObject.class);
+		String id = "source".equals(idKey)
+			? (dj.has("Dropped from") ? dj.get("Dropped from").getAsString()
+				: jstr(o, "page_name", "?"))
+			: jstr(o, "item_name", "?");
+		String qty = dj.has("Drop Quantity") ? dj.get("Drop Quantity").getAsString() : "?";
+		String rarity = dj.has("Rarity") ? dj.get("Rarity").getAsString() : "?";
+		if (!seen.add(id + "|" + qty + "|" + rarity))
+		{
+			return null;
+		}
+		Map<String, Object> entry = new LinkedHashMap<>();
+		entry.put(idKey, id);
+		entry.put("quantity", qty);
+		entry.put("rarity", rarity);
+		return entry;
 	}
 
 	/** Recipe-bucket rows on the item's own page: what it is made from.
@@ -228,7 +236,7 @@ class WikiLookups
 	private List<Map<String, Object>> recipes(String canonical) throws IOException
 	{
 		JsonObject r = content.bucket("bucket('recipe').select('production_json')"
-			+ ".where('page_name','" + canonical.replace("'", "\\'") + "').limit(5).run()");
+			+ ".where('page_name','" + esc(canonical) + "').limit(5).run()");
 		List<Map<String, Object>> out = new ArrayList<>();
 		JsonArray rows = r.getAsJsonArray("bucket");
 		if (rows == null)
@@ -293,7 +301,7 @@ class WikiLookups
 	{
 		JsonObject r = content.bucket("bucket('storeline')"
 			+ ".select('sold_by','store_buy_price','store_currency','store_stock')"
-			+ ".where('sold_item','" + canonical.replace("'", "\\'") + "').limit(10).run()");
+			+ ".where('sold_item','" + esc(canonical) + "').limit(10).run()");
 		List<Map<String, Object>> out = new ArrayList<>();
 		JsonArray rows = r.getAsJsonArray("bucket");
 		if (rows == null)
@@ -327,13 +335,35 @@ class WikiLookups
 			? o.get(key).getAsString() : fallback;
 	}
 
+	/** First row of a bucket result as a mutable map with null fields
+	 * dropped, or null when the bucket matched nothing. The shared shape
+	 * of every infobox lookup; per-field cleaning stays with the caller. */
+	private Map<String, Object> firstRow(JsonObject r)
+	{
+		JsonArray rows = r.getAsJsonArray("bucket");
+		if (rows == null || rows.size() == 0)
+		{
+			return null;
+		}
+		Map<String, Object> info = gson.fromJson(rows.get(0),
+			new TypeToken<Map<String, Object>>() { }.getType());
+		info.values().removeIf(Objects::isNull);
+		return info;
+	}
+
+	/** Bucket query values sit in single quotes; escape accordingly. */
+	private static String esc(String s)
+	{
+		return s.replace("'", "\\'");
+	}
+
 	/** Full drop table of a monster. */
 	Map<String, Object> monsterDrops(String name)
 	{
 		try
 		{
 			JsonObject r = content.bucket("bucket('dropsline').select('item_name','drop_json')"
-				+ ".where('page_name','" + name.replace("'", "\\'") + "').limit(80).run()");
+				+ ".where('page_name','" + esc(name) + "').limit(80).run()");
 			JsonArray rows = r.getAsJsonArray("bucket");
 			if (rows == null || rows.size() == 0)
 			{
@@ -350,24 +380,11 @@ class WikiLookups
 			Set<String> seen = new HashSet<>();
 			for (JsonElement row : rows)
 			{
-				JsonObject o = row.getAsJsonObject();
-				if (!o.has("drop_json"))
+				Map<String, Object> entry = dropRow(row.getAsJsonObject(), "item", seen);
+				if (entry != null)
 				{
-					continue;
+					out.add(entry);
 				}
-				JsonObject dj = gson.fromJson(o.get("drop_json").getAsString(), JsonObject.class);
-				String item = o.has("item_name") ? o.get("item_name").getAsString() : "?";
-				String qty = dj.has("Drop Quantity") ? dj.get("Drop Quantity").getAsString() : "?";
-				String rarity = dj.has("Rarity") ? dj.get("Rarity").getAsString() : "?";
-				if (!seen.add(item + "|" + qty + "|" + rarity))
-				{
-					continue;
-				}
-				Map<String, Object> entry = new LinkedHashMap<>();
-				entry.put("item", item);
-				entry.put("quantity", qty);
-				entry.put("rarity", rarity);
-				out.add(entry);
 			}
 			Map<String, Object> result = new LinkedHashMap<>();
 			result.put("monster", name);
@@ -401,15 +418,12 @@ class WikiLookups
 				+ "'attack_style','attack_speed','size',"
 				+ "'poison_resistance','venom_resistance','cannon_immune','burn_immune',"
 				+ "'freeze_resistance','elemental_weakness','elemental_weakness_percent')"
-				+ ".where('name','" + name.replace("'", "\\'") + "').limit(3).run()");
-			JsonArray rows = r.getAsJsonArray("bucket");
-			if (rows == null || rows.size() == 0)
+				+ ".where('name','" + esc(name) + "').limit(3).run()");
+			Map<String, Object> info = firstRow(r);
+			if (info == null)
 			{
 				return Map.of("error", "No monster named '" + name + "' found. Check spelling via wiki_search.");
 			}
-			Map<String, Object> info = gson.fromJson(rows.get(0),
-				new TypeToken<Map<String, Object>>() { }.getType());
-			info.values().removeIf(Objects::isNull);
 			// The bucket carries "ERR" where the wiki's own template data is
 			// broken (currently the resistance fields); junk, not a value.
 			info.values().removeIf("ERR"::equals);
@@ -440,16 +454,13 @@ class WikiLookups
 				+ "'stab_defence_bonus','slash_defence_bonus','crush_defence_bonus',"
 				+ "'magic_defence_bonus','range_defence_bonus',"
 				+ "'strength_bonus','ranged_strength_bonus','magic_damage_bonus','prayer_bonus')"
-				+ ".where('page_name','" + name.replace("'", "\\'") + "').limit(3).run()");
-			JsonArray rows = r.getAsJsonArray("bucket");
-			if (rows == null || rows.size() == 0)
+				+ ".where('page_name','" + esc(name) + "').limit(3).run()");
+			Map<String, Object> info = firstRow(r);
+			if (info == null)
 			{
 				return Map.of("error", "No equipment stats for '" + name
 					+ "'. It may not be wearable, or the name may differ; check via wiki_search.");
 			}
-			Map<String, Object> info = gson.fromJson(rows.get(0),
-				new TypeToken<Map<String, Object>>() { }.getType());
-			info.values().removeIf(Objects::isNull);
 			info.replaceAll((k, v) -> stripMarkup(v));
 			return info;
 		}
@@ -474,16 +485,13 @@ class WikiLookups
 		{
 			JsonObject r = content.bucket("bucket('quest')"
 				+ ".select('page_name','requirements','items_required','start_point')"
-				+ ".where('page_name','" + name.replace("'", "\\'") + "').limit(2).run()");
-			JsonArray rows = r.getAsJsonArray("bucket");
-			if (rows == null || rows.size() == 0)
+				+ ".where('page_name','" + esc(name) + "').limit(2).run()");
+			Map<String, Object> info = firstRow(r);
+			if (info == null)
 			{
 				return Map.of("error", "No quest named '" + name
 					+ "' found. Check spelling via wiki_search.");
 			}
-			Map<String, Object> info = gson.fromJson(rows.get(0),
-				new TypeToken<Map<String, Object>>() { }.getType());
-			info.values().removeIf(Objects::isNull);
 			info.replaceAll((k, v) -> v instanceof String ? flattenWikitext((String) v) : v);
 			return info;
 		}

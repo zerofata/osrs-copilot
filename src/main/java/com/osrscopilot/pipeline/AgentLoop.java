@@ -185,32 +185,24 @@ class AgentLoop
 	/** Bare tool names from the log's "name({args})" entries. */
 	private static String toolNames(List<String> toolLog)
 	{
-		StringBuilder sb = new StringBuilder();
+		List<String> names = new ArrayList<>();
 		for (String entry : toolLog)
 		{
-			if (sb.length() > 0)
-			{
-				sb.append(", ");
-			}
 			int paren = entry.indexOf('(');
-			sb.append(paren > 0 ? entry.substring(0, paren) : entry);
+			names.add(paren > 0 ? entry.substring(0, paren) : entry);
 		}
-		return sb.toString();
+		return String.join(", ", names);
 	}
 
 	private static String toolCallNames(JsonArray toolCalls)
 	{
-		StringBuilder sb = new StringBuilder();
+		List<String> names = new ArrayList<>();
 		for (int i = 0; i < toolCalls.size(); i++)
 		{
-			JsonObject fn = toolCalls.get(i).getAsJsonObject().getAsJsonObject("function");
-			if (sb.length() > 0)
-			{
-				sb.append(", ");
-			}
-			sb.append(fn.get("name").getAsString());
+			names.add(toolCalls.get(i).getAsJsonObject()
+				.getAsJsonObject("function").get("name").getAsString());
 		}
-		return sb.toString();
+		return String.join(", ", names);
 	}
 
 	static JsonObject message(String role, String content)
