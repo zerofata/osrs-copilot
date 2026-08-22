@@ -67,8 +67,18 @@ class Prefetcher
 		List<String> facts = new ArrayList<>();
 		Set<String> needs = new TreeSet<>(route.needs);
 
-		// Core bundle: monster info always; extras per needs.
-		for (String monster : limit(ents.monsters, 3))
+		monsterFacts(facts, needs, ents.monsters);
+		itemFacts(facts, needs, ents.items, owned, ownedNames, bankInlined);
+		questFacts(facts, ents.quests);
+		pageFacts(facts, needs, route);
+		skillFacts(facts, needs, ents, cap);
+		return facts;
+	}
+
+	/** Core bundle: monster info always; extras per needs. */
+	private void monsterFacts(List<String> facts, Set<String> needs, List<String> monsters)
+	{
+		for (String monster : limit(monsters, 3))
 		{
 			boolean strategyNeeded = needs.contains(Router.NEED_STRATEGY)
 				|| needs.contains(Router.NEED_MECHANICS);
@@ -132,10 +142,14 @@ class Prefetcher
 				addTravelFact(facts, monster);
 			}
 		}
+	}
 
-		// Core bundle: item page always (recipes/requirements live there).
-		// Ownership fact only when the bank couldn't be inlined into the state.
-		for (String item : limit(ents.items, 4))
+	/** Core bundle: item page always (recipes/requirements live there).
+	 * Ownership fact only when the bank couldn't be inlined into the state. */
+	private void itemFacts(List<String> facts, Set<String> needs, List<String> items,
+		Map<String, long[]> owned, Map<String, String> ownedNames, boolean bankInlined)
+	{
+		for (String item : limit(items, 4))
 		{
 			addFact(facts, "Item page: " + item, wiki.page(item, FACT_PAGE_BUDGET));
 			// Combat bonuses live in the infobox, which no text fetch ever
@@ -154,9 +168,12 @@ class Prefetcher
 				addFact(facts, "GE price: " + item, wiki.gePrice(item));
 			}
 		}
+	}
 
-		// Core bundle: quest page always.
-		for (String quest : limit(ents.quests, 2))
+	/** Core bundle: quest page always. */
+	private void questFacts(List<String> facts, List<String> quests)
+	{
+		for (String quest : limit(quests, 2))
 		{
 			addFact(facts, "Quest page: " + quest, wiki.page(quest, FACT_PAGE_BUDGET));
 			// Requirements live in the {{Quest details}} template, which no
@@ -164,13 +181,16 @@ class Prefetcher
 			// pull the player's progress for each via relevantQuestStates.
 			addFact(facts, "Quest requirements: " + quest, wiki.questInfo(quest));
 		}
+	}
 
-		// Other resolved pages (locations, guides, diaries...). wiki.page()
-		// serves wikitext automatically for table-heavy page categories.
-		// Three, matching monsters: comparison questions legitimately name
-		// three subjects ("blowpipe vs demon bow vs bowfa") and dropping the
-		// third silently guts the comparison.
-		for (String page : limit(ents.pages, 3))
+	/** Other resolved pages (locations, guides, diaries...). wiki.page()
+	 * serves wikitext automatically for table-heavy page categories.
+	 * Three, matching monsters: comparison questions legitimately name
+	 * three subjects ("blowpipe vs demon bow vs bowfa") and dropping the
+	 * third silently guts the comparison. */
+	private void pageFacts(List<String> facts, Set<String> needs, CopilotPipeline.Route route)
+	{
+		for (String page : limit(route.entities.pages, 3))
 		{
 			// When the resolver and a facility rule land on the same page
 			// ("nearest bank" -> page Bank + facility Bank), the facility
@@ -200,12 +220,11 @@ class Prefetcher
 			// as pages. Same index as the monster loop, but page-shaped
 			// entities were never blind-fetched, so this fires only on a
 			// positive index hit -- index unavailable changes nothing.
+			boolean guideExists = Boolean.TRUE.equals(hasStrategiesPage(page));
 			boolean pageStrategy = (needs.contains(Router.NEED_STRATEGY)
-				|| needs.contains(Router.NEED_MECHANICS))
-				&& Boolean.TRUE.equals(hasStrategiesPage(page));
+				|| needs.contains(Router.NEED_MECHANICS)) && guideExists;
 			String pageText = wiki.page(page);
-			if (pageText != null && !pageStrategy
-				&& Boolean.TRUE.equals(hasStrategiesPage(page)))
+			if (pageText != null && !pageStrategy && guideExists)
 			{
 				// The wiki_page affordance, TOC-line style: the model learns
 				// the guide exists at zero request cost.
@@ -227,15 +246,20 @@ class Prefetcher
 				addTravelFact(facts, page);
 			}
 		}
+	}
 
-		// Core bundle for skills: the skill's own page, but only when skills
-		// are the question's whole subject. Combat skills especially are
-		// mentioned incidentally next to a real subject ("gear for tormented
-		// demons with my attack level") -- there the other entity's bundle
-		// answers and the player's levels already sit in PLAYER STATE, so a
-		// generic skill article would only spend the budget. When the skill
-		// is all there is ("how do I get started with sailing"), its page IS
-		// the subject matter and the prompt would otherwise carry no facts.
+	/** Core bundle for skills: the skill's own page, but only when skills
+	 * are the question's whole subject. Combat skills especially are
+	 * mentioned incidentally next to a real subject ("gear for tormented
+	 * demons with my attack level") -- there the other entity's bundle
+	 * answers and the player's levels already sit in PLAYER STATE, so a
+	 * generic skill article would only spend the budget. When the skill
+	 * is all there is ("how do I get started with sailing"), its page IS
+	 * the subject matter and the prompt would otherwise carry no facts.
+	 * Training guides and XP math ride along per needs. */
+	private void skillFacts(List<String> facts, Set<String> needs,
+		EntityResolver.Resolution ents, GameCapture cap)
+	{
 		if (!ents.skills.isEmpty() && ents.items.isEmpty() && ents.monsters.isEmpty()
 			&& ents.quests.isEmpty() && ents.pages.isEmpty())
 		{
@@ -273,7 +297,6 @@ class Prefetcher
 				}
 			}
 		}
-		return facts;
 	}
 
 	/**

@@ -15,8 +15,6 @@ import net.runelite.client.ui.FontManager;
  */
 final class Theme
 {
-	final String name;
-
 	// -- Chrome -----------------------------------------------------------
 	/** Font for wordmark, speaker labels, and buttons; null = default sans.
 	 * RuneLite ships the actual RuneScape fonts, the single cheapest
@@ -78,9 +76,8 @@ final class Theme
 	String itemUnownedHex;
 	String plainLinkHex;
 
-	private Theme(String name)
+	private Theme()
 	{
-		this.name = name;
 	}
 
 	private static volatile Theme active = gameNative();
@@ -121,7 +118,7 @@ final class Theme
 	 */
 	static Theme gameNative()
 	{
-		Theme t = new Theme("game-native");
+		Theme t = new Theme();
 		t.chromeFont = FontManager.getRunescapeBoldFont();
 		t.statusFont = FontManager.getRunescapeSmallFont();
 		t.accent = new Color(0xff981f);
@@ -176,7 +173,7 @@ final class Theme
 	 */
 	static Theme modern()
 	{
-		Theme t = new Theme("modern");
+		Theme t = new Theme();
 		t.chromeFont = null;
 		t.statusFont = null;
 		t.accent = new Color(0xe0e0e0);
@@ -230,7 +227,7 @@ final class Theme
 	 */
 	static Theme parchment()
 	{
-		Theme t = new Theme("parchment");
+		Theme t = new Theme();
 		t.chromeFont = FontManager.getRunescapeBoldFont();
 		t.statusFont = FontManager.getRunescapeSmallFont();
 		t.accent = new Color(0xffd870);

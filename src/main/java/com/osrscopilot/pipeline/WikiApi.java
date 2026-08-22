@@ -76,11 +76,6 @@ public class WikiApi
 		return vocab.slayerTaskPages();
 	}
 
-	public List<String[]> allItemNames() throws IOException
-	{
-		return vocab.allItemNames();
-	}
-
 	public List<String[]> knownItemNames() throws IOException
 	{
 		return vocab.knownItemNames();

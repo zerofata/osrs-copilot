@@ -36,11 +36,6 @@ public class CopilotPipeline
 		/** What that turn resolved to; lets follow-ups keep the subject. */
 		public final EntityResolver.Resolution entities;
 
-		public Exchange(String question, String answer)
-		{
-			this(question, answer, null);
-		}
-
 		public Exchange(String question, String answer, EntityResolver.Resolution entities)
 		{
 			this.question = question;
@@ -65,7 +60,6 @@ public class CopilotPipeline
 		public String diaryTier;
 		/** complete | summarized | unknown */
 		public String bankMode;
-		public boolean hasEvents;
 	}
 
 	public static class Result
@@ -168,14 +162,9 @@ public class CopilotPipeline
 
 	/**
 	 * The deterministic front half: entity resolution, needs classification,
-	 * facility intents, capability profile. No LLM involved -- callable on
+	 * facility intents, subject inheritance. No LLM involved -- callable on
 	 * its own for free route regression testing.
 	 */
-	public Route route(String question, GameCapture cap) throws IOException
-	{
-		return route(question, cap, null);
-	}
-
 	public Route route(String question, GameCapture cap, EntityResolver.Resolution previous)
 		throws IOException
 	{
@@ -326,11 +315,6 @@ public class CopilotPipeline
 			log.debug("item ids unavailable for decoration", e);
 			return Map.of();
 		}
-	}
-
-	public Prepared prepare(String question, GameCapture cap) throws IOException
-	{
-		return prepare(question, cap, null);
 	}
 
 	public Prepared prepare(String question, GameCapture cap, EntityResolver.Resolution previous)

@@ -167,6 +167,9 @@ class TranscriptModel
 		blocks.clear();
 		answerBlock = null;
 		restoreCount = 0;
+		// A stale pending question would otherwise resurface in the input
+		// box if the first post-clear question fails and rolls back.
+		pendingQuestion = null;
 	}
 
 	/** Returns true when the answer block had to be created. */

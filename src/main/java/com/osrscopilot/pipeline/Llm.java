@@ -104,10 +104,9 @@ public class Llm
 	}
 
 	/**
-	 * One chat-completion call. Returns the first choice's message object.
-	 * With a listener, the request streams (SSE) and content fragments are
-	 * forwarded as they arrive; the returned message is identical in shape
-	 * to the non-streaming case.
+	 * One chat-completion call, always streamed (SSE). Content fragments are
+	 * forwarded to the listener as they arrive; the returned message is the
+	 * reassembled first choice.
 	 */
 	JsonObject chat(JsonArray messages, JsonArray tools, StreamListener listener) throws IOException
 	{
@@ -125,21 +124,6 @@ public class Llm
 			? Map.of()
 			: Map.of("Authorization", "Bearer " + settings.apiKey);
 		String url = settings.baseUrl + "/chat/completions";
-
-		if (listener == null)
-		{
-			JsonObject resp = http.postJson(url, body, headers);
-			recordUsage(resp.getAsJsonObject("usage"));
-			JsonObject choice = resp.getAsJsonArray("choices").get(0).getAsJsonObject();
-			JsonObject msg = choice.getAsJsonObject("message");
-			// Carried on the message so the agent loop can tell a token-limit
-			// truncation from a genuinely empty answer.
-			if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull())
-			{
-				msg.addProperty("finish_reason", choice.get("finish_reason").getAsString());
-			}
-			return msg;
-		}
 
 		body.addProperty("stream", true);
 		JsonObject streamOptions = new JsonObject();

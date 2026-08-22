@@ -264,7 +264,7 @@ public final class VocabSnapshotTool
 
 	/** Every item as {item name (per version), canonical page} from the item
 	 * infoboxes; versioned names map to their shared page, removed content
-	 * is excluded. See WikiApi.allItemNames for how clients use it. */
+	 * is excluded. See VocabSnapshots.knownItemNames for how clients use it. */
 	private Sized itemIndex() throws IOException
 	{
 		List<String[]> out = new ArrayList<>();

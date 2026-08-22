@@ -72,6 +72,30 @@ class PromptBuilder
 	String buildUserMessage(String question, GameCapture cap, List<String> facts,
 		boolean bankInlined, boolean ownershipComplete, boolean offerOwnedSearch)
 	{
+		Map<String, Object> state = playerState(cap, bankInlined,
+			ownershipComplete, offerOwnedSearch);
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("QUESTION: ").append(question).append("\n\n");
+		sb.append("PLAYER STATE:\n").append(gson.toJson(state));
+		if (cap.recentEvents != null && !cap.recentEvents.isEmpty())
+		{
+			sb.append("\n\nRECENT SESSION EVENTS (newest last):\n")
+				.append(gson.toJson(cap.recentEvents));
+		}
+		if (!facts.isEmpty())
+		{
+			sb.append("\n\nRETRIEVED FACTS (fetched from OSRS Wiki / GE just now):\n\n")
+				.append(String.join("\n", facts));
+		}
+		return sb.toString();
+	}
+
+	/** The PLAYER STATE block: everything the client knows about the player,
+	 * self-describing where semantics matter (bank status, diary notes). */
+	private Map<String, Object> playerState(GameCapture cap, boolean bankInlined,
+		boolean ownershipComplete, boolean offerOwnedSearch)
+	{
 		Map<String, Object> state = new LinkedHashMap<>();
 		// Without today's date the model assumes its training-time year for
 		// anything "new" or "recent" (it once searched "update 2025" in late
@@ -118,8 +142,16 @@ class PromptBuilder
 		}
 		state.put("inventory", itemStrings(cap.inventory));
 		state.put("equipment", itemNamesOnly(cap.equipment));
-		// Self-describing: data plus status/provenance, no embedded instructions.
-		// The system prompt defines the semantics of "complete"/"unknown" once.
+		state.put("bank", bankState(cap, bankInlined, ownershipComplete, offerOwnedSearch));
+		addDiaryState(state, cap);
+		return state;
+	}
+
+	/** Self-describing: data plus status/provenance, no embedded instructions.
+	 * The system prompt defines the semantics of "complete"/"unknown" once. */
+	private Map<String, Object> bankState(GameCapture cap, boolean bankInlined,
+		boolean ownershipComplete, boolean offerOwnedSearch)
+	{
 		Map<String, Object> bank = new LinkedHashMap<>();
 		if (cap.bank == null)
 		{
@@ -135,28 +167,32 @@ class PromptBuilder
 			else
 			{
 				bank.put("item_count", cap.bank.size());
-			// The access note must match the tools actually offered:
-			// referencing a withheld tool would send the model chasing it,
-			// and offering one silently invites redundant re-verification.
-			String factsAreDefinitive =
-				"the Ownership fact in RETRIEVED FACTS is the definitive bank "
-					+ "answer for every item the facts mention, and each tool "
-					+ "result carries the same ownership note for the items IT "
-					+ "mentions -- state ownership plainly from these, never "
-					+ "conditionally ('if you have one')";
-			bank.put("access", !offerOwnedSearch
-				? factsAreDefinitive
-				: ownershipComplete
-					? factsAreDefinitive + "; for items the facts do NOT "
-						+ "mention, use ONE search_owned_items call with all "
-						+ "queries batched"
-					: "ownership of items the facts mention is in RETRIEVED FACTS, "
-						+ "and each tool result carries an ownership note for the "
-						+ "items IT mentions; for anything still uncovered use ONE "
-						+ "search_owned_items call with all queries batched");
+				// The access note must match the tools actually offered:
+				// referencing a withheld tool would send the model chasing it,
+				// and offering one silently invites redundant re-verification.
+				String factsAreDefinitive =
+					"the Ownership fact in RETRIEVED FACTS is the definitive bank "
+						+ "answer for every item the facts mention, and each tool "
+						+ "result carries the same ownership note for the items IT "
+						+ "mentions -- state ownership plainly from these, never "
+						+ "conditionally ('if you have one')";
+				bank.put("access", !offerOwnedSearch
+					? factsAreDefinitive
+					: ownershipComplete
+						? factsAreDefinitive + "; for items the facts do NOT "
+							+ "mention, use ONE search_owned_items call with all "
+							+ "queries batched"
+						: "ownership of items the facts mention is in RETRIEVED FACTS, "
+							+ "and each tool result carries an ownership note for the "
+							+ "items IT mentions; for anything still uncovered use ONE "
+							+ "search_owned_items call with all queries batched");
 			}
 		}
-		state.put("bank", bank);
+		return bank;
+	}
+
+	private static void addDiaryState(Map<String, Object> state, GameCapture cap)
+	{
 		if (cap.diaries != null && !cap.diaries.isEmpty())
 		{
 			// Self-describing, like the bank field: bare per-area lists left
@@ -178,21 +214,6 @@ class PromptBuilder
 				+ "tasks as a checklist, never claim which individual tasks are done");
 			state.put("achievement_diaries", diaries);
 		}
-
-		StringBuilder sb = new StringBuilder();
-		sb.append("QUESTION: ").append(question).append("\n\n");
-		sb.append("PLAYER STATE:\n").append(gson.toJson(state));
-		if (cap.recentEvents != null && !cap.recentEvents.isEmpty())
-		{
-			sb.append("\n\nRECENT SESSION EVENTS (newest last):\n")
-				.append(gson.toJson(cap.recentEvents));
-		}
-		if (!facts.isEmpty())
-		{
-			sb.append("\n\nRETRIEVED FACTS (fetched from OSRS Wiki / GE just now):\n\n")
-				.append(String.join("\n", facts));
-		}
-		return sb.toString();
 	}
 
 	/**

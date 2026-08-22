@@ -90,6 +90,11 @@ class Router
 	 * guide page (task-only variants, location comparison) is on point. */
 	private static final Pattern SLAYER_MENTION = Pattern.compile("\\bslayer\\b");
 
+	/** Deixis about something that just happened ("what did that drop",
+	 * "is this loot good") -- gates the recent-events need. */
+	private static final Pattern EVENT_REFERENCE =
+		Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b");
+
 	// Shared phrasing frames and verb lexicons. Every rule that hand-rolled
 	// its own pronoun frame ("how to kill" but not "how do i defeat") was a
 	// brittleness bug waiting for a phrasing it hadn't met; declaring the
@@ -180,8 +185,8 @@ class Router
 			mergeMissing(previous.quests, r.entities.quests);
 			mergeMissing(previous.pages, r.entities.pages);
 		}
-		r.hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
-		r.needs = classifyNeeds(question, r.hasEvents,
+		boolean hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
+		r.needs = classifyNeeds(question, hasEvents,
 			!r.entities.monsters.isEmpty(), !r.entities.items.isEmpty());
 		// A slayer-flavored question about a monster (asked, inherited, or
 		// injected from the player's assignment) wants the "Slayer task/..."
@@ -230,10 +235,7 @@ class Router
 	{
 		for (String name : previous)
 		{
-			if (!into.contains(name))
-			{
-				into.add(name);
-			}
+			addMissing(into, name);
 		}
 	}
 
@@ -273,8 +275,8 @@ class Router
 		{
 			addMissing(needs, NEED_ITEM_SOURCES);
 		}
-		if (hasEvents && (Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b")
-			.matcher(ql).find() || ql.contains("whats this") || ql.contains("what's this")))
+		if (hasEvents && (EVENT_REFERENCE.matcher(ql).find()
+			|| ql.contains("whats this") || ql.contains("what's this")))
 		{
 			needs.add(NEED_RECENT_EVENTS);
 		}

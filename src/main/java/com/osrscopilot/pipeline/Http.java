@@ -45,15 +45,6 @@ class Http
 		return execute(req);
 	}
 
-	JsonObject postJson(String url, JsonObject body, Map<String, String> headers) throws IOException
-	{
-		Request.Builder builder = new Request.Builder()
-			.url(url)
-			.post(RequestBody.create(JSON, gson.toJson(body)));
-		headers.forEach(builder::header);
-		return execute(builder.build());
-	}
-
 	/** POST returning the raw response for streaming consumption (SSE).
 	 * Caller must close the response. Throws with the error body on non-2xx. */
 	Response postStream(String url, JsonObject body, Map<String, String> headers) throws IOException

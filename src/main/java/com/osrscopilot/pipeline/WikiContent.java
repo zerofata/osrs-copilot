@@ -203,8 +203,8 @@ class WikiContent
 				continue;
 			}
 			Map<String, String> hops = new LinkedHashMap<>();
-			addHops(hops, query, "normalized");
-			addHops(hops, query, "redirects");
+			hops.putAll(EntityResolver.fromToMap(query, "normalized"));
+			hops.putAll(EntityResolver.fromToMap(query, "redirects"));
 			Set<String> missing = new LinkedHashSet<>();
 			if (query.has("pages"))
 			{
@@ -230,19 +230,6 @@ class WikiContent
 			}
 		}
 		return resolved;
-	}
-
-	private static void addHops(Map<String, String> hops, JsonObject query, String field)
-	{
-		if (!query.has(field))
-		{
-			return;
-		}
-		for (JsonElement e : query.getAsJsonArray(field))
-		{
-			JsonObject hop = e.getAsJsonObject();
-			hops.put(hop.get("from").getAsString(), hop.get("to").getAsString());
-		}
 	}
 
 	/**
