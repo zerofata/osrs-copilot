@@ -218,6 +218,23 @@ public class CopilotPlugin extends Plugin
 			pipelineExecutor.shutdownNow();
 			pipelineExecutor = null;
 		}
+		// The plugin instance outlives disable, so everything sizable must
+		// be released: the pipeline's vocabulary sets and page cache, the
+		// panel's rendered conversation, and the capture state.
+		pipeline = null;
+		panel = null;
+		iconStore = null;
+		navIcon = null;
+		bankStore = null;
+		bankMutations = null;
+		events = null;
+		reader = null;
+		pendingQuestion = null;
+		pendingSnapshotLabel = null;
+		synchronized (conversation)
+		{
+			conversation.clear();
+		}
 	}
 
 	@Provides
@@ -359,6 +376,15 @@ public class CopilotPlugin extends Plugin
 	private void runPipeline(String question, GameCapture capture, Llm.Settings settings,
 		int maxTurns, boolean simpleMode)
 	{
+		// Locals, not fields: shutDown nulls the fields, and this method may
+		// still be finishing an HTTP read on the dying daemon thread.
+		CopilotPipeline pipeline = this.pipeline;
+		CopilotPanel panel = this.panel;
+		IconStore iconStore = this.iconStore;
+		if (pipeline == null || panel == null)
+		{
+			return;
+		}
 		StreamListener listener = new StreamListener()
 		{
 			@Override
