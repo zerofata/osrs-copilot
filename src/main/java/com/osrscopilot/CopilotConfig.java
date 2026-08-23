@@ -205,6 +205,19 @@ public interface CopilotConfig extends Config
 		return 13;
 	}
 
+	@ConfigItem(
+		keyName = "simpleMode",
+		name = "Simple answers",
+		description = "Short plain-text replies without headings, tables, or lists. "
+			+ "Also togglable from the chat panel.",
+		section = appearanceSection,
+		position = 2
+	)
+	default boolean simpleMode()
+	{
+		return false;
+	}
+
 	// ------------------------------------------------------------------
 	// Developer
 	// ------------------------------------------------------------------

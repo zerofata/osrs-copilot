@@ -39,6 +39,8 @@ import okhttp3.OkHttpClient;
  *                     # comments and blank lines skipped)
  *   --routeOnly true  run only the deterministic router + assertions -- no
  *                     LLM calls, free, fast route regression check
+ *   --simple true     answer with the simple-mode system prompt (short
+ *                     plain text, no markdown)
  *   --model NAME      model name (default deepseek-ai/DeepSeek-V4-Flash)
  *   --maxTokens N     per-response completion cap (default 4096; lower it to
  *                     reproduce reasoning-burn truncation deterministically)
@@ -134,6 +136,7 @@ public class PipelineEvalRunner
 
 		boolean routeOnly = "true".equals(opts.get("routeOnly"));
 		boolean promptOnly = "true".equals(opts.get("promptOnly"));
+		boolean simpleMode = "true".equals(opts.get("simple"));
 		Map<String, String> promptDump = new LinkedHashMap<>();
 		List<String> summary = new java.util.ArrayList<>();
 		List<String> failures = new java.util.ArrayList<>();
@@ -201,7 +204,8 @@ public class PipelineEvalRunner
 					out.println("\n=== ANSWER (streaming) ===");
 					// Matches CopilotConfig.maxToolTurns() so evals exercise
 					// the same budget the plugin ships with.
-					result = pipeline.answer(item.question, history, cap, settings, 4, listener);
+					result = pipeline.answer(item.question, history, cap, settings, 4,
+						simpleMode, listener);
 					route = result.route;
 					history.add(new CopilotPipeline.Exchange(item.question, result.answer,
 						result.subject));

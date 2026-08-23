@@ -16,7 +16,25 @@ class PromptBuilder
 	private static final int HISTORY_MAX_EXCHANGES = 6;
 	private static final int HISTORY_MAX_CHARS = 8000;
 
-	static final String SYNTH_SYSTEM =
+	/** The system prompt. The closing style rule is the only part that
+	 * varies: standard mode permits structure, simple mode demands short
+	 * plain text. Exactly two byte-stable variants exist, so provider
+	 * prompt caching still gets an identical prefix per mode. */
+	static String systemPrompt(boolean simple)
+	{
+		return SYNTH_SYSTEM + (simple
+			? "- Verify with tools as thoroughly as ever -- every rule above still "
+			+ "applies. Only the final answer changes: write it as short plain "
+			+ "conversational sentences, like a chat message. No markdown syntax "
+			+ "may appear in it: no *, **, #, |, backticks, bullet points, or "
+			+ "numbered lists -- state emphasis and structure in words instead. "
+			+ "Give the recommendation and the verified facts that justify it, "
+			+ "without alternatives or caveats unless asked."
+			: "- Be concrete and concise; recommend rather than exhaustively enumerate, "
+			+ "but use steps or lists when the question calls for them.");
+	}
+
+	private static final String SYNTH_SYSTEM =
 		"You are an OSRS copilot running inside RuneLite. Answer the player's question "
 		+ "using their live game state and the retrieved facts provided. Principles:\n"
 		+ "- PLAYER STATE is what the client observes. A field or fact block marked "
@@ -54,9 +72,7 @@ class PromptBuilder
 		+ "retrieved settles it, present the trade-offs and say the data doesn't settle it -- "
 		+ "never manufacture a confident winner.\n"
 		+ "- In an ongoing conversation, PLAYER STATE and RETRIEVED FACTS accompany the latest "
-		+ "question and reflect the current moment; earlier answers may describe older state.\n"
-		+ "- Be concrete and concise; recommend rather than exhaustively enumerate, but use "
-		+ "steps or lists when the question calls for them.";
+		+ "question and reflect the current moment; earlier answers may describe older state.\n";
 
 	private final Gson gson;
 	private final WikiApi wiki;

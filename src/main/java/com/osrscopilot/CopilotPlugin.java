@@ -239,6 +239,11 @@ public class CopilotPlugin extends Plugin
 				conversation.clear();
 			}
 		});
+		// The config entry is the single source of truth for simple mode;
+		// the chat toggle is just a shortcut to it.
+		p.setSimpleMode(config.simpleMode());
+		p.setSimpleModeHandler(on ->
+			configManager.setConfiguration("osrscopilot", "simpleMode", on));
 		return p;
 	}
 
@@ -267,6 +272,11 @@ public class CopilotPlugin extends Plugin
 		if ("enableCopilot".equals(event.getKey()) && config.enableCopilot())
 		{
 			pipelineExecutor.execute(pipeline::warmCaches);
+		}
+		if ("simpleMode".equals(event.getKey()) && panel != null)
+		{
+			// Changed from the RuneLite config panel: mirror it on the toggle.
+			SwingUtilities.invokeLater(() -> panel.setSimpleMode(config.simpleMode()));
 		}
 	}
 
@@ -354,12 +364,15 @@ public class CopilotPlugin extends Plugin
 			GameCapture capture = reader.buildCapture();
 			Llm.Settings settings = llmSettings();
 			int maxTurns = config.maxToolTurns();
-			pipelineExecutor.execute(() -> runPipeline(question, capture, settings, maxTurns));
+			boolean simpleMode = config.simpleMode();
+			pipelineExecutor.execute(() ->
+				runPipeline(question, capture, settings, maxTurns, simpleMode));
 		}
 	}
 
 	/** Runs on the executor: wiki prefetch + LLM calls, streamed to the panel. */
-	private void runPipeline(String question, GameCapture capture, Llm.Settings settings, int maxTurns)
+	private void runPipeline(String question, GameCapture capture, Llm.Settings settings,
+		int maxTurns, boolean simpleMode)
 	{
 		StreamListener listener = new StreamListener()
 		{
@@ -394,7 +407,8 @@ public class CopilotPlugin extends Plugin
 		try
 		{
 			CopilotPipeline.Result result =
-				pipeline.answer(question, history, capture, settings, maxTurns, listener);
+				pipeline.answer(question, history, capture, settings, maxTurns,
+					simpleMode, listener);
 			log.debug("answered in {}ms, {} fact blocks, {} tool calls, {} context chars",
 				result.millis, result.factBlocks, result.toolLog.size(), result.contextChars);
 			String meta = answerMeta(result, gson);

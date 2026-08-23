@@ -22,6 +22,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.HyperlinkEvent;
@@ -59,6 +60,7 @@ class CopilotPanel extends PluginPanel
 	private final JButton send;
 	private final JButton clear;
 	private final JButton popOut;
+	private final JToggleButton simple;
 	private final JLabel status = SwingUtil.smoothLabel(" ");
 	private final Timer renderTimer;
 	private final Timer pulseTimer;
@@ -73,6 +75,7 @@ class CopilotPanel extends PluginPanel
 
 	private Consumer<String> askHandler;
 	private Runnable clearHandler;
+	private Consumer<Boolean> simpleModeHandler;
 	private boolean busy;
 	private String statusBase = " ";
 
@@ -95,6 +98,8 @@ class CopilotPanel extends PluginPanel
 		send = new FlatButton("Ask", theme, true);
 		clear = new FlatButton("New chat", theme, false);
 		popOut = new FlatButton("Pop out", theme, false);
+		simple = new FlatToggle("Simple", theme);
+		simple.setToolTipText("Short plain-text answers");
 		popOutManager = new PopOutManager(this, content, popOut, input, theme);
 
 		messageList.setBackground(theme.surface);
@@ -120,10 +125,18 @@ class CopilotPanel extends PluginPanel
 		inputRow.add(input, BorderLayout.CENTER);
 		inputRow.add(send, BorderLayout.EAST);
 
+		// The toggle lives by the status line: the header row has no room at
+		// sidebar width, and a mode that changes the next answer belongs
+		// next to where the question is typed.
+		JPanel statusRow = new JPanel(new BorderLayout(6, 0));
+		statusRow.setOpaque(false);
+		statusRow.add(status, BorderLayout.CENTER);
+		statusRow.add(simple, BorderLayout.EAST);
+
 		JPanel south = new JPanel(new BorderLayout(0, 4));
 		south.setOpaque(false);
 		south.add(inputRow, BorderLayout.CENTER);
-		south.add(status, BorderLayout.SOUTH);
+		south.add(statusRow, BorderLayout.SOUTH);
 
 		JLabel wordmark = SwingUtil.smoothLabel("COPILOT");
 		wordmark.setForeground(theme.accent);
@@ -170,6 +183,14 @@ class CopilotPanel extends PluginPanel
 		input.addActionListener(submit);
 		send.addActionListener(submit);
 		clear.addActionListener(e -> fireClear());
+		// ActionListener fires only on clicks, so programmatic state sync
+		// via setSimpleMode never echoes back into the handler.
+		simple.addActionListener(e -> {
+			if (simpleModeHandler != null)
+			{
+				simpleModeHandler.accept(simple.isSelected());
+			}
+		});
 
 		rebuild();
 	}
@@ -198,6 +219,18 @@ class CopilotPanel extends PluginPanel
 	void setClearHandler(Runnable handler)
 	{
 		clearHandler = handler;
+	}
+
+	/** Called when the player clicks the Simple toggle. */
+	void setSimpleModeHandler(Consumer<Boolean> handler)
+	{
+		simpleModeHandler = handler;
+	}
+
+	/** Sync the toggle to the config value without firing the handler. */
+	void setSimpleMode(boolean on)
+	{
+		simple.setSelected(on);
 	}
 
 	private void fireAsk()
@@ -706,6 +739,63 @@ class CopilotPanel extends PluginPanel
 		{
 			SwingUtil.paintRounded(g, this, arc,
 				!isEnabled() ? bgDisabled : hover ? bgHover : bg, null, null);
+			SwingUtil.smooth(g);
+			super.paintComponent(g);
+		}
+	}
+
+	/** FlatButton's stateful sibling: fills with the primary color while
+	 * selected, so the active mode reads at a glance. */
+	private static final class FlatToggle extends JToggleButton
+	{
+		private final Theme theme;
+		private boolean hover;
+
+		FlatToggle(String text, Theme theme)
+		{
+			super(text);
+			this.theme = theme;
+			setFocusPainted(false);
+			setContentAreaFilled(false);
+			setBorderPainted(false);
+			setOpaque(false);
+			setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			// Sits beside the small status line, so it stays a size down
+			// from the header buttons.
+			setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 10));
+			if (theme.chromeFont != null)
+			{
+				setFont(theme.chromeFont.deriveFont(14f));
+			}
+			else
+			{
+				setFont(getFont().deriveFont(11f));
+			}
+			addMouseListener(new MouseAdapter()
+			{
+				@Override
+				public void mouseEntered(MouseEvent e)
+				{
+					hover = true;
+					repaint();
+				}
+
+				@Override
+				public void mouseExited(MouseEvent e)
+				{
+					hover = false;
+					repaint();
+				}
+			});
+		}
+
+		@Override
+		protected void paintComponent(Graphics g)
+		{
+			setForeground(isSelected() ? theme.primaryFg : theme.buttonFg);
+			SwingUtil.paintRounded(g, this, theme.arc,
+				isSelected() ? (hover ? theme.primaryHover : theme.primaryBg)
+					: (hover ? theme.buttonHover : theme.buttonBg), null, null);
 			SwingUtil.smooth(g);
 			super.paintComponent(g);
 		}

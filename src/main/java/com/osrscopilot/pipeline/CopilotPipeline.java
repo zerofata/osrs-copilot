@@ -375,7 +375,8 @@ public class CopilotPipeline
 	}
 
 	public Result answer(String question, List<Exchange> history, GameCapture cap,
-		Llm.Settings llmSettings, int maxTurns, StreamListener listener) throws IOException
+		Llm.Settings llmSettings, int maxTurns, boolean simpleMode,
+		StreamListener listener) throws IOException
 	{
 		long t0 = System.currentTimeMillis();
 		Llm llm = new Llm(http, gson, llmSettings);
@@ -390,7 +391,7 @@ public class CopilotPipeline
 		// question and the distilled answer; state and facts always accompany
 		// the latest turn (retrieval context is transient, answers persist).
 		JsonArray messages = new JsonArray();
-		messages.add(AgentLoop.message("system", PromptBuilder.SYNTH_SYSTEM));
+		messages.add(AgentLoop.message("system", PromptBuilder.systemPrompt(simpleMode)));
 		for (Exchange ex : PromptBuilder.boundedHistory(history))
 		{
 			messages.add(AgentLoop.message("user", ex.question));
@@ -405,8 +406,13 @@ public class CopilotPipeline
 		AgentLoop.Result agent = AgentLoop.run(llm, gson, messages,
 			toolSpecs, tools, maxTurns, listener);
 
+		// The simple-mode prompt holds ~70% of the time on formatting-happy
+		// models; stripping emphasis markers is the guarantee. Runs before
+		// the answer enters history, so later turns see plain text too.
+		String answer = simpleMode ? stripEmphasisMarkdown(agent.answer) : agent.answer;
+
 		Result result = new Result();
-		result.answer = agent.answer;
+		result.answer = answer;
 		result.route = route;
 		result.factBlocks = prepared.factBlocks;
 		result.factTitles = prepared.factTitles;
@@ -414,10 +420,26 @@ public class CopilotPipeline
 		result.toolLog = agent.toolLog;
 		result.prompt = userMessage;
 		result.usage = llm.usage();
-		result.suspectNames = suspectNames(agent.answer, userMessage);
-		result.subject = subjectOf(route.entities, agent.answer, cap);
+		result.suspectNames = suspectNames(answer, userMessage);
+		result.subject = subjectOf(route.entities, answer, cap);
 		result.millis = System.currentTimeMillis() - t0;
 		return result;
+	}
+
+	/**
+	 * Removes emphasis markup (bold, italics, headers, inline code) without
+	 * touching meaning -- the common leaks when the simple-mode prompt loses
+	 * to a model's formatting habit. Lists and tables are left alone: they
+	 * can't be flattened to prose mechanically, and the renderer displays
+	 * them gracefully as-is.
+	 */
+	static String stripEmphasisMarkdown(String answer)
+	{
+		return answer
+			.replaceAll("(?m)^#{1,6}\\s+", "")
+			.replaceAll("\\*\\*([^*]+)\\*\\*", "$1")
+			.replaceAll("(?<![\\w*])\\*([^*\\n]+)\\*(?![\\w*])", "$1")
+			.replaceAll("`([^`]+)`", "$1");
 	}
 
 	/**
