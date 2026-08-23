@@ -175,13 +175,10 @@ public class CopilotPlugin extends Plugin
 			return t;
 		});
 		pipeline = new CopilotPipeline(okHttpClient, gson, CACHE_DIR);
-		// Nothing may leave the client before the user opts in -- not even
-		// static vocabulary downloads from our own GitHub. Warming runs when
-		// the copilot is enabled, here or from onConfigChanged.
-		if (config.enableCopilot())
-		{
-			pipelineExecutor.execute(pipeline::warmCaches);
-		}
+		// The third-party-server consent is the Plugin Hub install warning;
+		// warming only fetches static vocabulary from our own GitHub, and
+		// nothing reaches an LLM until the user configures an endpoint.
+		pipelineExecutor.execute(pipeline::warmCaches);
 		iconStore = new IconStore(new File(CACHE_DIR, "icons"),
 			itemManager, spriteManager, skillIconManager);
 
@@ -269,10 +266,6 @@ public class CopilotPlugin extends Plugin
 			// Both rebuild the panel and replay the conversation into it.
 			SwingUtilities.invokeLater(this::applyTheme);
 		}
-		if ("enableCopilot".equals(event.getKey()) && config.enableCopilot())
-		{
-			pipelineExecutor.execute(pipeline::warmCaches);
-		}
 		if ("simpleMode".equals(event.getKey()) && panel != null)
 		{
 			// Changed from the RuneLite config panel: mirror it on the toggle.
@@ -318,14 +311,6 @@ public class CopilotPlugin extends Plugin
 	/** Called from the Swing EDT when the player submits a question. */
 	private void askQuestion(String question)
 	{
-		// Plugin Hub contract: features that talk to a third-party server are
-		// opt-in. Nothing leaves the client until the user flips this on.
-		if (!config.enableCopilot())
-		{
-			panel.showError("Enable the copilot in the plugin settings first "
-				+ "(wrench icon -> OSRS Copilot -> Enable copilot).");
-			return;
-		}
 		Llm.Settings settings = llmSettings();
 		if (!settings.isConfigured())
 		{

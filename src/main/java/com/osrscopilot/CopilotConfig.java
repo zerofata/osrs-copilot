@@ -49,27 +49,15 @@ public interface CopilotConfig extends Config
 	// Endpoint
 	// ------------------------------------------------------------------
 
-	@ConfigItem(
-		keyName = "enableCopilot",
-		name = "Enable copilot",
-		description = "Allow the copilot to send questions and game state to your configured LLM endpoint",
-		warning = "This feature submits your IP address and game state (skills, quests, "
-			+ "inventory, equipment, bank) to a 3rd-party server not controlled or "
-			+ "verified by RuneLite developers: the LLM endpoint you configure below.",
-		section = endpointSection,
-		position = 0
-	)
-	default boolean enableCopilot()
-	{
-		return false;
-	}
-
+	// The third-party-server disclosure lives in the Plugin Hub manifest
+	// (warning=), shown when the plugin is installed. Nothing is sent to an
+	// LLM until the user configures an endpoint here.
 	@ConfigItem(
 		keyName = "apiBaseUrl",
 		name = "API base URL",
 		description = "OpenAI-compatible base URL, e.g. https://openrouter.ai/api/v1 or http://localhost:11434/v1 (local)",
 		section = endpointSection,
-		position = 1
+		position = 0
 	)
 	default String apiBaseUrl()
 	{
@@ -81,7 +69,7 @@ public interface CopilotConfig extends Config
 		name = "API key",
 		description = "Bearer token for the endpoint (leave empty if not required)",
 		section = endpointSection,
-		position = 2,
+		position = 1,
 		secret = true
 	)
 	default String apiKey()
@@ -94,7 +82,7 @@ public interface CopilotConfig extends Config
 		name = "Model",
 		description = "Model name as the endpoint expects it, e.g. deepseek/deepseek-chat on OpenRouter",
 		section = endpointSection,
-		position = 3
+		position = 2
 	)
 	default String model()
 	{
