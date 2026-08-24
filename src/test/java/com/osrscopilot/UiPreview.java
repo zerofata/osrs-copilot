@@ -55,6 +55,9 @@ public final class UiPreview
 		if (seedConversation)
 		{
 			seed(panel);
+			// The welcome render keeps Simple off, so both states appear
+			// across the preview set.
+			panel.setSimpleMode(true);
 		}
 		// Streamed content renders on a coalescing timer that can't fire
 		// while this thread owns the EDT; flush the pending render directly.

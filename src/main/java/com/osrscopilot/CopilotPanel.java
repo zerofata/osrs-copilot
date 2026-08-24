@@ -22,7 +22,6 @@ import javax.swing.JPanel;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
-import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.HyperlinkEvent;
@@ -60,7 +59,7 @@ class CopilotPanel extends PluginPanel
 	private final JButton send;
 	private final JButton clear;
 	private final JButton popOut;
-	private final JToggleButton simple;
+	private final FlatToggle simple;
 	private final JLabel status = SwingUtil.smoothLabel(" ");
 	private final Timer renderTimer;
 	private final Timer pulseTimer;
@@ -183,12 +182,12 @@ class CopilotPanel extends PluginPanel
 		input.addActionListener(submit);
 		send.addActionListener(submit);
 		clear.addActionListener(e -> fireClear());
-		// ActionListener fires only on clicks, so programmatic state sync
+		// The click handler fires only on clicks, so programmatic state sync
 		// via setSimpleMode never echoes back into the handler.
-		simple.addActionListener(e -> {
+		simple.setToggleHandler(on -> {
 			if (simpleModeHandler != null)
 			{
-				simpleModeHandler.accept(simple.isSelected());
+				simpleModeHandler.accept(on);
 			}
 		});
 
@@ -744,58 +743,97 @@ class CopilotPanel extends PluginPanel
 		}
 	}
 
-	/** FlatButton's stateful sibling: fills with the primary color while
-	 * selected, so the active mode reads at a glance. */
-	private static final class FlatToggle extends JToggleButton
+	/** The Simple-mode control: not a button but a clickable piece of
+	 * status text ("Simple: off" / "Simple: on"). It shares a row with the
+	 * status line, so it speaks in the same meta register -- the status
+	 * color when on, receded when off, no box competing with Ask.
+	 *
+	 * Deliberately a JLabel, not a JToggleButton: the client's Substance
+	 * look-and-feel paints button text from its own scheme and ignores the
+	 * foreground, so a button's on/off colors come out wrong in-game (and
+	 * only in-game -- the offscreen previews use a LAF that honors them).
+	 * Labels keep their foreground under every LAF. */
+	private static final class FlatToggle extends JLabel
 	{
 		private final Theme theme;
+		private final String label;
+		/** The off state recedes: the status color at reduced opacity. */
+		private final Color offFg;
+		private boolean selected;
 		private boolean hover;
+		private Consumer<Boolean> toggleHandler;
 
-		FlatToggle(String text, Theme theme)
+		FlatToggle(String label, Theme theme)
 		{
-			super(text);
 			this.theme = theme;
-			setFocusPainted(false);
-			setContentAreaFilled(false);
-			setBorderPainted(false);
-			setOpaque(false);
+			this.label = label;
+			this.offFg = new Color(theme.statusFg.getRed(), theme.statusFg.getGreen(),
+				theme.statusFg.getBlue(), 155);
 			setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-			// Sits beside the small status line, so it stays a size down
-			// from the header buttons.
-			setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 10));
-			if (theme.chromeFont != null)
-			{
-				setFont(theme.chromeFont.deriveFont(14f));
-			}
-			else
-			{
-				setFont(getFont().deriveFont(11f));
-			}
+			// Top inset drops the text to sit on the status line's baseline.
+			setBorder(BorderFactory.createEmptyBorder(3, 6, 0, 2));
+			// Matches the status label's font so the row reads as one line.
+			setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
+				: getFont().deriveFont(12f));
+			refresh();
 			addMouseListener(new MouseAdapter()
 			{
+				@Override
+				public void mousePressed(MouseEvent e)
+				{
+					// A label hears every button; only a left click toggles.
+					if (!SwingUtilities.isLeftMouseButton(e))
+					{
+						return;
+					}
+					selected = !selected;
+					refresh();
+					if (toggleHandler != null)
+					{
+						toggleHandler.accept(selected);
+					}
+				}
+
 				@Override
 				public void mouseEntered(MouseEvent e)
 				{
 					hover = true;
-					repaint();
+					refresh();
 				}
 
 				@Override
 				public void mouseExited(MouseEvent e)
 				{
 					hover = false;
-					repaint();
+					refresh();
 				}
 			});
+		}
+
+		/** Fires on clicks only, never on programmatic setSelected. */
+		void setToggleHandler(Consumer<Boolean> handler)
+		{
+			toggleHandler = handler;
+		}
+
+		void setSelected(boolean on)
+		{
+			selected = on;
+			refresh();
+		}
+
+		/** On reads as the status line's own text; off recedes; hover
+		 * brightens either state to hint the text is clickable. */
+		private void refresh()
+		{
+			setText(label + ": " + (selected ? "on" : "off"));
+			setForeground(hover ? theme.buttonFg
+				: selected ? theme.statusFg : offFg);
 		}
 
 		@Override
 		protected void paintComponent(Graphics g)
 		{
-			setForeground(isSelected() ? theme.primaryFg : theme.buttonFg);
-			SwingUtil.paintRounded(g, this, theme.arc,
-				isSelected() ? (hover ? theme.primaryHover : theme.primaryBg)
-					: (hover ? theme.buttonHover : theme.buttonBg), null, null);
 			SwingUtil.smooth(g);
 			super.paintComponent(g);
 		}
