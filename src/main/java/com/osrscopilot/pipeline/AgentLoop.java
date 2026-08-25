@@ -135,17 +135,13 @@ class AgentLoop
 	}
 
 	/**
-	 * An empty or tool-markup "answer" is a failure, not a result. Two known
-	 * causes, each needing its own corrective: reasoning models can burn the
-	 * whole completion budget thinking and stream no visible text at all
-	 * (finish_reason=length -- telling that model "don't emit tool syntax"
-	 * just makes it reason itself off the same cliff), and models trained on
-	 * native tool tokens sometimes leak tool-call markup as text when they
-	 * mean to keep researching. Retry once with the matching corrective,
-	 * then fail loudly -- the panel's error path returns the question for
-	 * resubmission, which beats rendering a blank card as if it were an
-	 * answer. The exception carries the tool trace and the truncation
-	 * diagnosis: an errored turn otherwise leaves nothing to diagnose with.
+	 * An empty or tool-markup "answer" is a failure, not a result. Two
+	 * causes need different correctives: a reasoning model that burned the
+	 * whole completion budget thinking (finish_reason=length) needs room
+	 * and brevity, while a model leaking tool-call markup as text needs
+	 * telling that tools are gone. Retries once with the matching
+	 * corrective, then throws; the exception carries the tool trace and
+	 * truncation diagnosis, and the panel's error path offers resubmission.
 	 */
 	private static String ensureAnswer(Llm llm, JsonArray messages, JsonObject msg,
 		StreamListener listener, Result result) throws IOException

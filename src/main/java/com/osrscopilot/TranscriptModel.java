@@ -21,8 +21,7 @@ class TranscriptModel
 		/** Dim disclosure line under an answer: what the model was given. */
 		String meta;
 		/** Interim activity (tool-call preamble, "Looking up ..." lines),
-		 * shown dim above the text so the model's work stays visible
-		 * instead of vanishing; cleared when the final answer arrives. */
+		 * shown dim above the text; cleared when the final answer arrives. */
 		final List<String> working = new ArrayList<>();
 		/** Finished answers arrive pre-rendered and entity-decorated (wiki
 		 * links, quest/item state colors); streaming text renders live from
@@ -104,8 +103,7 @@ class TranscriptModel
 	}
 
 	/** Streamed text turned out not to be the answer (tool-call preamble).
-	 * Keep it as a dim working note -- text that appears and then vanishes
-	 * reads as a glitch -- but move it out of the answer text so the real
+	 * It moves to a dim working note rather than vanishing, so the real
 	 * answer streams in clean below it. Returns true if anything changed. */
 	boolean discardPartial()
 	{
@@ -132,10 +130,9 @@ class TranscriptModel
 	}
 
 	/**
-	 * Canonicalize the finished turn: the block ends up exactly the final
-	 * answer; interim working notes have served their purpose (the meta
-	 * line keeps the factual record of what ran). Returns the finished
-	 * block for the view to re-render.
+	 * Canonicalize the finished turn: the block becomes exactly the final
+	 * answer and working notes are dropped (the meta line keeps the record
+	 * of what ran). Returns the finished block for the view to re-render.
 	 */
 	Block completeAnswer(String answer, String decoratedHtml, String meta)
 	{

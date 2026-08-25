@@ -35,11 +35,8 @@ class WikiContent
 	private static final int WIKITEXT_CHAR_LIMIT = 12000;
 
 	/**
-	 * Cache over wiki GETs. Follow-up questions inherit the conversation's
-	 * subject and re-prefetch the same pages every turn; a five-turn chat
-	 * about one boss must not fetch its strategy page five times. Wiki
-	 * content rarely changes within a day, and the cache is in-memory, so
-	 * a client restart clears it regardless. Deliberately NOT applied to
+	 * TTL for the wiki-GET cache. Follow-up turns re-prefetch the same
+	 * pages, and wiki content rarely changes within a day. Not applied to
 	 * the prices API (prices move) or snapshots (own 7-day disk cache).
 	 */
 	private static final long CONTENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -181,9 +178,8 @@ class WikiContent
 
 	/**
 	 * Resolves each name to the wiki page it lands on, or null when the wiki
-	 * has no such page. The wiki is the closed vocabulary of what exists in
-	 * this game, and the page a name lands on says how the name relates to
-	 * it: an unchanged title is the thing itself, a near-identical title is a
+	 * has no such page. The landing page says how a name relates to the game:
+	 * an unchanged title is the thing itself, a near-identical title is a
 	 * spelling or plural variant, and a wholly different title means the name
 	 * is not this game's name for anything (RS3's "Anachronia" resolves to
 	 * "Fossil Island"). Batched 50 per request (API limit).
@@ -286,13 +282,10 @@ class WikiContent
 
 	/**
 	 * Whether a plaintext extract lost the page's substance to table
-	 * stripping. Table-only pages come back as a shell of section headings
-	 * with nothing under them, which is worse than no page at all: it reads
-	 * as "the wiki has nothing here" and invites the model to fill the gap
-	 * from memory. Measured, not guessed -- on a sample spanning items,
-	 * monsters, locations, skills and diaries, genuinely table-gutted pages
-	 * (Anvil 0.05, Bones 0.12, Varrock Diary 0.17, Adamantite bar 0.22) sit
-	 * well below prose pages (0.39-0.71).
+	 * stripping. Table-only pages extract to a shell of section headings
+	 * with nothing under them, which reads as "the wiki has nothing here"
+	 * and invites the model to fill the gap from memory. Table-gutted pages
+	 * measure well below the 0.3 threshold; prose pages sit at 0.39+.
 	 */
 	private static boolean isHusk(String extract, int pageBytes)
 	{
@@ -366,12 +359,11 @@ class WikiContent
 	// ------------------------------------------------------------------
 
 	/** Sections whose whole body is a render-time query template are
-	 * invisible to BOTH extraction paths: the plaintext extract strips the
-	 * rendered table and the raw wikitext holds only the {{...}} stub. One
-	 * such template matters for answers -- "Used in recommended equipment",
-	 * the wiki's ranked index of which strategy pages recommend an item.
-	 * That is exactly the data a "where is X best-in-slot" question needs,
-	 * and it exists nowhere else. */
+	 * invisible to both extraction paths: the plaintext extract strips the
+	 * rendered table and the raw wikitext holds only the {{...}} stub.
+	 * "Used in recommended equipment" -- the wiki's ranked index of which
+	 * strategy pages recommend an item, the data a best-in-slot question
+	 * needs -- exists nowhere else, so it is rendered explicitly. */
 	private static final String USED_IN_REC_EQUIP = "Used in recommended equipment";
 	private static final Pattern REC_EQUIP_HUSK = Pattern.compile(
 		"(\\{\\{Used in recommended equipment[^}]*\\}\\}|==+ *Used in recommended equipment *==+)");
@@ -395,8 +387,7 @@ class WikiContent
 	 * Removes wikitext with zero semantic content for a text model: image
 	 * and file links (with their captions), gallery blocks, citation
 	 * templates (tweet/news/forum references with archive URLs), and
-	 * sort-value cell attributes. On the Tombs of Amascut page these were
-	 * ~15% of the fact and carried nothing an answer could use.
+	 * sort-value cell attributes.
 	 */
 	static String scrubWikitext(String text)
 	{
@@ -411,7 +402,7 @@ class WikiContent
 	/**
 	 * Removes every occurrence of a balanced construct that starts with
 	 * startToken (matched case-insensitively), tracking nesting -- file
-	 * captions legitimately contain [[links]] and citation templates can
+	 * captions can contain [[links]] and citation templates can
 	 * nest templates. An unclosed construct is left untouched rather than
 	 * eating the rest of the page.
 	 */
@@ -457,15 +448,15 @@ class WikiContent
 	}
 
 	/**
-	 * Spends an over-budget page's char limit on WHOLE sections instead of
-	 * cutting at a byte position. Position-cut truncation let one bloated
-	 * early section (ToA's invocation table: 61% of the fact) starve every
-	 * section after it, and ended facts mid-table -- dangling wikitext the
-	 * model misreads. Here: the lead always ships, known-noise sections are
-	 * dropped first, remaining sections are admitted whole in page order,
-	 * and a single section bigger than half the budget is considered LAST
-	 * so it can't crowd out the rest of the page. Anything skipped is still
-	 * named in the TOC line and one wiki_page section call away.
+	 * Spends an over-budget page's char limit on whole sections instead of
+	 * cutting at a byte position: position-cut truncation lets one bloated
+	 * early section starve everything after it and ends facts mid-table,
+	 * dangling wikitext the model misreads. The lead always ships,
+	 * known-noise sections are dropped first, remaining sections are
+	 * admitted whole in page order, and a single section bigger than half
+	 * the budget is considered last so it can't crowd out the rest of the
+	 * page. Anything skipped is still named in the TOC line and one
+	 * wiki_page section call away.
 	 *
 	 * Degenerate pages (no headings, or one giant section holding all the
 	 * substance) fall back to position-cut: a cut table beats an empty fact.

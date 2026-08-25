@@ -114,9 +114,9 @@ class PromptBuilder
 	{
 		Map<String, Object> state = new LinkedHashMap<>();
 		// Without today's date the model assumes its training-time year for
-		// anything "new" or "recent" (it once searched "update 2025" in late
-		// 2026). Lives here rather than in the system prompt so the static
-		// prefix stays byte-identical for provider prompt caching.
+		// anything "new" or "recent". Lives here rather than in the system
+		// prompt so the static prefix stays byte-identical for provider
+		// prompt caching.
 		state.put("date", java.time.LocalDate.now().toString());
 		state.put("player", cap.playerName);
 		state.put("account_type", cap.accountTypeName());
@@ -124,7 +124,7 @@ class PromptBuilder
 		state.put("location", groundedLocation(cap));
 		state.put("skills", cap.skills);
 		// Kill counts are server-side state the client can't see; without
-		// them the model assumes "beginner", which is the failure mode.
+		// them the model assumes a beginner.
 		Map<String, Long> scores = hiscores.rankedActivities(cap.playerName);
 		if (scores != null)
 		{
@@ -211,9 +211,9 @@ class PromptBuilder
 	{
 		if (cap.diaries != null && !cap.diaries.isEmpty())
 		{
-			// Self-describing, like the bank field: bare per-area lists left
-			// the model guessing what "[]" meant. Only areas with completed
-			// tiers are listed; the note carries the semantics for the rest.
+			// Self-describing, like the bank field: only areas with
+			// completed tiers are listed, and the note carries the
+			// semantics for the rest.
 			Map<String, Object> completed = new LinkedHashMap<>();
 			for (Map.Entry<String, Object> e : cap.diaries.entrySet())
 			{
@@ -254,9 +254,8 @@ class PromptBuilder
 			int x = ((Number) xo).intValue();
 			int y = ((Number) yo).intValue();
 			// The primary place must be one the player can BE in. A dungeon's
-			// surface marker is its entrance, so a player standing on it is in
-			// the surrounding area, not the dungeon -- "you are in the Yanille
-			// Agility Dungeon" from a Yanille street corner came from here.
+			// surface marker is its entrance, so a player standing on it is
+			// in the surrounding area, not the dungeon.
 			WikiApi.NamedPoint place = null;
 			WikiApi.NamedPoint second = null;
 			WikiApi.NamedPoint entrance = null;
@@ -296,9 +295,9 @@ class PromptBuilder
 			}
 			if (place == null && entrance == null && y >= 6400)
 			{
-				// Deterministic fact: the coordinate plane above y=6400
-				// holds dungeons and instances, not the surface world. The
-				// index covers the surface map, so nothing matched here.
+				// The coordinate plane above y=6400 holds dungeons and
+				// instances, not the surface world; the index covers only
+				// the surface map, so nothing matched here.
 				out.put("place", "underground or instanced area (off the surface map)");
 			}
 			// Otherwise: no named place within range; say nothing rather

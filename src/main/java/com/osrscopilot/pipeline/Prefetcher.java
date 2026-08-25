@@ -118,8 +118,8 @@ class Prefetcher
 				String strategyPage = monster + "/Strategies";
 				// The snapshot index knows which guide subpages exist, so a
 				// monster without one (Bloodveld) skips straight to the main
-				// page instead of 404ing against the live wiki first. Index
-				// unavailable -> blind fetch, exactly the old behavior.
+				// page instead of 404ing against the live wiki first. An
+				// unavailable index falls back to the blind fetch.
 				String text = Boolean.FALSE.equals(hasStrategiesPage(monster))
 					? null : wiki.page(strategyPage);
 				String label = "Strategy: " + monster;
@@ -185,9 +185,8 @@ class Prefetcher
 
 	/** Other resolved pages (locations, guides, diaries...). wiki.page()
 	 * serves wikitext automatically for table-heavy page categories.
-	 * Three, matching monsters: comparison questions legitimately name
-	 * three subjects ("blowpipe vs demon bow vs bowfa") and dropping the
-	 * third silently guts the comparison. */
+	 * Three, because comparison questions name up to three subjects
+	 * ("blowpipe vs demon bow vs bowfa"). */
 	private void pageFacts(List<String> facts, Set<String> needs, CopilotPipeline.Route route)
 	{
 		for (String page : limit(route.entities.pages, 3))
@@ -218,8 +217,8 @@ class Prefetcher
 			// Strategy guides hang off more than monsters -- raids,
 			// minigames, activities (Tombs of Amascut, Wintertodt) resolve
 			// as pages. Same index as the monster loop, but page-shaped
-			// entities were never blind-fetched, so this fires only on a
-			// positive index hit -- index unavailable changes nothing.
+			// entities are never blind-fetched, so this fires only on a
+			// positive index hit; an unavailable index changes nothing.
 			boolean guideExists = Boolean.TRUE.equals(hasStrategiesPage(page));
 			boolean pageStrategy = (needs.contains(Router.NEED_STRATEGY)
 				|| needs.contains(Router.NEED_MECHANICS)) && guideExists;
@@ -249,13 +248,11 @@ class Prefetcher
 	}
 
 	/** Core bundle for skills: the skill's own page, but only when skills
-	 * are the question's whole subject. Combat skills especially are
-	 * mentioned incidentally next to a real subject ("gear for tormented
-	 * demons with my attack level") -- there the other entity's bundle
-	 * answers and the player's levels already sit in PLAYER STATE, so a
-	 * generic skill article would only spend the budget. When the skill
-	 * is all there is ("how do I get started with sailing"), its page IS
-	 * the subject matter and the prompt would otherwise carry no facts.
+	 * are the question's whole subject (without it the prompt would carry
+	 * no facts). A skill mentioned incidentally next to a real subject
+	 * ("gear for tormented demons with my attack level") is answered by
+	 * the other entity's bundle, and the player's levels already sit in
+	 * PLAYER STATE -- a generic skill article would only spend the budget.
 	 * Training guides and XP math ride along per needs. */
 	private void skillFacts(List<String> facts, Set<String> needs,
 		EntityResolver.Resolution ents, GameCapture cap)
@@ -320,7 +317,7 @@ class Prefetcher
 
 	/**
 	 * The "Slayer task/..." guide page for a creature, or null when none
-	 * exists (or the index is unavailable -- task pages were never
+	 * exists (or the index is unavailable -- task pages are never
 	 * blind-fetched, so unknown safely means skip). Task pages are named
 	 * by category plural ("Slayer task/Greater demons") while resolved
 	 * monsters are singular; the index's redirect aliases plus a plural
@@ -416,8 +413,8 @@ class Prefetcher
 	{
 		// Discovery is for questions that DON'T name a facility. When one
 		// matched, its table is already in the facts -- and facility tables
-		// list nearby amenities, so scanning them "discovers" every other
-		// facility ("nearest bank" once pulled Furnace and Cooking range).
+		// list nearby amenities, so scanning them would "discover" every
+		// other facility.
 		if (!route.facilityPages.isEmpty())
 		{
 			return;
@@ -482,18 +479,12 @@ class Prefetcher
 	 * Ownership slice for a summarized bank: for every item the retrieved
 	 * facts mention, state POSITIVELY whether the player owns it or lacks
 	 * it, so gear, quest, and training answers start with the ownership
-	 * they need instead of discovering it one tool call at a time (a
-	 * diligent model once made 55 single-item searches for one gear
-	 * question). Format-blind by construction: it matches item names
-	 * against fact text, never parsing the page -- so it behaves the same
-	 * for every route and every page layout, and can't be broken by a wiki
-	 * reformat.
-	 *
-	 * Both lists exist because models don't infer from absence -- the
-	 * system prompt itself forbids it ("everything not shown is UNKNOWN"),
-	 * so an owned-only list sends the model to the search tool to
-	 * re-verify everything unlisted. Naming the lacked items outright
-	 * removes the inference and the redundant round-trip.
+	 * they need instead of discovering it one tool call at a time.
+	 * Matches item names against fact text, never parsing the page, so a
+	 * wiki reformat can't break it. Both lists are stated positively
+	 * because the system prompt forbids inferring from absence; an
+	 * owned-only list would send the model to the search tool for
+	 * everything unlisted.
 	 */
 	boolean addOwnershipFromFacts(List<String> facts, Map<String, long[]> owned,
 		Map<String, String> names)
@@ -514,12 +505,11 @@ class Prefetcher
 		{
 			return false;
 		}
-		// The completeness claim is only made when it is true: a cut list
-		// or an unavailable vocabulary falls back to honest framing that
-		// still steers verification into ONE batched call, not a sweep.
-		// The return value reports which framing was used -- a complete
-		// block means the search tool has nothing left to answer and the
-		// caller withholds it entirely.
+		// The completeness claim is only made when true: a cut list or an
+		// unavailable vocabulary falls back to framing that steers
+		// verification into one batched call. The return value reports
+		// which framing was used; on a complete block the caller withholds
+		// the search tool entirely.
 		addFact(facts, slice.complete
 			? "Ownership of every item these facts mention (complete both ways: "
 				+ "owned means owned, absent from OWNED means not owned)"
@@ -565,13 +555,10 @@ class Prefetcher
 
 	/**
 	 * The wiki page a fact block was retrieved from, or null for facts
-	 * derived from game state or non-page APIs (ownership, quest progress,
-	 * GE prices, XP math). Lives here because the labels are minted here;
-	 * the answer footer links each wiki-backed fact to its source page's
-	 * edit history, the accepted way to credit the page's contributors
-	 * under the wiki content's CC BY-NC-SA license. Unknown labels map to
-	 * null, so a new fact kind can never mislink -- it just goes unlinked
-	 * until added here.
+	 * derived from game state or non-page APIs. The answer footer links
+	 * each wiki-backed fact to its source page's edit history, crediting
+	 * the contributors as CC BY-NC-SA requires. Unknown labels map to
+	 * null: a new fact kind goes unlinked rather than mislinked.
 	 */
 	static String sourcePage(String factTitle)
 	{

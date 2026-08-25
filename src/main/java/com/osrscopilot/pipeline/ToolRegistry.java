@@ -39,10 +39,7 @@ class ToolRegistry
 			"Search the OSRS Wiki for pages. Returns page titles and short snippets ONLY, "
 				+ "not page content -- follow up with wiki_page to read a page.",
 			"query"));
-		// Long pages truncate at a budget. The [Sections: ...] line at the
-		// top of every page fetch and the headings in search results name
-		// what exists; the "section" argument is the targeted follow-up,
-		// returned as wikitext so tables (loot, rewards) survive.
+		// Section fetches return wikitext so tables (loot, rewards) survive.
 		JsonObject pageSpec = toolSpec("wiki_page",
 			"Get the text of an OSRS Wiki page (item, monster, quest, guide). Long pages are "
 				+ "truncated; the [Sections: ...] line lists every section that exists. Pass one "
@@ -68,9 +65,7 @@ class ToolRegistry
 		specs.add(toolSpec("quest_info",
 			"Get a quest's requirements (skill levels and prerequisite quests), "
 				+ "items required, and start point.", "quest_name"));
-		// Batched for the same reason as search_owned_items: budget questions
-		// legitimately price a whole shortlist, and that should cost one
-		// round trip, not one each.
+		// Batched: pricing a shortlist costs one round trip, not one each.
 		specs.add(toolSpec("ge_price",
 			"Current Grand Exchange price, buy limit, and high-alch value. Takes a LIST "
 				+ "of item names and returns the price of each -- price all candidate "
@@ -88,11 +83,9 @@ class ToolRegistry
 		xpParams.getAsJsonObject("properties").add("target_level", singleType("integer"));
 		xpParams.getAsJsonArray("required").add("target_level");
 		specs.add(xpSpec);
-		// Only offered when ownership is NOT already fully in context (bank
-		// inlined, or the ownership fact complete for everything the facts
-		// mention): a tool over visible data invites redundant lookups.
-		// Batched: a gear recommendation legitimately needs dozens of
-		// ownership checks, and they should cost one round trip, not one each.
+		// Withheld when ownership is already fully in context (bank inlined,
+		// or the ownership fact complete): a tool over visible data invites
+		// redundant lookups. Batched, like ge_price.
 		if (offerOwnedSearch)
 		{
 			specs.add(toolSpec("search_owned_items",
@@ -150,11 +143,10 @@ class ToolRegistry
 		boolean annotateOwnership)
 	{
 		Map<String, AgentLoop.Tool> tools = new LinkedHashMap<>();
-		// The ownership fact covers only what was in context at prompt time.
-		// Content-returning tools surface item names it never saw, so each
-		// result carries the same complete-both-ways ownership slice --
-		// ownership stays grounded across the whole loop at zero extra
-		// round trips.
+		// The ownership fact covers only what was in context at prompt time;
+		// content-returning tools surface item names it never saw. Each
+		// result carries the same complete-both-ways ownership slice, so
+		// ownership stays grounded across the whole loop.
 		tools.put("wiki_search", annotated(owned, ownedNames, annotateOwnership,
 			args -> wiki.search(str(args, "query"))));
 		tools.put("wiki_page", annotated(owned, ownedNames, annotateOwnership, args -> {

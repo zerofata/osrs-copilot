@@ -133,8 +133,8 @@ final class SwingUtil
 		return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 	}
 
-	/** The panel's one shape, painted once: antialiased rounded fill, an
-	 * optional light inner line (stone bevel), an optional outer edge. */
+	/** Antialiased rounded fill with an optional light inner line (stone
+	 * bevel) and an optional outer edge. */
 	static void paintRounded(Graphics g, javax.swing.JComponent c, int arc,
 		java.awt.Color fill, java.awt.Color edge, java.awt.Color innerBevel)
 	{

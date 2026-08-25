@@ -34,13 +34,10 @@ import net.runelite.client.util.LinkBrowser;
  * Sidebar chat panel. Pure view: collects questions, renders answers from a
  * {@link TranscriptModel}. All methods must be called on the Swing EDT.
  *
- * The conversation is a stack of real Swing message cards (custom-painted)
- * rather than one big HTML document: Swing's HTML renderer is stuck in HTML
- * 3.2, so surfaces, corners, hover states, and the scrollbar are painted
- * with Graphics2D, and HTML is used only for text flow inside a card.
- *
- * Every color, font, and card behavior comes from the active {@link Theme};
- * this class holds structure and interaction only.
+ * The conversation is a stack of custom-painted Swing message cards rather
+ * than one big HTML document: Swing's HTML renderer is stuck in HTML 3.2,
+ * so surfaces, corners, hover states, and the scrollbar are painted with
+ * Graphics2D, and HTML is used only for text flow inside a card.
  */
 class CopilotPanel extends PluginPanel
 {
@@ -124,9 +121,8 @@ class CopilotPanel extends PluginPanel
 		inputRow.add(input, BorderLayout.CENTER);
 		inputRow.add(send, BorderLayout.EAST);
 
-		// The toggle lives by the status line: the header row has no room at
-		// sidebar width, and a mode that changes the next answer belongs
-		// next to where the question is typed.
+		// The toggle shares the status row; the header row has no room for
+		// it at sidebar width.
 		JPanel statusRow = new JPanel(new BorderLayout(6, 0));
 		statusRow.setOpaque(false);
 		statusRow.add(status, BorderLayout.CENTER);
@@ -155,11 +151,9 @@ class CopilotPanel extends PluginPanel
 		north.add(wordmark, BorderLayout.WEST);
 		north.add(northButtons, BorderLayout.EAST);
 
-		// The whole chat UI lives on one movable panel: RuneLite's sidebar
-		// width is a fixed constant, so "make the chat bigger" is only
-		// possible by carrying this panel into a resizable window. The
-		// padding travels with it so nothing touches container edges,
-		// docked or floating.
+		// The whole chat UI lives on one movable panel so the pop-out can
+		// carry it into a resizable window; the padding travels with it so
+		// nothing touches container edges, docked or floating.
 		content.setBackground(theme.chromeBg);
 		content.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 		content.add(north, BorderLayout.NORTH);
@@ -171,8 +165,7 @@ class CopilotPanel extends PluginPanel
 
 		renderTimer = new Timer(RENDER_THROTTLE_MS, e -> render());
 		renderTimer.setRepeats(false);
-		// A slow pulse animates the status ellipsis while the model works,
-		// so waiting reads as activity rather than a hang.
+		// Animates the status ellipsis while the model works.
 		pulseTimer = new Timer(400, e -> {
 			pulse++;
 			refreshStatus();
@@ -201,8 +194,7 @@ class CopilotPanel extends PluginPanel
 	}
 
 	/** Replay one completed exchange into a fresh panel (theme and font-size
-	 * changes rebuild the panel; the conversation must survive the swap).
-	 * The answer re-renders exactly as the turn produced it: decorated HTML
+	 * changes rebuild the panel). The answer re-renders as decorated HTML
 	 * and meta line when available, markdown otherwise. */
 	void seedExchange(String question, String answer, String decoratedHtml, String meta)
 	{
@@ -284,8 +276,7 @@ class CopilotPanel extends PluginPanel
 	}
 
 	/** A pipeline progress note ("Looking up: ..."): shown dim inside the
-	 * answer card, where the player is actually looking, and echoed to the
-	 * status line. */
+	 * answer card and echoed to the status line. */
 	void showWorking(String note)
 	{
 		if (model.addWorkingNote(note))
@@ -435,13 +426,11 @@ class CopilotPanel extends PluginPanel
 		{
 			return;
 		}
-		// Secondary text stays at HTML size 3 (size 2 maps to ~10px in
-		// Swing's renderer -- unreadable); the dim color alone carries the
-		// visual hierarchy.
+		// Secondary text stays at HTML size 3: size 2 maps to ~10px in
+		// Swing's renderer, which is unreadable.
 		StringBuilder html = new StringBuilder();
 		if (block.isUser() && theme.userAsChatLine)
 		{
-			// Game-native: a question is something you said, not a document.
 			html.append("<font color='").append(theme.userPrefixHex)
 				.append("'><b>You:</b></font> ");
 		}
@@ -543,10 +532,10 @@ class CopilotPanel extends PluginPanel
 	}
 
 	/**
-	 * Full-width vertical stack whose row heights are computed AFTER the row
-	 * is given its real width. Stock layout managers ask for preferred size
-	 * first and lay out second, which mis-heights HTML text that wraps
-	 * (height depends on width) -- the classic Swing height-for-width gap.
+	 * Full-width vertical stack whose row heights are computed after each
+	 * row is given its real width. Stock layout managers ask for preferred
+	 * size first and lay out second, which mis-heights wrapping HTML text
+	 * (its height depends on its width).
 	 */
 	private static final class StackLayout implements java.awt.LayoutManager
 	{
@@ -743,21 +732,18 @@ class CopilotPanel extends PluginPanel
 		}
 	}
 
-	/** The Simple-mode control: not a button but a clickable piece of
-	 * status text ("Simple: off" / "Simple: on"). It shares a row with the
-	 * status line, so it speaks in the same meta register -- the status
-	 * color when on, receded when off, no box competing with Ask.
+	/** The Simple-mode control: a clickable piece of status text
+	 * ("Simple: off" / "Simple: on") sharing the status row.
 	 *
 	 * Deliberately a JLabel, not a JToggleButton: the client's Substance
 	 * look-and-feel paints button text from its own scheme and ignores the
-	 * foreground, so a button's on/off colors come out wrong in-game (and
-	 * only in-game -- the offscreen previews use a LAF that honors them).
+	 * foreground, so a button's on/off colors come out wrong in-game.
 	 * Labels keep their foreground under every LAF. */
 	private static final class FlatToggle extends JLabel
 	{
 		private final Theme theme;
 		private final String label;
-		/** The off state recedes: the status color at reduced opacity. */
+		/** Off state: the status color at reduced opacity. */
 		private final Color offFg;
 		private boolean selected;
 		private boolean hover;
@@ -822,8 +808,6 @@ class CopilotPanel extends PluginPanel
 			refresh();
 		}
 
-		/** On reads as the status line's own text; off recedes; hover
-		 * brightens either state to hint the text is clickable. */
 		private void refresh()
 		{
 			setText(label + ": " + (selected ? "on" : "off"));

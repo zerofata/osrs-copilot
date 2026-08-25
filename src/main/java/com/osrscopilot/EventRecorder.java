@@ -90,8 +90,8 @@ class EventRecorder
 
 	void openLog() throws IOException
 	{
-		// One file per session and nothing ever read them back: without
-		// pruning they accumulate forever.
+		// One file per session, never read back: prune old ones or they
+		// accumulate forever.
 		File[] old = dataDir.listFiles((d, name) ->
 			name.startsWith("events-") && name.endsWith(".jsonl"));
 		if (old != null)

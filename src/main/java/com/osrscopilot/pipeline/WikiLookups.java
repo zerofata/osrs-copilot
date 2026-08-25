@@ -400,9 +400,8 @@ class WikiLookups
 	/**
 	 * Combat profile of a monster. Deliberately complete: gear and style
 	 * verdicts hinge on defensive stats, attributes (demon/dragon/undead
-	 * drive demonbane and salve reasoning), and immunities. When these were
-	 * omitted, models filled the gap from stale priors -- "low Defence" was
-	 * once claimed for a Defence-150 monster the model had no numbers for.
+	 * drive demonbane and salve reasoning), and immunities; omitting any
+	 * of them invites the model to fill the gap from stale priors.
 	 */
 	Map<String, Object> monsterInfo(String name)
 	{
@@ -424,8 +423,8 @@ class WikiLookups
 			{
 				return Map.of("error", "No monster named '" + name + "' found. Check spelling via wiki_search.");
 			}
-			// The bucket carries "ERR" where the wiki's own template data is
-			// broken (currently the resistance fields); junk, not a value.
+			// The bucket carries "ERR" where the wiki's own template data
+			// is broken; junk, not a value.
 			info.values().removeIf("ERR"::equals);
 			info.replaceAll((k, v) -> stripMarkup(v));
 			return info;
@@ -437,11 +436,10 @@ class WikiLookups
 	}
 
 	/**
-	 * Equipment combat bonuses. The mirror of monsterInfo: infoboxes never
-	 * survive plaintext extracts, so without this the model compares weapons
-	 * it has no numbers for ("higher base stats -- exact numbers not in the
-	 * retrieved data"). The bucket has no attack-speed or slot field; those
-	 * live in page prose, which IS retrieved.
+	 * Equipment combat bonuses. Infoboxes never survive plaintext extracts,
+	 * so this bucket is the only numeric source for equipment comparisons.
+	 * It has no attack-speed or slot field; those live in page prose, which
+	 * is retrieved.
 	 */
 	Map<String, Object> itemStats(String name)
 	{
@@ -472,12 +470,11 @@ class WikiLookups
 
 	/**
 	 * Quest requirements from the wiki's structured quest bucket. The
-	 * {{Quest details}} template never survives plaintext extracts, so
-	 * without this "can I do X" answers lack the skill levels and the
-	 * prerequisite quest tree, and the model fills the gap from training
-	 * data (where RS3 quests bleed in). As a bonus, prerequisite names
-	 * appearing in this fact cause the pipeline to attach the player's
-	 * live progress for each of them (relevantQuestStates scans facts).
+	 * {{Quest details}} template never survives plaintext extracts, so this
+	 * is the only source of the skill levels and prerequisite quest tree.
+	 * Prerequisite names appearing in this fact also cause the pipeline to
+	 * attach the player's live progress for each of them
+	 * (relevantQuestStates scans facts).
 	 */
 	Map<String, Object> questInfo(String name)
 	{

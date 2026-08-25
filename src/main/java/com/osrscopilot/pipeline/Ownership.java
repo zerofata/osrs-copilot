@@ -108,11 +108,10 @@ public final class Ownership
 	/**
 	 * Both ownership lists for every catalogued item a text mentions:
 	 * OWNED with quantities, NOT OWNED by name. Positive statements both
-	 * ways, because models do not infer from absence -- our own system
-	 * prompt forbids it. Shared by the prefetcher (over prefetched facts)
-	 * and the tool registry (over live tool results), so the model gets
-	 * the same grounding for content it discovers mid-loop as for content
-	 * we fetched up front.
+	 * ways, because the system prompt forbids inferring from absence.
+	 * Shared by the prefetcher (over prefetched facts) and the tool
+	 * registry (over live tool results), so content discovered mid-loop
+	 * gets the same grounding as content fetched up front.
 	 */
 	static final class Slice
 	{
@@ -130,13 +129,9 @@ public final class Ownership
 
 	/** Cap on the owned list; past this the block is noise. */
 	private static final int OWNED_LIMIT = 120;
-	/** Cap on the not-owned enumeration, sized ABOVE what real equipment
-	 * pages mention (a three-style tabber names ~100-150 items): a
-	 * truncated list forfeits the completeness claim, and the model then
-	 * rationally re-verifies items one search at a time -- the exact
-	 * behavior this block exists to prevent. ~4 tokens per entry, so even
-	 * a full list costs under a thousand tokens against the multi-
-	 * thousand-token sweep it replaces. */
+	/** Cap on the not-owned enumeration, sized above the ~150 items a
+	 * three-style equipment page mentions: a truncated list forfeits the
+	 * completeness claim. */
 	private static final int LACKED_LIMIT = 200;
 
 	/**

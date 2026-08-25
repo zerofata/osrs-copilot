@@ -110,11 +110,11 @@ public class CopilotPlugin extends Plugin
 	private ScheduledExecutorService sharedExecutor;
 
 	/**
-	 * Our own worker for the pipeline. RuneLite's injected executor is a
-	 * SINGLE shared thread that also runs every plugin's scheduled tasks,
-	 * config saves, and notifications -- parking it on a multi-minute LLM
-	 * stream stalls the whole client's background work. One private thread
-	 * keeps today's one-question-at-a-time ordering and dies with the plugin.
+	 * Dedicated worker for the pipeline. RuneLite's injected executor is a
+	 * SINGLE shared thread serving every plugin's background work; parking
+	 * it on a multi-minute LLM stream would stall the whole client. A
+	 * private single thread also serializes questions and dies with the
+	 * plugin.
 	 */
 	private ExecutorService pipelineExecutor;
 
@@ -122,7 +122,6 @@ public class CopilotPlugin extends Plugin
 	private CopilotPanel panel;
 	private NavigationButton navButton;
 	private IconStore iconStore;
-	/** Toolbar icon: the plugin's wizard-hat mark, bundled as a resource. */
 	private BufferedImage navIcon;
 
 	// Question flow must hop threads: Swing EDT (submit) -> client thread
@@ -175,9 +174,9 @@ public class CopilotPlugin extends Plugin
 			return t;
 		});
 		pipeline = new CopilotPipeline(okHttpClient, gson, CACHE_DIR);
-		// The third-party-server consent is the Plugin Hub install warning;
-		// warming only fetches static vocabulary from our own GitHub, and
-		// nothing reaches an LLM until the user configures an endpoint.
+		// The Plugin Hub install warning covers third-party-server consent;
+		// warming only fetches static vocabulary from the plugin's GitHub,
+		// and nothing reaches an LLM until the user configures an endpoint.
 		pipelineExecutor.execute(pipeline::warmCaches);
 		iconStore = new IconStore(new File(CACHE_DIR, "icons"),
 			itemManager, spriteManager, skillIconManager);
@@ -293,11 +292,9 @@ public class CopilotPlugin extends Plugin
 	/**
 	 * A theme is baked into every component at construction, so switching
 	 * means building a fresh panel. The conversation replays into it exactly
-	 * as rendered (decoration, meta line and all), so a rebuild never costs
-	 * the player their chat or its styling. After a theme switch old
-	 * messages keep the entity colors of the theme they were answered
-	 * under -- an acceptable trade against re-running decoration, which
-	 * would need the game capture of every past turn.
+	 * as rendered, so a rebuild never costs the player their chat; old
+	 * messages keep the previous theme's entity colors, since re-running
+	 * decoration would need each past turn's game capture.
 	 */
 	private void applyTheme()
 	{
@@ -458,13 +455,11 @@ public class CopilotPlugin extends Plugin
 	}
 
 	/** One dim HTML line under each answer disclosing what the model was
-	 * given: retrieved facts, tools it called, and token cost. Keeps the
-	 * pipeline inspectable in-game instead of only in offline eval runs.
-	 * Every wiki page the answer drew on -- prefetched fact or tool fetch --
-	 * links its edit history: the page's contributors hold the copyright
-	 * (CC BY-NC-SA), and a history link is the accepted way to credit them.
-	 * Underlined explicitly: the shared stylesheet suppresses underlines
-	 * for the answer body's entity links. */
+	 * given: retrieved facts, tools it called, and token cost. Every wiki
+	 * page the answer drew on links its edit history: the page's
+	 * contributors hold the copyright (CC BY-NC-SA), and a history link is
+	 * the accepted way to credit them. Underlines are explicit because the
+	 * shared stylesheet suppresses them for the answer body's entity links. */
 	static String answerMeta(CopilotPipeline.Result result, Gson gson)
 	{
 		StringBuilder sb = new StringBuilder();

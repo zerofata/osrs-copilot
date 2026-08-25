@@ -148,13 +148,12 @@ class GameStateReader
 	}
 
 	/**
-	 * Spellbook and prayer-scroll unlocks, straight from varbits. The model
-	 * kept verifying these through the item search tool (which can only say
-	 * "0 owned" for a consumed scroll -- actively misleading); stating them
-	 * here answers the question before it is asked. Piety/Chivalry are
-	 * deliberately absent: their gate (Knight Waves) has no varbit we can
-	 * read with confidence, and a false unlock claim is worse than the
-	 * model checking the King's Ransom quest state.
+	 * Spellbook and prayer-scroll unlocks, straight from varbits. A consumed
+	 * scroll can only show as "0 owned" in item search, so unlocks must be
+	 * stated here. Piety/Chivalry are deliberately absent: their gate
+	 * (Knight Waves) has no reliably readable varbit, and a false unlock
+	 * claim is worse than leaving the model to check the King's Ransom
+	 * quest state.
 	 */
 	private Map<String, Object> unlocks()
 	{
@@ -173,11 +172,10 @@ class GameStateReader
 	}
 
 	/**
-	 * The active Slayer task. The remaining count is a varp, so it is always
-	 * exact. The creature has no name mapping in the client API -- only a
-	 * numeric id -- so the name comes from the built-in Slayer plugin, which
-	 * records it per account. With that plugin off we report the count alone
-	 * rather than guessing a creature.
+	 * The active Slayer task. The remaining count is a varp, so always
+	 * exact. The client API gives the creature only as a numeric id, so the
+	 * name comes from the built-in Slayer plugin's per-account config; with
+	 * that plugin off, only the count is reported.
 	 */
 	private Map<String, Object> slayerTask()
 	{

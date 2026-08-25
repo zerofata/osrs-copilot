@@ -18,10 +18,8 @@ class Http
 {
 	private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
-	/** The wiki's APIs (prices.runescape.wiki especially) require a
-	 * descriptive User-Agent identifying the consumer, and 400 anything
-	 * anonymous. The repo URL is the contact channel they ask for, so they
-	 * can reach out instead of block. Sent on every request. */
+	/** The wiki's APIs 400 anonymous User-Agents and require a contact
+	 * channel (the repo URL). Sent on every request. */
 	private static final String USER_AGENT =
 		"osrs-copilot RuneLite plugin (https://github.com/zerofata/osrs-copilot)";
 
@@ -30,7 +28,7 @@ class Http
 
 	Http(OkHttpClient base, Gson gson)
 	{
-		// LLM calls can legitimately take minutes on reasoning models.
+		// Reasoning models can take minutes per call.
 		this.client = base.newBuilder()
 			.readTimeout(180, TimeUnit.SECONDS)
 			.addInterceptor(chain -> chain.proceed(chain.request().newBuilder()

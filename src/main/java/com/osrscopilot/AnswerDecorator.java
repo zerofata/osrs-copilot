@@ -21,8 +21,7 @@ import net.runelite.api.Skill;
  * Every name links to its OSRS Wiki page.
  *
  * Purely deterministic: names are matched against vocabularies the client or
- * wiki provides (quest list with live states, captured containers, the GE
- * item catalogue, wiki-verified route entities). The model plays no part.
+ * wiki provides; the model plays no part.
  */
 final class AnswerDecorator
 {
@@ -39,9 +38,7 @@ final class AnswerDecorator
 		/** Pre-resolved icon file URL (skill and quest icons, written to
 		 * disk at startup); null = none or item-sprite icon. */
 		final String iconUrl;
-		/** Item ID whose inventory sprite decorates the name; -1 = none.
-		 * An ID rather than an image: sprites render only for names that
-		 * appear in an answer, never for the whole vocabulary. */
+	/** Item ID whose inventory sprite decorates the name; -1 = none. */
 		final int iconItemId;
 		final int iconW;
 		final int iconH;
@@ -82,9 +79,9 @@ final class AnswerDecorator
 	private static final int ICON_SQUARE = 14;
 	private static final int ITEM_ICON_W = 16;
 
-	/** Every skill the client knows, from the same enum IconStore draws the
-	 * icons from -- a new skill arrives in both places at once. OVERALL is
-	 * the deprecated pseudo-skill with no icon or page. */
+	/** Every skill the client knows, from the same enum IconStore draws
+	 * icons from, so a new skill arrives in both places at once. OVERALL
+	 * is the deprecated pseudo-skill with no icon or page. */
 	private static final List<String> SKILLS = java.util.Arrays.stream(Skill.values())
 		.filter(s -> !"OVERALL".equals(s.name()))
 		.map(Skill::getName)
@@ -93,11 +90,9 @@ final class AnswerDecorator
 	/**
 	 * Assemble the name vocabularies in precedence order: a name known
 	 * several ways keeps its richest meaning (quest state over item over
-	 * plain page link). monsterNames is the full plain-monster vocabulary,
-	 * so answers that introduce a monster the route never resolved still
-	 * link it. itemIds maps lowercase tradeable names to item IDs so
-	 * unowned items can carry their sprite; owned items bring their IDs
-	 * from the capture itself.
+	 * plain page link). monsterNames covers monsters the route never
+	 * resolved; itemIds supplies sprites for unowned items (owned items
+	 * carry IDs in the capture).
 	 */
 	static AnswerDecorator build(GameCapture cap, EntityResolver.Resolution entities,
 		List<String> monsterNames, List<String[]> itemNames,
@@ -365,19 +360,15 @@ final class AnswerDecorator
 	/**
 	 * Mirror of {@link #fragmentOfLargerName}: the match is the tail of a
 	 * longer title-case phrase ("demons" in "Greater demons", "Slayer" in
-	 * "Dragon Slayer II"). The rule's page describes the fragment's own
-	 * referent, not the longer name's, so linking would mislabel it. When
+	 * "Dragon Slayer II"), so linking it would mislabel the fragment. When
 	 * the longer phrase is itself a known name, its rule has already
-	 * claimed the whole span (rules match longest-first) and overlap
-	 * rejection stops this check from ever seeing the fragment.
+	 * claimed the whole span (rules match longest-first).
 	 *
-	 * Unlike the forward guard, a preceding capital is only evidence when
-	 * it sits mid-sentence: sentence-opening words are capitalized no
-	 * matter what they are ("The demons", "Use an Abyssal whip"), so a
-	 * capital straight after start-of-text, punctuation, or a tag proves
-	 * nothing and must not suppress. The residual risk -- a proper phrase
-	 * that itself opens a sentence -- is accepted: suppressing there would
-	 * cost far more real links than it saves mislabels.
+	 * A preceding capital only counts as evidence mid-sentence:
+	 * sentence-opening words are capitalized no matter what they are
+	 * ("The demons"), so a capital straight after start-of-text,
+	 * punctuation, or a tag must not suppress the link. A proper phrase
+	 * that itself opens a sentence is an accepted miss.
 	 */
 	private static boolean tailOfLargerName(String html, int start)
 	{

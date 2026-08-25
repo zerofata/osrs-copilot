@@ -5,20 +5,15 @@ import java.awt.Font;
 import net.runelite.client.ui.FontManager;
 
 /**
- * One visual identity for the whole presentation stack. The chat panel, the
+ * One visual identity for the whole presentation stack: the chat panel, the
  * markdown renderer, and the entity decorator all read the active theme, so
- * chrome, answer typography, and entity state colors always speak the same
- * visual language -- the design flaw a theme object exists to prevent is
- * modern chrome wrapped around game-styled content.
- *
- * The pipeline never sees this class; presentation is swappable wholesale.
+ * chrome, answer typography, and entity state colors stay consistent. The
+ * pipeline never sees this class; presentation is swappable wholesale.
  */
 final class Theme
 {
 	// -- Chrome -----------------------------------------------------------
-	/** Font for wordmark, speaker labels, and buttons; null = default sans.
-	 * RuneLite ships the actual RuneScape fonts, the single cheapest
-	 * authenticity lever available. */
+	/** Font for wordmark, speaker labels, and buttons; null = default sans. */
 	Font chromeFont;
 	Font statusFont;
 	Color accent;
@@ -38,12 +33,10 @@ final class Theme
 	Color inputText;
 	Color statusFg;
 	Color scrollThumb;
-	/** Corner radius; the game's own interface is squared, modern UIs round. */
 	int arc;
 
 	// -- Message cards ------------------------------------------------------
-	/** Game-native mode: your questions render as chat lines (something you
-	 * said), not cards; only answers get the journal treatment. */
+	/** Game-native mode: user questions render as chat lines, not cards. */
 	boolean userAsChatLine;
 	Color userCardBg;
 	Color userCardEdge;
@@ -114,18 +107,13 @@ final class Theme
 	 * All three palettes in one table, one field per row, so a value change
 	 * or a new field can never silently miss a theme. Columns:
 	 *
-	 * [0] game-native -- dark surfaces (native to the RuneLite client), but
-	 *     every accent drawn from the game: RuneScape fonts for chrome, the
-	 *     interface orange-gold as the only accent, questions as chat lines,
-	 *     answers as journal cards, entity colors matched to the in-game
-	 *     quest list (softened for a dark surface).
-	 * [1] modern -- monochrome chrome, neutral surfaces, no brand accent at
-	 *     all: the only color on screen is semantic (quest states, item
-	 *     ownership), so meaning is the sole thing that glows.
-	 * [2] parchment -- full skeuomorphism: parchment message cards with
-	 *     stone-bevel edges and quest-journal dark text, chat-blue questions
-	 *     and dialogue-box speaker red for answers, squared corners --
-	 *     closest to the in-game interface look, on a dark-brown field.
+	 * [0] game-native -- dark surfaces with RuneScape fonts, the interface
+	 *     orange-gold as the only accent, questions as chat lines, answers
+	 *     as journal cards.
+	 * [1] modern -- monochrome chrome, neutral surfaces; the only color is
+	 *     semantic (quest states, item ownership).
+	 * [2] parchment -- skeuomorphic parchment cards with stone-bevel edges
+	 *     and squared corners; closest to the in-game interface look.
 	 */
 	private static Theme build(int i)
 	{

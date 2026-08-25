@@ -12,9 +12,9 @@ import net.runelite.client.ui.ColorScheme;
 
 /**
  * Moves the chat UI between the sidebar and a free-floating resizable
- * frame. RuneLite's sidebar width is a fixed constant, so "make the chat
- * bigger" is only possible by carrying the content panel into its own
- * window; the conversation is untouched since the UI just moves.
+ * frame. RuneLite's sidebar width is a fixed constant, so a bigger chat
+ * means carrying the content panel into its own window; the conversation
+ * is untouched since the UI just moves.
  */
 class PopOutManager
 {
@@ -62,8 +62,7 @@ class PopOutManager
 		frame.add(content);
 		frame.setSize(560, 720);
 		frame.setLocationByPlatform(true);
-		// Closing the window (by any path) docks the chat back into the
-		// sidebar; the conversation is untouched since the UI just moves.
+		// Closing the window by any path docks the chat back into the sidebar.
 		frame.addWindowListener(new WindowAdapter()
 		{
 			@Override

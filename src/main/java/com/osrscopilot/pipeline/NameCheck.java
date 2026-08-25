@@ -13,10 +13,9 @@ import java.util.regex.Pattern;
  *
  * Names taken from the retrieved facts are grounded by construction; only the
  * rest can be memory, and memory is where content from other games leaks in
- * (RS3's "Anachronia" offered as an OSRS mining spot is worse than an
- * unanswered question). Extraction here is deliberately generous and dumb;
- * the narrowing happens against the context and then against the wiki, which
- * is the closed vocabulary of what exists in this game.
+ * (RS3's "Anachronia" offered as an OSRS location). Extraction here is
+ * deliberately generous and dumb; the narrowing happens against the context
+ * and then against the wiki.
  */
 class NameCheck
 {

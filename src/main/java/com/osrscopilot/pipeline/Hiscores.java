@@ -9,13 +9,12 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Official OSRS hiscores: the player's own boss kill counts and activity
  * scores. Kill counts live server-side and are invisible to the client, yet
- * they are the ground truth for the player's experience -- without them the
- * model fills the gap with "assume beginner", which is worse than useless.
+ * they are the ground truth for the player's experience.
  *
  * Cached per player for the whole login session: hiscores only persist on
- * logout/world hop, so while logged in the cached value mirrors the source
- * exactly and a refetch can never return anything newer. The plugin
- * invalidates on login, which is the one moment fresh data can exist.
+ * logout/world hop, so while logged in a refetch can never return anything
+ * newer. The plugin invalidates on login, the one moment fresh data can
+ * exist.
  */
 @Slf4j
 class Hiscores

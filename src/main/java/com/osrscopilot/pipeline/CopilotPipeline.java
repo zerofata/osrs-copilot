@@ -93,8 +93,8 @@ public class CopilotPipeline
 	/**
 	 * Everything the model gets, before it runs: the route plus the assembled
 	 * user message. Produced without any LLM call, so retrieval can be
-	 * inspected and regression-tested for free -- and it is the same object
-	 * answer() synthesizes from, so what you inspect is what ships.
+	 * inspected and regression-tested; answer() synthesizes from this same
+	 * object, so what you inspect is what ships.
 	 */
 	public static class Prepared
 	{
@@ -105,12 +105,7 @@ public class CopilotPipeline
 		private Map<String, long[]> ownedIndex;
 		private Map<String, String> ownedNames;
 		private boolean bankInlined;
-		/** The owned-item search tool is withheld when the bank is inlined,
-		 * or when the facts carry a Recommended equipment list with a
-		 * complete ownership slice -- re-verifying gear already visible in
-		 * context is redundant. Otherwise it is offered: with a summarized
-		 * bank and no gear list, the facts' ownership covers only
-		 * incidental page items. */
+		/** Whether search_owned_items is offered; decided in prepare(). */
 		private boolean offerOwnedSearch;
 	}
 
@@ -137,8 +132,7 @@ public class CopilotPipeline
 		this.promptBuilder = new PromptBuilder(gson, wiki, hiscores);
 	}
 
-	/** Call when the player logs in: hiscores persist only on logout/hop,
-	 * so login is the one moment a refetch can return anything new. */
+	/** Invalidates the hiscores cache; see {@link Hiscores}. */
 	public void onLogin()
 	{
 		hiscores.invalidate();
@@ -353,10 +347,10 @@ public class CopilotPipeline
 			ownershipComplete = prefetcher.addOwnershipFromFacts(facts, p.ownedIndex, p.ownedNames);
 		}
 		// The search tool is withheld only when the facts carry a gear list
-		// (Recommended equipment section) whose ownership slice is complete:
-		// re-verifying a visible gear list is the observed overuse. Without
-		// a gear list, "complete" covers only incidental page items, and a
-		// loadout answer needs equipment the facts never mention.
+		// (Recommended equipment section) with a complete ownership slice:
+		// the model re-verifies visible gear otherwise. Without a gear
+		// list, "complete" covers only incidental page items, and a loadout
+		// answer needs equipment the facts never mention.
 		boolean equipmentListed = facts.stream()
 			.anyMatch(f -> f.startsWith("### Recommended equipment: "));
 		p.offerOwnedSearch = !p.bankInlined && !(ownershipComplete && equipmentListed);
@@ -406,7 +400,7 @@ public class CopilotPipeline
 		AgentLoop.Result agent = AgentLoop.run(llm, gson, messages,
 			toolSpecs, tools, maxTurns, listener);
 
-		// The simple-mode prompt holds ~70% of the time on formatting-happy
+		// The simple-mode prompt alone doesn't hold on formatting-happy
 		// models; stripping emphasis markers is the guarantee. Runs before
 		// the answer enters history, so later turns see plain text too.
 		String answer = simpleMode ? stripEmphasisMarkdown(agent.answer) : agent.answer;

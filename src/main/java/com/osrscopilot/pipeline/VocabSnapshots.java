@@ -17,19 +17,18 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Bulk vocabularies (every item, monster, place...), served from published
- * snapshots. They are identical for every install, so no client may compute
- * them: a scheduled job in our repo (VocabSnapshotTool, run weekly by CI)
- * does the wiki's expensive bulk queries ONCE and publishes gzipped
- * snapshots; clients only ever download the published result from GitHub's
- * CDN, with a 7-day disk cache and stale-beats-broken fallback.
+ * snapshots. A weekly CI job (VocabSnapshotTool) runs the wiki's expensive
+ * bulk queries once and publishes gzipped snapshots; clients only download
+ * the published result from GitHub's CDN, with a 7-day disk cache and
+ * stale-beats-broken fallback.
  */
 @Slf4j
 class VocabSnapshots
 {
 	/**
-	 * There is deliberately NO fallback to building from the wiki: if our
-	 * snapshot pipeline breaks, our resolver degrades and the failure is
-	 * ours to notice -- the wiki never absorbs it.
+	 * There is deliberately no fallback to building from the wiki: a broken
+	 * snapshot pipeline degrades the resolver instead of shifting bulk-query
+	 * load onto the wiki.
 	 */
 	private static final String SNAPSHOT_BASE =
 		"https://raw.githubusercontent.com/zerofata/osrs-copilot/vocab-data/";
@@ -155,20 +154,18 @@ class VocabSnapshots
 	 * The one item-name list both the resolver and the UI decorator use:
 	 * the GE catalogue (authoritative for tradeables), extended with
 	 * untradeable names from the item infobox index. Infobox entries whose
-	 * name is a single common English word are excluded -- they are obscure
-	 * quest junk and interface pseudo-items ("Diary (Witch's House)",
-	 * "Prayer (interface item)", "Key", "Note") and claiming bare
-	 * dictionary words breaks real references ("Varrock diary", "prayer
-	 * level"). Same principle as the resolver's desperation rule.
+	 * name is a single common English word are excluded: they are obscure
+	 * quest junk and interface pseudo-items ("Key", "Note", "Prayer
+	 * (interface item)"), and claiming bare dictionary words breaks real
+	 * references ("Varrock diary", "prayer level").
 	 *
 	 * Entries whose canonical page the wiki marks as a non-world sprite
 	 * (interface, unobtainable, animation, beta-only) are excluded
-	 * outright: a player can never mean them, and their names are real
-	 * speech ("Dart", "Torch", "Magic carpet") -- claiming a mention
-	 * locally blocks the redirect pass from resolving it to the real thing
-	 * ("addy darts" once resolved to Dart (unobtainable item) instead of
-	 * the Addy darts redirect). Matched anywhere in the disambiguator, not
-	 * just as a suffix: "Torch (animation item, Sea Slug)".
+	 * outright: a player can never mean them, their names are real speech
+	 * ("Dart", "Torch", "Magic carpet"), and claiming a mention locally
+	 * blocks the redirect pass from resolving it to the real thing. The
+	 * marker is matched anywhere in the disambiguator, not just as a
+	 * suffix: "Torch (animation item, Sea Slug)".
 	 */
 	synchronized List<String[]> knownItemNames() throws IOException
 	{
@@ -227,10 +224,9 @@ class VocabSnapshots
 	}
 
 	/** The high-frequency band of the wordlist (it is frequency-ordered,
-	 * most common first). Every hostile redirect observed in live sessions
-	 * came from this band ("up" is rank 54, "want" 254, "game" 305), while
-	 * genuine game-flavoured English sits far below it ("bow" 6335, "cave"
-	 * 7512) or is absent entirely ("whip", "fury"). */
+	 * most common first). Hostile redirects come from this band ("up",
+	 * "want", "game"), while genuine game-flavoured English sits far below
+	 * it ("bow", "cave") or is absent entirely ("whip", "fury"). */
 	synchronized Set<String> commonEnglishWords()
 	{
 		loadWordlist();
@@ -265,10 +261,10 @@ class VocabSnapshots
 		}
 	}
 
-	/** Rank cutoff for the common band: observed hostiles top out at rank
-	 * 305, so 1,000 gives 3x margin. The only game-adjacent word inside the
-	 * band is "staff" (511), which is a real item and resolves through the
-	 * vocabulary pass instead. */
+	/** Rank cutoff for the common band: hostile redirect words top out
+	 * around rank 305, so 1,000 gives 3x margin. The only game-adjacent
+	 * word inside the band is "staff" (511), a real item that resolves
+	 * through the vocabulary pass instead. */
 	private static final int COMMON_ENGLISH_BAND = 1000;
 
 	/**
@@ -306,7 +302,7 @@ class VocabSnapshots
 	}
 
 	/**
-	 * A vocabulary snapshot: fresh disk copy, else download from our
+	 * A vocabulary snapshot: fresh disk copy, else download from the
 	 * published vocab-data branch, else stale disk copy (stale beats
 	 * broken). Building the dataset from the wiki is deliberately not in
 	 * this chain -- see SNAPSHOT_BASE.

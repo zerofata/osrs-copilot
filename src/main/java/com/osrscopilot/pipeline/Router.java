@@ -12,8 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * The deterministic front half of the pipeline: entity resolution, needs
  * classification, facility intents, diary tiers, bank mode. No LLM, no
- * network beyond the resolver's vocabulary -- which is why the whole thing
- * is regression-testable for free via the eval battery's route-only mode.
+ * network beyond the resolver's vocabulary, so routing is regression-testable
+ * without a model.
  *
  * Everything rule-shaped lives here: the needs vocabulary, the need rules,
  * the facility rules, and the anaphora/locational patterns. Routes are
@@ -23,6 +23,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class Router
 {
+	/** Bank size at or below which the full bank inlines into the prompt;
+	 * larger banks are summarized. */
 	static final int BANK_INLINE_LIMIT = 200;
 
 	/** Facility questions ("where can I pray/bank/smelt") map a small closed
@@ -95,10 +97,10 @@ class Router
 	private static final Pattern EVENT_REFERENCE =
 		Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b");
 
-	// Shared phrasing frames and verb lexicons. Every rule that hand-rolled
-	// its own pronoun frame ("how to kill" but not "how do i defeat") was a
-	// brittleness bug waiting for a phrasing it hadn't met; declaring the
-	// frames once means a newly discovered variant fixes every rule at once.
+	// Shared phrasing frames and verb lexicons, declared once: a rule that
+	// hand-rolls its own pronoun frame ("how to kill" but not "how do i
+	// defeat") breaks on unmet phrasings; a variant added here fixes every
+	// rule at once.
 	/** "how to / how do i / how can you / how should we ..." */
 	static final String HOW = "how (to|do (i|you|we)|can (i|you|we)|should (i|we)|would (i|you|we))";
 	/** "where" including the contraction-less "wheres". */
@@ -245,9 +247,9 @@ class Router
 
 	/**
 	 * Pure needs classification: question text plus entity-kind flags in,
-	 * needs out. No network, no game state beyond the flags -- which is what
-	 * makes it table-testable across a phrasing corpus (RouterPhrasingTest)
-	 * without standing up the resolver.
+	 * needs out. No network, no game state beyond the flags, so it is
+	 * table-testable across a phrasing corpus (RouterPhrasingTest) without
+	 * standing up the resolver.
 	 */
 	static List<String> classifyNeeds(String question, boolean hasEvents,
 		boolean monsterResolved, boolean itemResolved)

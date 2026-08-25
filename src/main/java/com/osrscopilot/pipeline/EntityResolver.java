@@ -44,15 +44,14 @@ public class EntityResolver
 	/** Question-meta vocabulary: the words players use to ASK about the game
 	 * rather than to name things in it -- question grammar ("whats",
 	 * "best"), quantity talk ("worth", "profit"), and gaming-register nouns
-	 * ("gear", "setup", "loadout" -- absent from English wordlists but
-	 * still never a subject). Used to skip single tokens in the vocabulary
-	 * pass and to judge whether a multi-word span is "mostly real words".
-	 * Ordinary common English needs no entry here: the frequency band in
-	 * isRedirectCandidate rejects it structurally. The exception is
-	 * two-letter words ("go", "up"), which the frequency band cannot judge
-	 * -- at that length the wordlist holds junk and real slang alike, so
-	 * curation decides and hostile redirects (the Games Room board game,
-	 * Underground Pass) are blocked here. */
+	 * ("gear", "setup", "loadout": absent from English wordlists but never
+	 * a subject). Skips single tokens in the vocabulary pass and helps
+	 * judge whether a multi-word span is "mostly real words". Ordinary
+	 * common English needs no entry here: the frequency band in
+	 * isRedirectCandidate rejects it structurally. Two-letter words ("go",
+	 * "up") are the exception -- the wordlist cannot judge that length, so
+	 * curation here blocks their hostile redirects (the Games Room board
+	 * game, Underground Pass). */
 	private static final Set<String> STOPWORDS = new HashSet<>(Arrays.asList(
 		("a an the i my me you your it its this that these those is are was be been "
 		+ "do does did can could should would will whats what's what how where when why which who "
@@ -196,11 +195,10 @@ public class EntityResolver
 	}
 
 	/**
-	 * @param source the text's register (see {@link Source}). The
-	 * desperation widening (trying bare dictionary words as redirects)
-	 * exists to find SOMETHING in a context-free question; anywhere else it
-	 * only manufactures junk -- "master list of all resources" once
-	 * resolved pages Master, List, and Resources, crowding the real
+	 * @param source the text's register (see {@link Source}). Desperation
+	 * widening (trying bare dictionary words as redirects) exists to find
+	 * SOMETHING in a context-free question; anywhere else it manufactures
+	 * junk pages from ordinary words ("master", "list") that crowd the real
 	 * subject out of the prefetch budget.
 	 */
 	public Resolution resolve(String question, Collection<String> questNames, Source source)
@@ -341,10 +339,9 @@ public class EntityResolver
 			}
 			// An English word must prove itself by landing on a typed
 			// entity: "fury" -> Amulet of fury resolves, but "bow" -> Bow
-			// and "inventory" -> Inventory are the word's ordinary sense
-			// wearing a page title, junk by construction. Slang keeps
-			// generic pages ("toa" -> Tombs of Amascut), two-letter
-			// shorthand is exempt with the wordlist unable to judge it
+			// is the word's ordinary sense wearing a page title. Slang
+			// keeps generic pages ("toa" -> Tombs of Amascut), two-letter
+			// shorthand is exempt because the wordlist cannot judge it
 			// ("ge" -> Grand Exchange), and facility nouns are exempt
 			// because their pages ARE generic ("house" -> Player-owned
 			// house).
@@ -466,8 +463,8 @@ public class EntityResolver
 	 * "my bank", "closer to a bank", "difference between houses" are about
 	 * the facilities, not the English words. Exempt from the common-band
 	 * block and from the typed-entity requirement (their pages are generic),
-	 * but still desperation-only like any dictionary word. Closed set --
-	 * each entry earns its place with a battery case. */
+	 * but still desperation-only like any dictionary word. Deliberately a
+	 * tiny closed set. */
 	private static final Set<String> FACILITY_NOUNS =
 		new HashSet<>(Arrays.asList("bank", "house"));
 
@@ -482,8 +479,8 @@ public class EntityResolver
 	 * evidence of slang, so the redirect is trusted ("kbd", "tbow", "toa");
 	 * membership in English demands proof. Common-band words ("up", "want",
 	 * "game") never qualify -- their ordinary sense always dominates, and
-	 * the wiki redirects a shocking number of them to real entities ("Want"
-	 * -> Wanted!, "Up" -> Underground Pass). Rare-band words ("fury",
+	 * many carry real wiki redirects ("Want" -> Wanted!, "Up" ->
+	 * Underground Pass). Rare-band words ("fury",
 	 * "bow") are tried only in desperation, and their hit must additionally
 	 * land on a typed entity (see the acceptance loop in resolve()).
 	 */
@@ -580,6 +577,7 @@ public class EntityResolver
 		{
 			return out;
 		}
+		// The wiki API caps a query at 50 titles.
 		List<String> capped = grams.subList(0, Math.min(25, grams.size()));
 		StringBuilder titles = new StringBuilder();
 		for (String g : capped)

@@ -49,9 +49,9 @@ public interface CopilotConfig extends Config
 	// Endpoint
 	// ------------------------------------------------------------------
 
-	// The third-party-server disclosure lives in the Plugin Hub manifest
-	// (warning=), shown when the plugin is installed. Nothing is sent to an
-	// LLM until the user configures an endpoint here.
+	// The third-party-server disclosure is the Plugin Hub install warning
+	// (warning= in the manifest). Nothing is sent to an LLM until the user
+	// configures an endpoint here.
 	@ConfigItem(
 		keyName = "apiBaseUrl",
 		name = "API base URL",
@@ -127,9 +127,7 @@ public interface CopilotConfig extends Config
 		section = samplingSection,
 		position = 2
 	)
-	// Budget-and-ownership questions legitimately spend three turns on
-	// research (owned items, then prices, then a follow-up); a default that
-	// forces the answer mid-research fails the heaviest supported questions.
+	// The heaviest questions (budget + ownership) take three research turns.
 	@Range(min = 1, max = 8)
 	default int maxToolTurns()
 	{
