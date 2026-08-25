@@ -1,22 +1,19 @@
-# Weekly vocabulary snapshot: runs the wiki's bulk queries ONCE, here,
-# and publishes gzipped snapshots to the vocab-data branch that every
-# installed client downloads from GitHub's CDN. This is the entire reason
-# no user's machine ever executes those queries itself.
+# Weekly vocabulary snapshot: runs the wiki's bulk queries once and
+# publishes gzipped snapshots to the vocab-data branch, which clients
+# download from GitHub's CDN instead of querying the wiki themselves.
 #
-# Failure policy: the snapshot tool refuses to emit a dataset below its
-# minimum record count, so a wiki API change fails this job loudly (GitHub
-# emails the maintainer) and the previous good snapshot stays published.
-# Clients meanwhile keep using their disk copy: stale beats broken, and the
-# wiki never absorbs our failure.
+# The snapshot tool refuses to emit a dataset below its minimum record
+# count, so a wiki API change fails this job rather than publishing a
+# broken snapshot; clients keep the previous one.
 #
-# The force-push each week also counts as repository activity, which keeps
-# GitHub from suspending the schedule under its 60-day idle rule.
+# The weekly force-push counts as repository activity, which keeps GitHub
+# from suspending the schedule under its 60-day idle rule.
 name: vocab-snapshot
 
 on:
   schedule:
-    # Weekly, Tuesday 03:17 UTC. Odd minute on purpose: top-of-the-hour
-    # crons are the busiest slot on GitHub's schedulers.
+    # Tuesday 03:17 UTC; off-hour minute because top-of-the-hour crons
+    # are GitHub's busiest scheduler slot.
     - cron: "17 3 * * 2"
   workflow_dispatch:
 
@@ -34,14 +31,10 @@ jobs:
           distribution: temurin
           java-version: "11"
 
-      # Fresh runner every week: without this, each run re-downloads the
-      # Gradle distribution and the whole RuneLite dependency tree.
       - uses: gradle/actions/setup-gradle@v4
 
-      # Paced: ~50 wiki requests spread 20s apart (~17 minutes) instead of
-      # bursting. Nothing here is latency-sensitive; being a polite API
-      # consumer is the whole premise of this job. Local/dev runs of the
-      # same task default to full speed.
+      # ~50 wiki requests spread 20s apart instead of bursting; nothing
+      # here is latency-sensitive. Local runs default to full speed.
       - name: Build snapshots
         run: ./gradlew vocabSnapshot -PsnapshotPaceSeconds=20 --console=plain
 
@@ -54,8 +47,8 @@ jobs:
           git add .
           git commit -m "vocab snapshot $(date -u +%Y-%m-%d)"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          # Single-commit branch, force-pushed: the branch is a publishing
-          # slot, not history. Old blobs get garbage-collected by GitHub.
+          # The branch is a publishing slot, not history: one commit,
+          # force-pushed.
           git push --force origin vocab-data
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
