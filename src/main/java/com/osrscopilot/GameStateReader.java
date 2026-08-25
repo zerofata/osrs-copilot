@@ -12,6 +12,7 @@ import net.runelite.api.Player;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarPlayerID;
@@ -47,6 +48,25 @@ class GameStateReader
 		this.events = events;
 	}
 
+	/** The player's position in overworld coordinates. Instances (POH,
+	 * raids) place the player in scratch map space; translate back to the
+	 * template tile the chunk was copied from, which is what the area
+	 * table indexes. */
+	static WorldPoint playerLocation(Client client)
+	{
+		Player p = client.getLocalPlayer();
+		if (p == null)
+		{
+			return null;
+		}
+		LocalPoint lp = p.getLocalLocation();
+		if (lp != null && client.getTopLevelWorldView().isInstance())
+		{
+			return WorldPoint.fromLocalInstance(client, lp);
+		}
+		return p.getWorldLocation();
+	}
+
 	GameCapture buildCapture()
 	{
 		GameCapture cap = new GameCapture();
@@ -55,7 +75,7 @@ class GameStateReader
 		{
 			cap.playerName = p.getName();
 			cap.combatLevel = p.getCombatLevel();
-			WorldPoint wp = p.getWorldLocation();
+			WorldPoint wp = playerLocation(client);
 			if (wp != null)
 			{
 				cap.location = Map.of("x", wp.getX(), "y", wp.getY(),

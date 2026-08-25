@@ -596,8 +596,7 @@ public class CopilotPlugin extends Plugin
 		// for the current position.
 		if ("place".equalsIgnoreCase(event.getCommand()))
 		{
-			WorldPoint wp = client.getLocalPlayer() != null
-				? client.getLocalPlayer().getWorldLocation() : null;
+			WorldPoint wp = GameStateReader.playerLocation(client);
 			String msg;
 			if (wp == null)
 			{
