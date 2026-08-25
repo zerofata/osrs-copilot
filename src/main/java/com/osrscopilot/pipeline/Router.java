@@ -108,7 +108,7 @@ class Router
 			new String[]{NEED_ITEM_SOURCES}},
 		{Pattern.compile("\\b(quickest|fastest|easiest|best) (way|place|method)\\b.*\\b" + OBTAIN_VERB + "\\b"),
 			new String[]{NEED_ITEM_SOURCES}},
-		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring))\\b"), new String[]{NEED_STRATEGY}},
+		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring|take|pack))\\b"), new String[]{NEED_STRATEGY}},
 		// Safe on non-combat subjects: strategy extras only fetch when a
 		// /Strategies page exists.
 		{Pattern.compile("\\b(prep|prepping|prepare|preparing) for\\b"), new String[]{NEED_STRATEGY}},

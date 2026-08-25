@@ -55,6 +55,8 @@ public class RouterPhrasingTest
 		{"whats a good loadout for barrows", false, false, need(Router.NEED_STRATEGY)},
 		{"what should i wear for fire giants", false, false, need(Router.NEED_STRATEGY)},
 		{"what do i bring to the inferno", false, false, need(Router.NEED_STRATEGY)},
+		{"what should i take for tormented demons", false, false, need(Router.NEED_STRATEGY)},
+		{"what pots should i pack for nex", false, false, need(Router.NEED_STRATEGY)},
 
 		// --- Item sources: framed obtain questions ---
 		{"where do i get a dragon scimitar", false, false, need(Router.NEED_ITEM_SOURCES)},

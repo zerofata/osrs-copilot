@@ -40,8 +40,9 @@ class ToolRegistry
 		// Section fetches return wikitext so tables (loot, rewards) survive.
 		JsonObject pageSpec = toolSpec("wiki_page",
 			"Get the text of an OSRS Wiki page (item, monster, quest, guide). Long pages are "
-				+ "truncated; the [Sections: ...] line lists every section that exists. Pass one "
-				+ "as \"section\" to fetch just that section, tables included.",
+				+ "truncated and full-page text OMITS tables; the [Sections: ...] line lists "
+				+ "every section that exists. Pass one as \"section\" to fetch just that "
+				+ "section with its tables intact.",
 			"title");
 		pageSpec.getAsJsonObject("function").getAsJsonObject("parameters")
 			.getAsJsonObject("properties").add("section", singleType("string"));
@@ -161,8 +162,23 @@ class ToolRegistry
 						: ". Sections: " + String.join("; ", available)));
 			}
 			String text = wiki.page(title);
-			return text != null ? text
-				: Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
+			if (text == null)
+			{
+				return Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
+			}
+			// A strategy page's recommended gear lives in a table the
+			// plaintext extract drops; append it as wikitext, mirroring
+			// the prefetcher's "Recommended equipment" fact.
+			if (title.endsWith("/Strategies"))
+			{
+				String equip = wiki.sectionByHeading(title,
+					Prefetcher.EQUIPMENT_HEADING, SECTION_CHAR_LIMIT);
+				if (equip != null)
+				{
+					text += "\n\n[Recommended equipment section, tables intact]\n" + equip;
+				}
+			}
+			return text;
 		}));
 		tools.put("item_sources", annotated(owned, ownedNames, annotateOwnership,
 			args -> wiki.itemSources(str(args, "item_name"))));
