@@ -108,6 +108,22 @@ public class GameAreaTest
 		assertNull(Areas.resolve(new WorldPoint(1000, 1000, 0)));
 	}
 
+	/** Ferox Enclave straddles a region boundary and the South Wilderness
+	 * mine is far smaller than its region; both are rectangle entries so
+	 * the surrounding wilderness keeps its level readout. */
+	@Test
+	public void rectangleBoundedPois()
+	{
+		// The enclave's western third lies in region 12344.
+		assertEquals("Ferox Enclave", Areas.resolve(new WorldPoint(3123, 3629, 0)));
+		assertEquals("Ferox Enclave", Areas.resolve(new WorldPoint(3144, 3630, 0)));
+		// Region 12600 south of the enclave walls is open wilderness.
+		assertEquals("the Wilderness (level 11)", Areas.resolve(new WorldPoint(3160, 3600, 0)));
+		// The mine itself, then the ditch crossing in the same region column.
+		assertEquals("South Wilderness mine", Areas.resolve(new WorldPoint(3105, 3569, 0)));
+		assertEquals("the Wilderness (level 1)", Areas.resolve(new WorldPoint(3100, 3525, 0)));
+	}
+
 	/** Two areas claiming the same full region would make fromPoint's
 	 * answer depend on enum declaration order. Sub-region overlays on a
 	 * full region are fine; duplicate full-region claims are data bugs. */

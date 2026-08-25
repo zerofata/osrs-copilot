@@ -27,6 +27,14 @@ final class AreaSupplement
 
 	static String name(WorldPoint point)
 	{
+		for (Rect r : RECTS)
+		{
+			if (point.getX() >= r.x1 && point.getX() <= r.x2
+				&& point.getY() >= r.y1 && point.getY() <= r.y2)
+			{
+				return r.name;
+			}
+		}
 		String named = REGION_NAMES.get(point.getRegionID());
 		if (named != null)
 		{
@@ -39,6 +47,32 @@ final class AreaSupplement
 			return "the Wilderness (level " + level + ")";
 		}
 		return null;
+	}
+
+	/** Places whose footprint is far smaller than a map region or which
+	 * straddle a region boundary; a whole-region entry would misname the
+	 * surrounding wilderness. Checked before REGION_NAMES. */
+	private static final Rect[] RECTS = {
+		new Rect(3113, 3616, 3157, 3648, "Ferox Enclave"),
+		new Rect(3096, 3558, 3114, 3580, "South Wilderness mine"),
+	};
+
+	private static final class Rect
+	{
+		final int x1;
+		final int y1;
+		final int x2;
+		final int y2;
+		final String name;
+
+		Rect(int x1, int y1, int x2, int y2, String name)
+		{
+			this.x1 = x1;
+			this.y1 = y1;
+			this.x2 = x2;
+			this.y2 = y2;
+			this.name = name;
+		}
 	}
 
 	private static final Map<Integer, String> REGION_NAMES = new HashMap<>();
@@ -176,7 +210,6 @@ final class AreaSupplement
 		put(12187, "Old School Museum");
 		put(12192, "Lava Maze Dungeon");
 		put(12327, "Abalone Cliffs");
-		put(12343, "South Wilderness mine");
 		put(12346, "Bandit Camp mine");
 		put(12348, "Lava Maze");
 		put(12349, "Mage Arena bank");
@@ -184,7 +217,6 @@ final class AreaSupplement
 		put(12433, "Enakhra's Temple");
 		put(12581, "The Summer Shore");
 		put(12583, "Northern Conch mine");
-		put(12600, "Ferox Enclave");
 		put(12601, "Graveyard of Shadows");
 		put(12602, "Ruins (east)");
 		put(12603, "Wilderness Hunter area");
