@@ -91,6 +91,12 @@ tasks.register('uiPreview', JavaExec) {
 	}
 }
 
+// Audits the vendored GameArea table against wiki location coordinates.
+tasks.register('areaScan', JavaExec) {
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.osrscopilot.pipeline.GameAreaScan'
+}
+
 // Prints decorated answer HTML for a synthetic capture, for eyeballing.
 tasks.register('decoratorScan', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath

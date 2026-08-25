@@ -1,8 +1,7 @@
 package com.osrscopilot.pipeline;
 
 import com.google.gson.Gson;
-import com.osrscopilot.area.GameArea;
-import com.osrscopilot.area.GameAreaType;
+import com.osrscopilot.area.Areas;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -247,10 +246,10 @@ class PromptBuilder
 			WorldPoint point = new WorldPoint(((Number) xo).intValue(),
 				((Number) yo).intValue(),
 				po instanceof Number ? ((Number) po).intValue() : 0);
-			GameArea area = GameArea.fromPoint(point);
-			if (area != null)
+			String place = Areas.resolve(point);
+			if (place != null)
 			{
-				out.put("place", area.getState() + placeQualifier(area.getGameAreaType()));
+				out.put("place", place);
 			}
 			else if (point.getY() >= 6400)
 			{
@@ -260,23 +259,6 @@ class PromptBuilder
 			// Unmapped surface spot: say nothing rather than guess.
 		}
 		return out;
-	}
-
-	/** Area names like "Kraken" or "Barrows" read as monsters or activities
-	 * without a hint that they name the player's surroundings. */
-	private static String placeQualifier(GameAreaType type)
-	{
-		switch (type)
-		{
-			case BOSSES:
-				return " (boss area)";
-			case MINIGAMES:
-				return " (minigame area)";
-			case RAIDS:
-				return " (raid)";
-			default:
-				return "";
-		}
 	}
 
 	/** Newest-first budget: keep the most recent exchanges within both the
