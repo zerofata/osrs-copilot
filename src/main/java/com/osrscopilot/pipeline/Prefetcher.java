@@ -14,28 +14,23 @@ import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Deterministic prefetch: every resolved entity gets a core fact bundle
- * unconditionally; needs only add extras (drop tables, prices, strategy
- * pages). Facts are assembled here and only here, so what the model sees
- * per route is inspectable in one place.
+ * Deterministic prefetch: every resolved entity gets a core fact bundle;
+ * needs add extras (drop tables, prices, strategy pages).
  */
 @Slf4j
 class Prefetcher
 {
-	/** Prompt budget per secondary page fact (items, quests, strategy
-	 * fallbacks). Passed to WikiApi as the fetch budget -- truncation happens
-	 * once, at the content source, never re-applied here. */
+	/** Char budget per secondary page fact; truncation happens once, at
+	 * the content source. */
 	private static final int FACT_PAGE_BUDGET = 4500;
-	/** Facility listing tables need more room: "closest X" is only answerable
-	 * if the player's region made it into the excerpt. */
+	/** Facility listing tables need room for the player's region to make
+	 * the excerpt. */
 	private static final int FACILITY_CHAR_LIMIT = 9000;
-	/** Equipment sections hold one gear table per combat style; multi-style
-	 * bosses (the ones gear questions are hardest for) need them all.
-	 * Sized to fit a three-style tabber (Tormented Demons: ~11k chars). */
+	/** Fits one gear table per combat style; a three-style tabber runs
+	 * ~11k chars. */
 	private static final int EQUIPMENT_CHAR_LIMIT = 12000;
 
-	/** Location and boss pages carry their travel options in a dedicated
-	 * section; matched by heading, so this works for any destination. */
+	/** Travel-section headings on location and boss pages. */
 	private static final Pattern TRANSPORT_HEADING =
 		Pattern.compile("(?i)transport|getting there|travel|access");
 
@@ -85,10 +80,8 @@ class Prefetcher
 			boolean taskNeeded = needs.contains(Router.NEED_SLAYER_TASK);
 			String taskGuide = slayerTaskPage(monster);
 			Map<String, Object> info = wiki.monsterInfo(monster);
-			// When strategy is NOT part of this route but a guide subpage
-			// exists, say so on the monster fact: the model can wiki_page it
-			// if the conversation turns that way -- the same affordance as
-			// the [Sections: ...] TOC line, at zero request cost.
+			// Advertise an unfetched guide subpage so the model can
+			// wiki_page it.
 			if (!strategyNeeded && info != null && !info.containsKey("error")
 				&& Boolean.TRUE.equals(hasStrategiesPage(monster)))
 			{
@@ -101,11 +94,8 @@ class Prefetcher
 			addFact(facts, "Monster info: " + monster, info);
 			if (taskNeeded && taskGuide != null)
 			{
-				// The task guide's variants table (which monsters count,
-				// their slayer XP) and location comparison are exactly the
-				// on-task questions the main page never answers. The label
-				// carries the page's own category tail ("Greater demons")
-				// so the fact links back to its source title.
+				// The label carries the page's category tail ("Greater
+				// demons") so sourcePage can rebuild the fetched title.
 				addFact(facts, "Slayer task guide: "
 					+ taskGuide.substring("Slayer task/".length()), wiki.page(taskGuide));
 			}
@@ -116,10 +106,8 @@ class Prefetcher
 			if (strategyNeeded)
 			{
 				String strategyPage = monster + "/Strategies";
-				// The snapshot index knows which guide subpages exist, so a
-				// monster without one (Bloodveld) skips straight to the main
-				// page instead of 404ing against the live wiki first. An
-				// unavailable index falls back to the blind fetch.
+				// The index skips guaranteed-404 strategy fetches; when it
+				// is unavailable (null), fall back to the blind fetch.
 				String text = Boolean.FALSE.equals(hasStrategiesPage(monster))
 					? null : wiki.page(strategyPage);
 				String label = "Strategy: " + monster;
@@ -130,10 +118,8 @@ class Prefetcher
 					label = "Page: " + monster;
 				}
 				addFact(facts, label, text);
-				// Recommended gear lives in equipment tables, which plaintext
-				// extracts strip without tripping the husk detector (the rest
-				// of the page is prose). Same mechanism as transport: fetch
-				// the section by heading, as table-preserving wikitext.
+				// Equipment tables are stripped from plaintext extracts
+				// without tripping the husk detector; fetch as wikitext.
 				addFact(facts, "Recommended equipment: " + monster,
 					wiki.sectionByHeading(strategyPage, EQUIPMENT_HEADING, EQUIPMENT_CHAR_LIMIT));
 			}
@@ -177,32 +163,24 @@ class Prefetcher
 		{
 			addFact(facts, "Quest page: " + quest, wiki.page(quest, FACT_PAGE_BUDGET));
 			// Requirements live in the {{Quest details}} template, which no
-			// text fetch carries. The prerequisite names in this fact also
-			// pull the player's progress for each via relevantQuestStates.
+			// text fetch carries.
 			addFact(facts, "Quest requirements: " + quest, wiki.questInfo(quest));
 		}
 	}
 
-	/** Other resolved pages (locations, guides, diaries...). wiki.page()
-	 * serves wikitext automatically for table-heavy page categories.
-	 * Three, because comparison questions name up to three subjects
-	 * ("blowpipe vs demon bow vs bowfa"). */
+	/** Other resolved pages (locations, guides, diaries...). Three:
+	 * comparison questions name up to three subjects. */
 	private void pageFacts(List<String> facts, Set<String> needs, CopilotPipeline.Route route)
 	{
 		for (String page : limit(route.entities.pages, 3))
 		{
-			// When the resolver and a facility rule land on the same page
-			// ("nearest bank" -> page Bank + facility Bank), the facility
-			// fetch wins: it targets the Locations section, which is the
-			// part a locational question needs; the generic article on top
-			// would only double the tokens.
+			// When a facility rule claims the same page, its targeted
+			// Locations fetch wins over the generic article.
 			if (route.facilityPages.stream().anyMatch(p -> p.equalsIgnoreCase(page)))
 			{
 				continue;
 			}
-			// A named diary tier replaces the whole-page fetch: the tier's
-			// section (task table + rewards, as table-preserving wikitext)
-			// is the answer; the other three tiers are pure noise.
+			// A named diary tier replaces the whole-page fetch.
 			if (route.diaryTier != null && Router.isDiaryPage(page))
 			{
 				String tierHeading = "^" + route.diaryTier + "$";
@@ -214,19 +192,15 @@ class Prefetcher
 					continue;
 				}
 			}
-			// Strategy guides hang off more than monsters -- raids,
-			// minigames, activities (Tombs of Amascut, Wintertodt) resolve
-			// as pages. Same index as the monster loop, but page-shaped
-			// entities are never blind-fetched, so this fires only on a
-			// positive index hit; an unavailable index changes nothing.
+			// Raids and minigames resolve as pages but can have /Strategies
+			// guides. Pages are never blind-fetched: positive index hit only.
 			boolean guideExists = Boolean.TRUE.equals(hasStrategiesPage(page));
 			boolean pageStrategy = (needs.contains(Router.NEED_STRATEGY)
 				|| needs.contains(Router.NEED_MECHANICS)) && guideExists;
 			String pageText = wiki.page(page);
 			if (pageText != null && !pageStrategy && guideExists)
 			{
-				// The wiki_page affordance, TOC-line style: the model learns
-				// the guide exists at zero request cost.
+				// Advertise the guide so the model can wiki_page it.
 				pageText = "[Strategy guide page: " + page + "/Strategies]\n" + pageText;
 			}
 			addFact(facts, "Page: " + page, pageText);
@@ -247,13 +221,9 @@ class Prefetcher
 		}
 	}
 
-	/** Core bundle for skills: the skill's own page, but only when skills
-	 * are the question's whole subject (without it the prompt would carry
-	 * no facts). A skill mentioned incidentally next to a real subject
-	 * ("gear for tormented demons with my attack level") is answered by
-	 * the other entity's bundle, and the player's levels already sit in
-	 * PLAYER STATE -- a generic skill article would only spend the budget.
-	 * Training guides and XP math ride along per needs. */
+	/** The skill's own page, only when skills are the question's whole
+	 * subject (levels already sit in PLAYER STATE). Training guides and
+	 * XP math ride along per needs. */
 	private void skillFacts(List<String> facts, Set<String> needs,
 		EntityResolver.Resolution ents, GameCapture cap)
 	{
@@ -266,9 +236,8 @@ class Prefetcher
 			}
 		}
 
-		// "<Skill> training" is a universal wiki convention -- a page or a
-		// redirect to the canonical guide for every skill -- so one rule
-		// covers all of them and new skills arrive without a code change.
+		// "<Skill> training" is a wiki convention: a page or redirect to
+		// the canonical guide exists for every skill.
 		if (needs.contains(Router.NEED_TRAINING))
 		{
 			for (String skill : limit(ents.skills, 2))
@@ -296,12 +265,9 @@ class Prefetcher
 		}
 	}
 
-	/**
-	 * Whether {monster}/Strategies exists per the snapshot index: TRUE,
-	 * FALSE, or null when the index is unavailable or stale-and-missing --
-	 * callers must treat null as "unknown" and keep blind-fetch behavior,
-	 * never as "absent".
-	 */
+	/** Whether {monster}/Strategies exists per the snapshot index; null
+	 * when the index is unavailable. Callers must treat null as unknown,
+	 * never as absent. */
 	private Boolean hasStrategiesPage(String monster)
 	{
 		try
@@ -315,14 +281,10 @@ class Prefetcher
 		}
 	}
 
-	/**
-	 * The "Slayer task/..." guide page for a creature, or null when none
-	 * exists (or the index is unavailable -- task pages are never
-	 * blind-fetched, so unknown safely means skip). Task pages are named
-	 * by category plural ("Slayer task/Greater demons") while resolved
-	 * monsters are singular; the index's redirect aliases plus a plural
-	 * probe bridge the gap.
-	 */
+	/** The "Slayer task/..." guide page for a creature, or null when none
+	 * exists or the index is unavailable. Task pages are named by plural
+	 * category ("Slayer task/Greater demons"); a plural probe bridges the
+	 * gap from singular monster names. */
 	private String slayerTaskPage(String monster)
 	{
 		try
@@ -351,14 +313,9 @@ class Prefetcher
 		return null;
 	}
 
-	/**
-	 * Travel facts follow two wiki conventions. Destinations with a journey
-	 * worth documenting (bosses, dungeons, cities) carry a dedicated travel
-	 * section -- Getting there / Transportation / Access. Ordinary monster
-	 * pages have no such section; where the creature is found lives under a
-	 * Locations heading instead. Try the direct answer first, then fall back,
-	 * so a transport question never ships without its destination.
-	 */
+	/** Bosses, dungeons, and cities carry a dedicated travel section;
+	 * ordinary monster pages only have a Locations heading. Try the
+	 * travel section first, then fall back. */
 	private void addTravelFact(List<String> facts, String page)
 	{
 		String section = wiki.sectionByHeading(page, TRANSPORT_HEADING, FACT_PAGE_BUDGET);
@@ -369,12 +326,8 @@ class Prefetcher
 		}
 		String locations = wiki.sectionByHeading(page, LOCATIONS_HEADING, FACT_PAGE_BUDGET);
 		addFact(facts, "Locations: " + page, locations);
-		// The locations table says WHERE, not HOW TO GET THERE. With one
-		// destination that gap is pure retrieval -- its page's travel
-		// section is the answer, so fetch it. With several, which one is
-		// best is a judgment call (task, gear, diary unlocks), and travel
-		// detail for arbitrary rows would only bias the model toward them;
-		// it picks from the table and can wiki_page its choice.
+		// With exactly one destination, fetch its travel section too; with
+		// several, the model picks from the table and wiki_pages its choice.
 		String destination = soleDestination(locations);
 		if (destination != null && !destination.equalsIgnoreCase(page))
 		{
@@ -400,21 +353,13 @@ class Prefetcher
 		return destinations.size() == 1 ? destinations.iterator().next() : null;
 	}
 
-	/**
-	 * Second pass, mirror of addOwnershipFromFacts: a sourcing answer often
-	 * hinges on a facility the question never names. "Quickest way to get
-	 * planks" retrieves the Plank page, which says "sawmill" throughout but
-	 * never says WHERE one is; left ungrounded, the model invents
-	 * locations. When a sourcing/locational question's facts lean on a
-	 * known facility (repeated mentions, not incidental), ground its
-	 * locations from the live wiki instead of the model's memory.
-	 */
+	/** Grounds facilities the facts lean on but the question never names:
+	 * "quickest way to get planks" retrieves the Plank page, which says
+	 * "sawmill" throughout but never where one is. */
 	void addFacilitiesFromFacts(String question, CopilotPipeline.Route route, List<String> facts)
 	{
-		// Discovery is for questions that DON'T name a facility. When one
-		// matched, its table is already in the facts -- and facility tables
-		// list nearby amenities, so scanning them would "discover" every
-		// other facility.
+		// Skip when a facility rule already matched: its table is in the
+		// facts, and facility tables mention every other amenity.
 		if (!route.facilityPages.isEmpty())
 		{
 			return;
@@ -429,9 +374,8 @@ class Prefetcher
 		for (Object[] rule : Router.FACILITY_RULES)
 		{
 			String page = (String) rule[1];
-			// Banks are mentioned incidentally on half the wiki ("bank
-			// nearby", "withdraw from the bank") and every player knows
-			// where one is; only a question naming banks fetches that page.
+			// Banks are mentioned incidentally on half the wiki; only a
+			// question naming banks fetches that page.
 			if ("Bank".equals(page) || pages.size() >= 2)
 			{
 				continue;
@@ -459,9 +403,7 @@ class Prefetcher
 	{
 		for (String page : facilityPages)
 		{
-			// The resolver often lands on the same page the facility rule
-			// names ("nearest anvil" -> page Anvil + facility Anvil); fetching
-			// it twice only doubles the tokens.
+			// The resolver often resolved the same page; don't fetch twice.
 			if (alreadyFetched.stream().anyMatch(p -> p.equalsIgnoreCase(page)))
 			{
 				continue;
@@ -475,17 +417,10 @@ class Prefetcher
 		}
 	}
 
-	/**
-	 * Ownership slice for a summarized bank: for every item the retrieved
-	 * facts mention, state POSITIVELY whether the player owns it or lacks
-	 * it, so gear, quest, and training answers start with the ownership
-	 * they need instead of discovering it one tool call at a time.
-	 * Matches item names against fact text, never parsing the page, so a
-	 * wiki reformat can't break it. Both lists are stated positively
-	 * because the system prompt forbids inferring from absence; an
-	 * owned-only list would send the model to the search tool for
-	 * everything unlisted.
-	 */
+	/** Ownership slice for a summarized bank: for every item the facts
+	 * mention, state positively whether the player owns or lacks it (the
+	 * system prompt forbids inferring from absence). Matches names
+	 * against fact text, so a wiki reformat can't break it. */
 	boolean addOwnershipFromFacts(List<String> facts, Map<String, long[]> owned,
 		Map<String, String> names)
 	{
@@ -505,11 +440,7 @@ class Prefetcher
 		{
 			return false;
 		}
-		// The completeness claim is only made when true: a cut list or an
-		// unavailable vocabulary falls back to framing that steers
-		// verification into one batched call. The return value reports
-		// which framing was used; on a complete block the caller withholds
-		// the search tool entirely.
+		// On a complete block the caller withholds the search tool.
 		addFact(facts, slice.complete
 			? "Ownership of every item these facts mention (complete both ways: "
 				+ "owned means owned, absent from OWNED means not owned)"
@@ -520,8 +451,8 @@ class Prefetcher
 		return slice.complete;
 	}
 
-	/** Attach the player's progress for every quest the question or facts
-	 * mention, so quest gates arrive pre-verified. */
+	/** The player's progress for every quest the question or facts
+	 * mention. */
 	static Map<String, String> relevantQuestStates(String question, List<String> facts,
 		EntityResolver.Resolution ents, Map<String, String> questStates)
 	{
@@ -553,13 +484,9 @@ class Prefetcher
 		return rel.isEmpty() ? null : rel;
 	}
 
-	/**
-	 * The wiki page a fact block was retrieved from, or null for facts
-	 * derived from game state or non-page APIs. The answer footer links
-	 * each wiki-backed fact to its source page's edit history, crediting
-	 * the contributors as CC BY-NC-SA requires. Unknown labels map to
-	 * null: a new fact kind goes unlinked rather than mislinked.
-	 */
+	/** The wiki page a fact was retrieved from (null for game-state
+	 * facts); the answer footer links it for CC BY-NC-SA attribution.
+	 * Unknown labels return null: unlinked beats mislinked. */
 	static String sourcePage(String factTitle)
 	{
 		int sep = factTitle.indexOf(": ");
@@ -587,15 +514,12 @@ class Prefetcher
 			case "Getting there":
 			case "Locations":
 			case "Facility locations":
-			// Fetched from the /Strategies subpage when one exists, the
-			// main page otherwise; either way that page is also its own
-			// fact right above, so every source page ends up linked.
+			// Fetched from /Strategies when it exists, else the main page;
+			// both are already their own fact, so the page stays linked.
 			case "Recommended equipment":
 				return name;
 			case "Strategy":
 				return name + "/Strategies";
-			// The label's name is the page's own category tail, so this
-			// reconstructs the exact fetched title.
 			case "Slayer task guide":
 				return "Slayer task/" + name;
 			case "Training guide":
@@ -605,12 +529,8 @@ class Prefetcher
 		}
 	}
 
-	/**
-	 * Fact headings address the model -- game-state blocks carry usage
-	 * instructions in their titles ("authoritative...", "complete both
-	 * ways..."). The footer shows the player what was retrieved, so those
-	 * blocks display their short names; wiki facts are already short.
-	 */
+	/** Strips the model-facing usage instructions that game-state fact
+	 * titles carry before display in the footer. */
 	static String displayTitle(String factTitle)
 	{
 		if (factTitle.startsWith("Quest progress"))
@@ -624,10 +544,8 @@ class Prefetcher
 		return factTitle;
 	}
 
-	/** A failed lookup is not a fact. Content methods signal failure with
-	 * null; the structured lookups (prices, drops, monster info) return
-	 * error maps because the LLM tool boundary wants the message -- prefetch
-	 * wants neither, so both shapes are skipped here, uniformly. */
+	/** Skips failed lookups: content methods return null, structured
+	 * lookups return error maps; neither is a fact. */
 	private void addFact(List<String> facts, String label, Object payload)
 	{
 		if (payload == null || (payload instanceof Map && ((Map<?, ?>) payload).containsKey("error")))

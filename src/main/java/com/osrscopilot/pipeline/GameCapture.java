@@ -22,8 +22,7 @@ public class GameCapture
 	/** {creature, remaining, location}; creature is absent if unnameable. */
 	public Map<String, Object> slayerTask;
 	/** Active spellbook and prayer-scroll unlocks (rigour/augury/preserve),
-	 * read from varbits. Gear advice hinges on these and no bank search can
-	 * answer them. */
+	 * read from varbits. */
 	public Map<String, Object> unlocks;
 	/** Item lists as {name, quantity} maps. bank may be null (never seen). */
 	public List<Map<String, Object>> inventory;

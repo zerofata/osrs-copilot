@@ -14,12 +14,9 @@ import java.util.regex.Pattern;
 
 /**
  * The player's ownership index: bank + inventory + equipment flattened into
- * case-folded name -> quantity, with the original display names kept
- * alongside. Pure functions of a GameCapture -- no I/O, no state -- shared
- * by the prefetcher (ownership facts), the tool registry
- * (search_owned_items), and the answer decorator (ownership badges). The
- * name-matching primitives live here alone so the ownership the model is
- * told and the ownership the UI displays can never drift apart.
+ * case-folded name -> quantity. Pure functions of a GameCapture, shared by
+ * the prefetcher, the tool registry, and the answer decorator so prompted
+ * and displayed ownership can't drift apart.
  */
 public final class Ownership
 {
@@ -29,9 +26,8 @@ public final class Ownership
 	{
 	}
 
-	/** Item display name with any trailing "(4)"/"(i)" qualifier removed.
-	 * Dose, charge, and version qualifiers exist in item names but never
-	 * in prose, so matching and display both use the base name. */
+	/** Display name with any trailing "(4)"/"(i)" qualifier removed;
+	 * qualifiers never appear in prose. */
 	public static String baseName(String name)
 	{
 		return TRAILING_QUALIFIER.matcher(name).replaceAll("").trim();
@@ -57,8 +53,8 @@ public final class Ownership
 		return names;
 	}
 
-	/** The one walk over everything the player holds (bank, inventory,
-	 * equipment; absent containers skipped) behind both builders above. */
+	/** The one walk over everything the player holds; absent containers
+	 * are skipped. */
 	private static void eachOwnedItem(GameCapture cap,
 		BiConsumer<String, Map<String, Object>> fn)
 	{
@@ -105,14 +101,9 @@ public final class Ownership
 		return Map.of("item", itemName, "owned", 0);
 	}
 
-	/**
-	 * Both ownership lists for every catalogued item a text mentions:
-	 * OWNED with quantities, NOT OWNED by name. Positive statements both
-	 * ways, because the system prompt forbids inferring from absence.
-	 * Shared by the prefetcher (over prefetched facts) and the tool
-	 * registry (over live tool results), so content discovered mid-loop
-	 * gets the same grounding as content fetched up front.
-	 */
+	/** Both ownership lists for every catalogued item a text mentions:
+	 * OWNED with quantities, NOT OWNED by name (the system prompt forbids
+	 * inferring from absence). */
 	static final class Slice
 	{
 		final String text;
@@ -245,15 +236,10 @@ public final class Ownership
 		return lacked;
 	}
 
-	/**
-	 * True when the text mentions the owned item's name -- directly, or
-	 * under a shorter form of it. Wiki pages name canonical gear ("Slayer
-	 * helmet (i)"); the player's copy is often a decorated variant ("Black
-	 * slayer helmet (i)"), which plain containment can never find in the
-	 * page's text. Stripping lead qualifier words one at a time catches
-	 * those, and only multi-word remainders count: single words like
-	 * "helmet" are prose, not an item reference.
-	 */
+	/** True when the text mentions the item's name directly or under a
+	 * shorter form: pages name canonical gear ("Slayer helmet (i)") while
+	 * the player's copy may be decorated ("Black slayer helmet (i)").
+	 * Only multi-word remainders count; "helmet" alone is prose. */
 	private static boolean mentionsItem(String haystackLower, String base)
 	{
 		String candidate = base;

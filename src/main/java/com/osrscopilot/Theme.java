@@ -6,9 +6,7 @@ import net.runelite.client.ui.FontManager;
 
 /**
  * One visual identity for the whole presentation stack: the chat panel, the
- * markdown renderer, and the entity decorator all read the active theme, so
- * chrome, answer typography, and entity state colors stay consistent. The
- * pipeline never sees this class; presentation is swappable wholesale.
+ * markdown renderer, and the entity decorator all read the active theme.
  */
 final class Theme
 {
@@ -103,18 +101,9 @@ final class Theme
 		return String.format("#%06x", c.getRGB() & 0xffffff);
 	}
 
-	/**
-	 * All three palettes in one table, one field per row, so a value change
-	 * or a new field can never silently miss a theme. Columns:
-	 *
-	 * [0] game-native -- dark surfaces with RuneScape fonts, the interface
-	 *     orange-gold as the only accent, questions as chat lines, answers
-	 *     as journal cards.
-	 * [1] modern -- monochrome chrome, neutral surfaces; the only color is
-	 *     semantic (quest states, item ownership).
-	 * [2] parchment -- skeuomorphic parchment cards with stone-bevel edges
-	 *     and squared corners; closest to the in-game interface look.
-	 */
+	/** All three palettes in one table, one field per row, so a new field
+	 * can't silently miss a theme. Columns: [0] game-native, [1] modern,
+	 * [2] parchment. */
 	private static Theme build(int i)
 	{
 		Font bold = FontManager.getRunescapeBoldFont();

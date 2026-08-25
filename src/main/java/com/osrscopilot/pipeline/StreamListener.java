@@ -10,9 +10,8 @@ public interface StreamListener
 	/** A fragment of visible answer text arrived. */
 	void onDelta(String text);
 
-	/** The text streamed so far was not the final answer (the model decided
-	 * to call tools instead, or emitted markup that is being retried);
-	 * discard it from the display. */
+	/** The text streamed so far was not the final answer; discard it from
+	 * the display. */
 	void onTurnDiscarded();
 
 	/** Short progress note ("Checking wiki_page...") for a status line. */

@@ -7,14 +7,10 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Official OSRS hiscores: the player's own boss kill counts and activity
- * scores. Kill counts live server-side and are invisible to the client, yet
- * they are the ground truth for the player's experience.
- *
- * Cached per player for the whole login session: hiscores only persist on
- * logout/world hop, so while logged in a refetch can never return anything
- * newer. The plugin invalidates on login, the one moment fresh data can
- * exist.
+ * Official OSRS hiscores: boss kill counts and activity scores, which are
+ * invisible to the client. Cached for the whole login session: hiscores
+ * only persist on logout/hop, so a mid-session refetch can't return
+ * anything newer.
  */
 @Slf4j
 class Hiscores
@@ -31,11 +27,8 @@ class Hiscores
 		this.http = http;
 	}
 
-	/**
-	 * Ranked activities (boss name -> kill count, minigame -> score) for the
-	 * player. Null when the lookup fails or nothing is ranked -- callers omit
-	 * the field rather than inventing a value.
-	 */
+	/** Ranked activities (boss -> kill count, minigame -> score), or null
+	 * when the lookup fails or nothing is ranked. */
 	synchronized Map<String, Long> rankedActivities(String player)
 	{
 		if (player == null || player.isEmpty())
@@ -66,15 +59,14 @@ class Hiscores
 		}
 		catch (Exception e)
 		{
-			// Not cached: a session-long cache must not pin a transient
-			// failure; the next question retries.
+			// Failures are not cached; the next question retries.
 			log.debug("hiscores lookup failed for {}", player, e);
 			return null;
 		}
 		return cachedScores;
 	}
 
-	/** Called on login: the only moment the hiscores can have changed. */
+	/** Called on login, the only moment the hiscores can have changed. */
 	synchronized void invalidate()
 	{
 		cachedPlayer = null;

@@ -14,14 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class AgentLoop
 {
-	/**
-	 * Upper bound on tool calls executed from a single model message. The
-	 * endpoint is user-configured and untrusted: without this cap, one
-	 * broken or hostile model message could fan out into hundreds of
-	 * sequential wiki requests. The batched tools keep legitimate turns
-	 * well under it; excess calls get an error result (the protocol
-	 * requires a tool response per call id) telling the model to answer.
-	 */
+	/** Cap on tool calls executed from one model message: the endpoint is
+	 * untrusted and could fan out into hundreds of wiki requests. Excess
+	 * calls get an error result (the protocol requires a response per
+	 * call id). */
 	private static final int MAX_TOOL_CALLS_PER_TURN = 8;
 
 	interface Tool
@@ -134,15 +130,10 @@ class AgentLoop
 		return result;
 	}
 
-	/**
-	 * An empty or tool-markup "answer" is a failure, not a result. Two
-	 * causes need different correctives: a reasoning model that burned the
-	 * whole completion budget thinking (finish_reason=length) needs room
-	 * and brevity, while a model leaking tool-call markup as text needs
-	 * telling that tools are gone. Retries once with the matching
-	 * corrective, then throws; the exception carries the tool trace and
-	 * truncation diagnosis, and the panel's error path offers resubmission.
-	 */
+	/** Retries once when the "answer" is empty or tool markup: a
+	 * length-truncated response (finish_reason=length) gets a brevity
+	 * corrective, leaked tool syntax gets "tools are gone". A failed
+	 * retry throws EmptyAnswerException with the tool trace. */
 	private static String ensureAnswer(Llm llm, JsonArray messages, JsonObject msg,
 		StreamListener listener, Result result) throws IOException
 	{

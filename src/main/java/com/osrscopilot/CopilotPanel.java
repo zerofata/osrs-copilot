@@ -33,11 +33,8 @@ import net.runelite.client.util.LinkBrowser;
 /**
  * Sidebar chat panel. Pure view: collects questions, renders answers from a
  * {@link TranscriptModel}. All methods must be called on the Swing EDT.
- *
- * The conversation is a stack of custom-painted Swing message cards rather
- * than one big HTML document: Swing's HTML renderer is stuck in HTML 3.2,
- * so surfaces, corners, hover states, and the scrollbar are painted with
- * Graphics2D, and HTML is used only for text flow inside a card.
+ * Cards are custom-painted (Swing's HTML renderer is stuck in HTML 3.2);
+ * HTML is used only for text flow inside a card.
  */
 class CopilotPanel extends PluginPanel
 {
@@ -121,8 +118,6 @@ class CopilotPanel extends PluginPanel
 		inputRow.add(input, BorderLayout.CENTER);
 		inputRow.add(send, BorderLayout.EAST);
 
-		// The toggle shares the status row; the header row has no room for
-		// it at sidebar width.
 		JPanel statusRow = new JPanel(new BorderLayout(6, 0));
 		statusRow.setOpaque(false);
 		statusRow.add(status, BorderLayout.CENTER);
@@ -152,8 +147,7 @@ class CopilotPanel extends PluginPanel
 		north.add(northButtons, BorderLayout.EAST);
 
 		// The whole chat UI lives on one movable panel so the pop-out can
-		// carry it into a resizable window; the padding travels with it so
-		// nothing touches container edges, docked or floating.
+		// carry it into a resizable window.
 		content.setBackground(theme.chromeBg);
 		content.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 		content.add(north, BorderLayout.NORTH);
@@ -491,8 +485,7 @@ class CopilotPanel extends PluginPanel
 	// ------------------------------------------------------------------
 
 	/** Vertical card stack that always matches the viewport width, so HTML
-	 * bodies wrap to the panel instead of pushing content off the right
-	 * edge (the sidebar is only ~240px wide). */
+	 * bodies wrap instead of pushing off the right edge. */
 	private static final class ScrollableStack extends JPanel implements javax.swing.Scrollable
 	{
 		ScrollableStack()
@@ -531,12 +524,9 @@ class CopilotPanel extends PluginPanel
 		}
 	}
 
-	/**
-	 * Full-width vertical stack whose row heights are computed after each
-	 * row is given its real width. Stock layout managers ask for preferred
-	 * size first and lay out second, which mis-heights wrapping HTML text
-	 * (its height depends on its width).
-	 */
+	/** Full-width vertical stack whose row heights are computed after each
+	 * row gets its real width; stock layout managers mis-height wrapping
+	 * HTML text. */
 	private static final class StackLayout implements java.awt.LayoutManager
 	{
 		private static final int GAP = 8;
@@ -590,9 +580,8 @@ class CopilotPanel extends PluginPanel
 				c.setBounds(in.left, y, inner, h);
 				y += h + GAP;
 			}
-			// The viewport sized this container from a preferred height that
-			// was computed at the previous width; when a resize changes text
-			// wrap, converge with one follow-up pass.
+			// The preferred height was computed at the previous width;
+			// converge with one follow-up pass after a resize.
 			int settled = y + in.bottom;
 			if (settled != parent.getHeight())
 			{
@@ -614,11 +603,8 @@ class CopilotPanel extends PluginPanel
 		}
 	}
 
-	/**
-	 * One conversation turn. Depending on the theme this is a painted card
-	 * (surface fill, hairline or stone-bevel edge, speaker label) or a bare
-	 * chat line (game-native user questions: no card, inline "You:" prefix).
-	 */
+	/** One conversation turn: a painted card, or a bare chat line for
+	 * game-native user questions. */
 	private static final class MessageCard extends JPanel
 	{
 		private final Color bg;
@@ -685,8 +671,8 @@ class CopilotPanel extends PluginPanel
 			super(text);
 			this.bg = primary ? theme.primaryBg : theme.buttonBg;
 			this.bgHover = primary ? theme.primaryHover : theme.buttonHover;
-			// A bright primary fill under grayed-out text is illegible;
-			// disabled buttons recede to the secondary surface.
+			// Disabled buttons recede to the secondary surface; a primary
+			// fill under gray text is illegible.
 			this.bgDisabled = theme.buttonBg;
 			this.arc = theme.arc;
 			setForeground(primary ? theme.primaryFg : theme.buttonFg);
@@ -732,13 +718,10 @@ class CopilotPanel extends PluginPanel
 		}
 	}
 
-	/** The Simple-mode control: a clickable piece of status text
-	 * ("Simple: off" / "Simple: on") sharing the status row.
-	 *
+	/** The Simple-mode control: clickable status text ("Simple: off/on").
 	 * Deliberately a JLabel, not a JToggleButton: the client's Substance
-	 * look-and-feel paints button text from its own scheme and ignores the
-	 * foreground, so a button's on/off colors come out wrong in-game.
-	 * Labels keep their foreground under every LAF. */
+	 * LAF paints button text from its own scheme and ignores
+	 * setForeground. */
 	private static final class FlatToggle extends JLabel
 	{
 		private final Theme theme;

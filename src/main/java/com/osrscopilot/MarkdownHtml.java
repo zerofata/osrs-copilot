@@ -4,13 +4,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Minimal markdown-to-HTML converter for the subset LLMs actually emit:
- * headers, bold/italic, inline code, bullet/numbered lists, tables, rules.
- * Dependency-free on purpose (Plugin Hub scrutinizes third-party libraries),
- * and targets the HTML 3.2 subset that Swing's JEditorPane can render.
- *
- * Tolerant by design: partial markdown (mid-stream) renders as slightly
- * unstyled text, never breaks.
+ * Minimal markdown-to-HTML converter for the subset LLMs emit, targeting
+ * the HTML 3.2 subset Swing's JEditorPane renders. Dependency-free (the
+ * Plugin Hub scrutinizes third-party libraries). Partial mid-stream
+ * markdown renders as slightly unstyled text, never breaks.
  */
 final class MarkdownHtml
 {
@@ -76,8 +73,7 @@ final class MarkdownHtml
 			{
 				openList = closeList(out, openList);
 				// Two visible header sizes: sections (#, ##) and
-				// subsections (### and deeper). More levels than that just
-				// adds visual noise at panel width.
+				// subsections (### and deeper).
 				String size = header.group(1).length() <= 2 ? "4" : "3";
 				out.append("<br><font size='").append(size).append("'><b>")
 					.append(inline(header.group(2))).append("</b></font><br>");

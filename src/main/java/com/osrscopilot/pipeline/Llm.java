@@ -103,11 +103,8 @@ public class Llm
 		}
 	}
 
-	/**
-	 * One chat-completion call, always streamed (SSE). Content fragments are
-	 * forwarded to the listener as they arrive; the returned message is the
-	 * reassembled first choice.
-	 */
+	/** One chat-completion call, always streamed (SSE); the returned
+	 * message is the reassembled first choice. */
 	JsonObject chat(JsonArray messages, JsonArray tools, StreamListener listener) throws IOException
 	{
 		JsonObject body = new JsonObject();

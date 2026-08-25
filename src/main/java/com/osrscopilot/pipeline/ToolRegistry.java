@@ -12,10 +12,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * The tools offered to the synth model: their OpenAI function-calling specs
- * and their implementations, side by side so they cannot drift apart. Pure
- * functions of the wiki client, the game capture, and the ownership index --
- * no state of their own.
+ * The tools offered to the synth model: OpenAI function-calling specs and
+ * implementations side by side so they cannot drift apart.
  */
 class ToolRegistry
 {
@@ -83,9 +81,8 @@ class ToolRegistry
 		xpParams.getAsJsonObject("properties").add("target_level", singleType("integer"));
 		xpParams.getAsJsonArray("required").add("target_level");
 		specs.add(xpSpec);
-		// Withheld when ownership is already fully in context (bank inlined,
-		// or the ownership fact complete): a tool over visible data invites
-		// redundant lookups. Batched, like ge_price.
+		// Withheld when ownership is already fully in context: a tool over
+		// visible data invites redundant lookups.
 		if (offerOwnedSearch)
 		{
 			specs.add(toolSpec("search_owned_items",
@@ -143,10 +140,8 @@ class ToolRegistry
 		boolean annotateOwnership)
 	{
 		Map<String, AgentLoop.Tool> tools = new LinkedHashMap<>();
-		// The ownership fact covers only what was in context at prompt time;
-		// content-returning tools surface item names it never saw. Each
-		// result carries the same complete-both-ways ownership slice, so
-		// ownership stays grounded across the whole loop.
+		// Content-returning tools surface item names the prompt-time
+		// ownership fact never saw; each result carries its own slice.
 		tools.put("wiki_search", annotated(owned, ownedNames, annotateOwnership,
 			args -> wiki.search(str(args, "query"))));
 		tools.put("wiki_page", annotated(owned, ownedNames, annotateOwnership, args -> {
@@ -296,12 +291,9 @@ class ToolRegistry
 		return tools;
 	}
 
-	/**
-	 * Appends the ownership slice for every catalogued item a tool result
-	 * mentions. Disabled when the bank is inlined in the prompt (the model
-	 * already sees everything). Error results pass through untouched; a
-	 * result that mentions no catalogued item gains nothing.
-	 */
+	/** Appends the ownership slice for every catalogued item a tool result
+	 * mentions. Disabled when the bank is inlined; error results pass
+	 * through untouched. */
 	private AgentLoop.Tool annotated(Map<String, long[]> owned,
 		Map<String, String> ownedNames, boolean enabled, AgentLoop.Tool inner)
 	{
@@ -344,9 +336,8 @@ class ToolRegistry
 		return args.has(key) && !args.get(key).isJsonNull() ? args.get(key).getAsString() : "";
 	}
 
-	/** List argument for a batched tool. The spec says a list; a model
-	 * sending one bare string (under either the list key or its singular
-	 * cousin) still gets an answer -- LLM output is a system boundary. */
+	/** List argument for a batched tool; tolerates a bare string under
+	 * the list key or its singular cousin. */
 	private static List<String> strList(JsonObject args, String listKey, String singleKey)
 	{
 		List<String> values = new ArrayList<>();

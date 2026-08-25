@@ -16,10 +16,9 @@ class PromptBuilder
 	private static final int HISTORY_MAX_EXCHANGES = 6;
 	private static final int HISTORY_MAX_CHARS = 8000;
 
-	/** The system prompt. The closing style rule is the only part that
-	 * varies: standard mode permits structure, simple mode demands short
-	 * plain text. Exactly two byte-stable variants exist, so provider
-	 * prompt caching still gets an identical prefix per mode. */
+	/** The system prompt; only the closing style rule varies by mode.
+	 * Exactly two byte-stable variants exist, so provider prompt caching
+	 * gets an identical prefix per mode. */
 	static String systemPrompt(boolean simple)
 	{
 		return SYNTH_SYSTEM + (simple
@@ -107,16 +106,13 @@ class PromptBuilder
 		return sb.toString();
 	}
 
-	/** The PLAYER STATE block: everything the client knows about the player,
-	 * self-describing where semantics matter (bank status, diary notes). */
+	/** The PLAYER STATE block. */
 	private Map<String, Object> playerState(GameCapture cap, boolean bankInlined,
 		boolean ownershipComplete, boolean offerOwnedSearch)
 	{
 		Map<String, Object> state = new LinkedHashMap<>();
-		// Without today's date the model assumes its training-time year for
-		// anything "new" or "recent". Lives here rather than in the system
-		// prompt so the static prefix stays byte-identical for provider
-		// prompt caching.
+		// Without today's date the model assumes its training-time year.
+		// Lives here so the system prompt stays byte-identical for caching.
 		state.put("date", java.time.LocalDate.now().toString());
 		state.put("player", cap.playerName);
 		state.put("account_type", cap.accountTypeName());
@@ -163,8 +159,8 @@ class PromptBuilder
 		return state;
 	}
 
-	/** Self-describing: data plus status/provenance, no embedded instructions.
-	 * The system prompt defines the semantics of "complete"/"unknown" once. */
+	/** Data plus status, no embedded instructions; the system prompt
+	 * defines the semantics of "complete"/"unknown" once. */
 	private Map<String, Object> bankState(GameCapture cap, boolean bankInlined,
 		boolean ownershipComplete, boolean offerOwnedSearch)
 	{
@@ -183,9 +179,8 @@ class PromptBuilder
 			else
 			{
 				bank.put("item_count", cap.bank.size());
-				// The access note must match the tools actually offered:
-				// referencing a withheld tool would send the model chasing it,
-				// and offering one silently invites redundant re-verification.
+			// The access note must match the tools actually offered;
+			// referencing a withheld tool sends the model chasing it.
 				String factsAreDefinitive =
 					"the Ownership fact in RETRIEVED FACTS is the definitive bank "
 						+ "answer for every item the facts mention, and each tool "
@@ -211,9 +206,8 @@ class PromptBuilder
 	{
 		if (cap.diaries != null && !cap.diaries.isEmpty())
 		{
-			// Self-describing, like the bank field: only areas with
-			// completed tiers are listed, and the note carries the
-			// semantics for the rest.
+			// Only areas with completed tiers are listed; the note
+			// carries the semantics for the rest.
 			Map<String, Object> completed = new LinkedHashMap<>();
 			for (Map.Entry<String, Object> e : cap.diaries.entrySet())
 			{
@@ -232,11 +226,8 @@ class PromptBuilder
 		}
 	}
 
-	/**
-	 * Raw coordinates mean nothing to a model; resolve them to named places
-	 * from the wiki's live location index. Coordinates stay in as
-	 * supplementary data (retrieved facts quote exact tiles).
-	 */
+	/** Resolve raw coordinates to named places; the coordinates stay in
+	 * as supplementary data. */
 	private Map<String, Object> groundedLocation(GameCapture cap)
 	{
 		if (cap.location == null)
@@ -253,9 +244,8 @@ class PromptBuilder
 		{
 			int x = ((Number) xo).intValue();
 			int y = ((Number) yo).intValue();
-			// The primary place must be one the player can BE in. A dungeon's
-			// surface marker is its entrance, so a player standing on it is
-			// in the surrounding area, not the dungeon.
+		// The primary place must be one the player can BE in: a dungeon's
+		// surface marker is its entrance, not the dungeon.
 			WikiApi.NamedPoint place = null;
 			WikiApi.NamedPoint second = null;
 			WikiApi.NamedPoint entrance = null;
@@ -295,13 +285,11 @@ class PromptBuilder
 			}
 			if (place == null && entrance == null && y >= 6400)
 			{
-				// The coordinate plane above y=6400 holds dungeons and
-				// instances, not the surface world; the index covers only
-				// the surface map, so nothing matched here.
+				// Above y=6400 is dungeons and instances; the index
+				// covers only the surface map.
 				out.put("place", "underground or instanced area (off the surface map)");
 			}
-			// Otherwise: no named place within range; say nothing rather
-			// than something wrong.
+			// No named place within range; say nothing rather than guess.
 		}
 		return out;
 	}

@@ -21,8 +21,7 @@ import okhttp3.OkHttpClient;
 
 /**
  * Offline eval harness: runs the in-plugin pipeline against a recorded
- * snapshot without launching the game. This is how the pipeline is iterated
- * on -- same code path the plugin uses in-game.
+ * snapshot without launching the game.
  *
  * Usage:
  *   --env FILE        KEY=VALUE file with PARASAIL_BASE_URL / PARASAIL_API_KEY

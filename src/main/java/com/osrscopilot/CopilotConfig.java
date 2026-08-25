@@ -49,9 +49,8 @@ public interface CopilotConfig extends Config
 	// Endpoint
 	// ------------------------------------------------------------------
 
-	// The third-party-server disclosure is the Plugin Hub install warning
-	// (warning= in the manifest). Nothing is sent to an LLM until the user
-	// configures an endpoint here.
+	// The third-party-server disclosure is the Plugin Hub install warning;
+	// nothing is sent to an LLM until the user configures an endpoint here.
 	@ConfigItem(
 		keyName = "apiBaseUrl",
 		name = "API base URL",

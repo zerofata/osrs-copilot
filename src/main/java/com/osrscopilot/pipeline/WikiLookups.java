@@ -17,10 +17,9 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Structured game-data lookups over the wiki's buckets and the prices API:
- * drop tables, monster combat profiles, equipment bonuses, quest
- * requirements, GE prices. Returns error maps rather than nulls because the
- * LLM tool boundary wants the message.
+ * Structured game-data lookups over the wiki's buckets and the prices API.
+ * Returns error maps rather than nulls because the LLM tool boundary wants
+ * the message.
  */
 @Slf4j
 class WikiLookups
@@ -50,11 +49,10 @@ class WikiLookups
 			{
 				return exact;
 			}
-			// The wiki's curated redirects ("bowfa" -> Bow of Faerdhinen) are
-			// the same mechanism the entity resolver trusts -- use them before
-			// substring matching, which is a guess. GE names carry charge
-			// qualifiers players never type ("Toxic blowpipe (empty)"), so a
-			// redirect target also matches its qualified variant.
+		// Try the wiki's curated redirects before substring matching. GE
+		// names carry charge qualifiers players never type ("Toxic
+		// blowpipe (empty)"), so a redirect target also matches its
+		// qualified variant.
 			String target = content.resolveTitles(List.of(name)).get(name);
 			if (target != null)
 			{
@@ -99,9 +97,8 @@ class WikiLookups
 		return scanMapping(c -> c.toLowerCase(Locale.ROOT).startsWith(prefix));
 	}
 
-	/** The one GE-mapping scan behind the matchers above: shortest entry
-	 * satisfying the predicate, or null. Shortest because qualified and
-	 * partial matches want the least-decorated variant. */
+	/** Shortest GE-mapping entry satisfying the predicate, or null;
+	 * shortest is the least-decorated variant. */
 	private String scanMapping(java.util.function.Predicate<String> match) throws IOException
 	{
 		String best = null;
@@ -116,24 +113,17 @@ class WikiLookups
 		return best;
 	}
 
-	/**
-	 * Every way to acquire an item that the wiki holds structured data for:
-	 * drops (monsters, reward chests, activities), creation recipes, and
-	 * shop stock, plus GE tradeability. One composite lookup because an
-	 * acquisition question rarely knows in advance which route exists;
-	 * routes with no data are omitted rather than erroring one by one.
-	 * Quest and minigame rewards have no bucket and stay page-prose.
-	 */
+	/** Every acquisition route with structured data: drops, recipes, shop
+	 * stock, GE tradeability. Routes with no data are omitted. Quest and
+	 * minigame rewards have no bucket and stay page-prose. */
 	Map<String, Object> itemSources(String itemName)
 	{
 		Map<String, Object> result = new LinkedHashMap<>();
 		try
 		{
-			// Buckets key on the item's PAGE name, which can differ from the
-			// GE-mapping canonical: "bowfa" trades as "Bow of Faerdhinen
-			// (inactive)" but its page (and its bucket rows) is "Bow of
-			// Faerdhinen". Resolve the page first; the GE form matters only
-			// for the tradeability report at the end.
+		// Buckets key on the PAGE name, which can differ from the GE
+		// canonical ("Bow of Faerdhinen (inactive)" trades; its bucket
+		// rows are "Bow of Faerdhinen"). Resolve the page first.
 			String page = content.resolveTitles(List.of(itemName)).get(itemName);
 			String canonical = page != null ? page : resolveItemName(itemName);
 			result.put("item", canonical);
@@ -198,13 +188,9 @@ class WikiLookups
 		return out;
 	}
 
-	/**
-	 * One dropsline row as {identity, quantity, rarity}, or null when the
-	 * row lacks drop_json or repeats an entry already seen. The identity
-	 * depends on the direction of the lookup: "source" reads the dropping
-	 * monster (item lookups list sources), anything else the item_name
-	 * (monster lookups list items).
-	 */
+	/** One dropsline row as {identity, quantity, rarity}, or null when the
+	 * row lacks drop_json or repeats an entry. "source" reads the dropping
+	 * monster; anything else reads the item_name. */
 	private Map<String, Object> dropRow(JsonObject o, String idKey, Set<String> seen)
 	{
 		if (!o.has("drop_json"))
@@ -229,10 +215,8 @@ class WikiLookups
 		return entry;
 	}
 
-	/** Recipe-bucket rows on the item's own page: what it is made from.
-	 * Rendered as compact strings ("100 x Crystal shard", "82 Smithing
-	 * (boostable)") -- the model needs the requirements, not the wiki's
-	 * image and cost bookkeeping. */
+	/** Recipe rows rendered as compact strings ("100 x Crystal shard",
+	 * "82 Smithing (boostable)"). */
 	private List<Map<String, Object>> recipes(String canonical) throws IOException
 	{
 		JsonObject r = content.bucket("bucket('recipe').select('production_json')"
@@ -335,9 +319,8 @@ class WikiLookups
 			? o.get(key).getAsString() : fallback;
 	}
 
-	/** First row of a bucket result as a mutable map with null fields
-	 * dropped, or null when the bucket matched nothing. The shared shape
-	 * of every infobox lookup; per-field cleaning stays with the caller. */
+	/** First row of a bucket result with null fields dropped, or null when
+	 * nothing matched. */
 	private Map<String, Object> firstRow(JsonObject r)
 	{
 		JsonArray rows = r.getAsJsonArray("bucket");
@@ -397,12 +380,9 @@ class WikiLookups
 		}
 	}
 
-	/**
-	 * Combat profile of a monster. Deliberately complete: gear and style
-	 * verdicts hinge on defensive stats, attributes (demon/dragon/undead
-	 * drive demonbane and salve reasoning), and immunities; omitting any
-	 * of them invites the model to fill the gap from stale priors.
-	 */
+	/** Combat profile of a monster: defensive stats, attributes, and
+	 * immunities. Deliberately complete -- omissions invite the model to
+	 * fill gaps from stale priors. */
 	Map<String, Object> monsterInfo(String name)
 	{
 		try
@@ -435,12 +415,9 @@ class WikiLookups
 		}
 	}
 
-	/**
-	 * Equipment combat bonuses. Infoboxes never survive plaintext extracts,
-	 * so this bucket is the only numeric source for equipment comparisons.
-	 * It has no attack-speed or slot field; those live in page prose, which
-	 * is retrieved.
-	 */
+	/** Equipment combat bonuses; infoboxes never survive plaintext
+	 * extracts, so this bucket is the only numeric source. No attack-speed
+	 * or slot fields -- those live in page prose. */
 	Map<String, Object> itemStats(String name)
 	{
 		try
@@ -468,14 +445,9 @@ class WikiLookups
 		}
 	}
 
-	/**
-	 * Quest requirements from the wiki's structured quest bucket. The
-	 * {{Quest details}} template never survives plaintext extracts, so this
-	 * is the only source of the skill levels and prerequisite quest tree.
-	 * Prerequisite names appearing in this fact also cause the pipeline to
-	 * attach the player's live progress for each of them
-	 * (relevantQuestStates scans facts).
-	 */
+	/** Quest requirements from the quest bucket; the {{Quest details}}
+	 * template never survives plaintext extracts, so this is the only
+	 * source of skill levels and the prerequisite tree. */
 	Map<String, Object> questInfo(String name)
 	{
 		try

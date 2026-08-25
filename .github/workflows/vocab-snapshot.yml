@@ -1,19 +1,11 @@
-# Weekly vocabulary snapshot: runs the wiki's bulk queries once and
-# publishes gzipped snapshots to the vocab-data branch, which clients
-# download from GitHub's CDN instead of querying the wiki themselves.
-#
-# The snapshot tool refuses to emit a dataset below its minimum record
-# count, so a wiki API change fails this job rather than publishing a
-# broken snapshot; clients keep the previous one.
-#
-# The weekly force-push counts as repository activity, which keeps GitHub
-# from suspending the schedule under its 60-day idle rule.
+# Builds the weekly vocabulary snapshots and force-pushes them to the
+# vocab-data branch, which clients download instead of querying the wiki.
+# A dataset below the tool's minimum record count fails the job; clients
+# keep the previous snapshot.
 name: vocab-snapshot
 
 on:
   schedule:
-    # Tuesday 03:17 UTC; off-hour minute because top-of-the-hour crons
-    # are GitHub's busiest scheduler slot.
     - cron: "17 3 * * 2"
   workflow_dispatch:
 
@@ -33,8 +25,6 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # ~50 wiki requests spread 20s apart instead of bursting; nothing
-      # here is latency-sensitive. Local runs default to full speed.
       - name: Build snapshots
         run: ./gradlew vocabSnapshot -PsnapshotPaceSeconds=20 --console=plain
 
@@ -47,8 +37,6 @@ jobs:
           git add .
           git commit -m "vocab snapshot $(date -u +%Y-%m-%d)"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          # The branch is a publishing slot, not history: one commit,
-          # force-pushed.
           git push --force origin vocab-data
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

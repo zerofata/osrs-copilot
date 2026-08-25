@@ -15,19 +15,14 @@ import java.util.concurrent.Executor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * The player's last-seen bank, kept per account. The bank container is not
- * readable on demand after the bank closes, so the last open is cached in
- * memory and persisted to disk (bank-&lt;accountHash&gt;.json) so ownership
- * answers survive client restarts. The account hash keys everything: a
- * second account on the same machine must never inherit the first one's
- * bank, or every ownership answer is confidently wrong.
+ * The player's last-seen bank, kept per account: the bank container is not
+ * readable after it closes, so the last open is cached in memory and
+ * persisted to disk. The account hash keys everything: a second account on
+ * the same machine must never inherit the first one's bank.
  *
- * All mutators run on the client thread. Disk writes are handed to the
- * executor so they never block a game tick; each queued write serializes
- * the state current at execution time, so write order cannot matter. The
- * synchronized blocks exist for that handoff: the writer must observe
- * contents and accountHash as a consistent pair, or an account switch
- * could publish one account's bank under another's file.
+ * Mutators run on the client thread; disk writes go to the executor. The
+ * synchronized blocks make the writer observe contents and accountHash as
+ * a consistent pair.
  */
 @Slf4j
 class BankStore
@@ -48,10 +43,9 @@ class BankStore
 		this.ioExecutor = ioExecutor;
 	}
 
-	/** Runs on the client thread (game tick). Keeps the in-memory bank bound
-	 * to the logged-in account: on the first tick of a session, and on any
-	 * account switch, drop the previous account's bank and load this one's
-	 * persisted copy. GameTick only fires logged in, so the hash is valid. */
+	/** Runs on the client thread. On the first tick of a session and on
+	 * any account switch, drop the previous account's bank and load this
+	 * one's persisted copy. */
 	void sync(long hash)
 	{
 		if (hash == -1 || hash == accountHash)
@@ -76,14 +70,9 @@ class BankStore
 		persist();
 	}
 
-	/**
-	 * Applies an out-of-band deposit (deposit box, GE collect-to-bank) to
-	 * the snapshot. The bank stacks everything, so a credit bumps the item's
-	 * stack or appends a new one. Copy-on-write: captures hand the contents
-	 * list to the pipeline, which reads it off-thread, so the reference is
-	 * swapped, never mutated. No-op without a snapshot -- an unseen bank
-	 * has nothing sound to patch.
-	 */
+	/** Applies an out-of-band deposit (deposit box, GE collect-to-bank).
+	 * Copy-on-write: the pipeline reads the contents list off-thread, so
+	 * the reference is swapped, never mutated. No-op without a snapshot. */
 	void credit(int itemId, String name, int quantity)
 	{
 		if (contents == null || accountHash == -1 || quantity <= 0)

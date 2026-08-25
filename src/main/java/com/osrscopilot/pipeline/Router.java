@@ -11,14 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * The deterministic front half of the pipeline: entity resolution, needs
- * classification, facility intents, diary tiers, bank mode. No LLM, no
- * network beyond the resolver's vocabulary, so routing is regression-testable
- * without a model.
- *
- * Everything rule-shaped lives here: the needs vocabulary, the need rules,
- * the facility rules, and the anaphora/locational patterns. Routes are
- * profiles over one pipeline spine, never separate code paths -- a wrong
- * route costs extra or missing prefetch, not different behavior.
+ * classification, facility intents, diary tiers, bank mode. No LLM, so
+ * routing is regression-testable without a model.
  */
 @Slf4j
 class Router
@@ -27,37 +21,28 @@ class Router
 	 * larger banks are summarized. */
 	static final int BANK_INLINE_LIMIT = 200;
 
-	/** Facility questions ("where can I pray/bank/smelt") map a small closed
-	 * vocabulary of intents to the wiki's canonical listing pages. The page
-	 * CONTENT is live from the wiki, so game updates (new altars, moved
-	 * banks) flow through with no code change; only a brand-new facility
-	 * type would need a line here. Gated on locational phrasing. */
+	/** Locational phrasing gate for the facility rules. */
 	static final Pattern LOCATIONAL =
 		Pattern.compile("\\b(where|nearest|closest|closer|nearby|near me|how far)\\b");
 
-	/** Words that point back at the conversation instead of standing alone.
-	 * Their presence means the previous turn's subject is still live and its
-	 * entities should carry into this turn's retrieval. Corrections ("i
-	 * mean for bowfa") point back by nature: they restate the previous
-	 * question, so its subject must survive into this one. */
+	/** Words that point back at the conversation; their presence carries
+	 * the previous turn's entities into this turn's retrieval. */
 	private static final Pattern ANAPHORIC = Pattern.compile(
 		"\\b(it|its|that|those|them|these|this|ones?|same|again|instead|"
 		+ "i meant?|what about|how about|and if|what if)\\b"
-		// Locative "there" points back at the previous subject's place ("is
-		// a tbow good there"). Existential "there" refers to nothing ("is
-		// there a way to...") and is recognized by its frozen frames: a
-		// be-verb or modal before it, or be/article/any/no after it.
+		// Locative "there" points back ("is a tbow good there");
+		// existential "there" ("is there a way...") is excluded by its
+		// surrounding frames.
 		+ "|(?<!\\b(?:is|are|was|were|will|would|can|could|should|do|does|did) )"
 		+ "\\bthere\\b(?!'s)(?! (?:is|are|was|were|be|a|an|any\\w*|no)\\b)");
 
-	/** Diary tiers are a closed vocabulary; the match only applies when a
-	 * resolved page is a diary, so "hard" in other questions is inert. */
+	/** Only applied when a resolved page is a diary; "hard" elsewhere is
+	 * inert. */
 	private static final Pattern DIARY_TIER =
 		Pattern.compile("\\b(easy|medium|hard|elite)\\b", Pattern.CASE_INSENSITIVE);
 
-	/** Run planning ("herb run", "tree route") names an activity, not an
-	 * entity the resolver can find; the wiki's guide page carries the
-	 * routes, patch lists, and teleports such an answer is built from. */
+	/** "herb run"/"tree route" names an activity the resolver can't find;
+	 * routes to the wiki's Farming runs guide. */
 	private static final Pattern FARMING_RUN = Pattern.compile(
 		"\\b(farm(ing)?|herb|tree|fruit tree|allotment|flower) (runs?|routes?)\\b");
 
@@ -74,9 +59,8 @@ class Router
 		{Pattern.compile("\\bsaw ?mill\\b"), "Sawmill"},
 	};
 
-	// The needs vocabulary: retrieval extras a question can switch on.
-	// Declared once so the rules below and their consumers in the prefetcher
-	// can't drift apart on a typo (a misspelled need silently no-ops).
+	// Need names shared with the prefetcher; a misspelled need silently
+	// no-ops.
 	static final String NEED_PRICES = "prices";
 	static final String NEED_DROP_TABLE = "drop_table";
 	static final String NEED_STRATEGY = "strategy";
@@ -88,19 +72,14 @@ class Router
 	static final String NEED_RECENT_EVENTS = "recent_events";
 	static final String NEED_SLAYER_TASK = "slayer_task";
 
-	/** Any slayer mention: with a monster subject, the "Slayer task/..."
-	 * guide page (task-only variants, location comparison) is on point. */
 	private static final Pattern SLAYER_MENTION = Pattern.compile("\\bslayer\\b");
 
-	/** Deixis about something that just happened ("what did that drop",
-	 * "is this loot good") -- gates the recent-events need. */
+	/** References to something that just happened ("what did that drop");
+	 * gates the recent-events need. */
 	private static final Pattern EVENT_REFERENCE =
 		Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b");
 
-	// Shared phrasing frames and verb lexicons, declared once: a rule that
-	// hand-rolls its own pronoun frame ("how to kill" but not "how do i
-	// defeat") breaks on unmet phrasings; a variant added here fixes every
-	// rule at once.
+	// Shared phrasing frames; a pronoun variant added here fixes every rule.
 	/** "how to / how do i / how can you / how should we ..." */
 	static final String HOW = "how (to|do (i|you|we)|can (i|you|we)|should (i|we)|would (i|you|we))";
 	/** "where" including the contraction-less "wheres". */
@@ -111,14 +90,12 @@ class Router
 	static final String OBTAIN_VERB = "(get(s|ting)?|got|buy(s|ing)?|bought|find(s|ing)?|found"
 		+ "|mak(e|es|ing)|made|craft(s|ed|ing)?|obtain(s|ed|ing|able)?|farm(s|ed|ing|able)?)";
 
-	/** Fires only when a monster resolved: a named monster plus a fight verb
-	 * anywhere is near-certain fight intent, no frame required ("can i kill
-	 * vorkath without a shield"). */
+	/** Applied only when a monster resolved: a monster plus a fight verb is
+	 * fight intent, no frame required. */
 	private static final Pattern FIGHT_VERB_ANYWHERE =
 		Pattern.compile("\\b" + FIGHT_VERB + "\\b");
 
-	/** Fires only when an item resolved: the composite acquisition fact is
-	 * small, so a false positive costs little. */
+	/** Applied only when an item resolved. */
 	private static final Pattern OBTAIN_VERB_ANYWHERE =
 		Pattern.compile("\\b" + OBTAIN_VERB + "\\b");
 
@@ -132,9 +109,8 @@ class Router
 		{Pattern.compile("\\b(quickest|fastest|easiest|best) (way|place|method)\\b.*\\b" + OBTAIN_VERB + "\\b"),
 			new String[]{NEED_ITEM_SOURCES}},
 		{Pattern.compile("\\b(gear|setup|equipment|loadout|what.*(wear|bring))\\b"), new String[]{NEED_STRATEGY}},
-		// "prep for toa" wants the guide's requirements and gear tables.
-		// Safe on non-combat subjects: the strategy extras only fetch when
-		// a /Strategies page exists in the snapshot index.
+		// Safe on non-combat subjects: strategy extras only fetch when a
+		// /Strategies page exists.
 		{Pattern.compile("\\b(prep|prepping|prepare|preparing) for\\b"), new String[]{NEED_STRATEGY}},
 		{Pattern.compile("\\b(strategy|safespot|(" + HOW + "|best way to) " + FIGHT_VERB + ")\\b"),
 			new String[]{NEED_STRATEGY, NEED_MECHANICS}},
@@ -161,8 +137,8 @@ class Router
 		r.entities = resolver.resolve(question, questNames,
 			previous != null && previous.anyEntity()
 				? EntityResolver.Source.FOLLOW_UP : EntityResolver.Source.QUESTION);
-		// "my task" names an entity the player never types: resolve the task
-		// creature from game state so it retrieves like any other monster.
+		// "my task" names an entity the player never types; resolve the
+		// task creature from game state.
 		boolean taskReferenced = cap.slayerTask != null && cap.slayerTask.get("creature") != null
 			&& referencesSlayerTask(question, r.entities);
 		if (taskReferenced)
@@ -175,14 +151,9 @@ class Router
 		{
 			r.entities.pages.add("Farming runs");
 		}
-		// A follow-up inherits the conversation's subject when it points back
-		// at it -- an anaphor in the text ("what ABOUT addy darts", "which
-		// ONES are closer", "do i have the stats for IT") or nothing newly
-		// resolved. A self-contained question ("quickest way to get planks")
-		// starts clean even mid-conversation: its own entities are its
-		// subject, and stale pages from three turns ago would pollute its
-		// facts. Inherited entities are merged AFTER the question's own, so
-		// prefetch limits favor what the player just said.
+		// Inherit the previous subject only when the question points back
+		// at it (anaphor, or nothing newly resolved). Inherited entities
+		// merge after the question's own.
 		if (previous != null && (!r.entities.anyEntity()
 			|| ANAPHORIC.matcher(question.toLowerCase(Locale.ROOT)).find()))
 		{
@@ -194,36 +165,29 @@ class Router
 		boolean hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
 		r.needs = classifyNeeds(question, hasEvents,
 			!r.entities.monsters.isEmpty(), !r.entities.items.isEmpty());
-		// A slayer-flavored question about a monster (asked, inherited, or
-		// injected from the player's assignment) wants the "Slayer task/..."
-		// guide: which variants count, where each is best killed. Not part
-		// of classifyNeeds: the task-reference half depends on game state.
+		// Not in classifyNeeds: the task-reference half needs game state.
 		if (!r.entities.monsters.isEmpty() && (taskReferenced
 			|| SLAYER_MENTION.matcher(question.toLowerCase(Locale.ROOT)).find()))
 		{
 			r.needs.add(NEED_SLAYER_TASK);
 		}
-		// Cross-check needs against entities: transport means "how do I get
-		// THERE" and is meaningless without a resolved destination ("best way
-		// to train smithing" must not route as travel).
+		// Transport is meaningless without a resolved destination ("best
+		// way to train smithing" must not route as travel).
 		if (r.entities.pages.isEmpty() && r.entities.monsters.isEmpty())
 		{
 			r.needs.remove(NEED_TRANSPORT);
 		}
 		r.facilityPages = facilityPages(question);
-		// A diary page holds all four tiers' task tables -- far past any
-		// page budget, so a whole-page fetch truncates mid-Easy. Every
-		// diary shares the wiki's Easy/Medium/Hard/Elite section structure
-		// and tiers are a closed four-word vocabulary, so a named tier
-		// routes to exactly its section.
+		// A whole diary page blows the fact budget; a named tier routes to
+		// just that tier's section.
 		if (r.entities.pages.stream().anyMatch(Router::isDiaryPage))
 		{
 			Matcher tier = DIARY_TIER.matcher(question);
 			if (tier.find())
 			{
 				r.diaryTier = tier.group(1).toLowerCase(Locale.ROOT);
-				// The diary rule has claimed the tier word; without this it
-				// also resolves as a junk standalone page ("Medium").
+				// Otherwise the tier word also resolves as a junk page
+				// ("Medium").
 				r.entities.pages.removeIf(p -> p.equalsIgnoreCase(r.diaryTier));
 			}
 		}
@@ -245,12 +209,8 @@ class Router
 		}
 	}
 
-	/**
-	 * Pure needs classification: question text plus entity-kind flags in,
-	 * needs out. No network, no game state beyond the flags, so it is
-	 * table-testable across a phrasing corpus (RouterPhrasingTest) without
-	 * standing up the resolver.
-	 */
+	/** Pure needs classification: no network, no game state beyond the
+	 * flags. Table-tested by RouterPhrasingTest. */
 	static List<String> classifyNeeds(String question, boolean hasEvents,
 		boolean monsterResolved, boolean itemResolved)
 	{
@@ -269,9 +229,8 @@ class Router
 				}
 			}
 		}
-		// Entity-conditioned rules: a resolved entity makes the intent
-		// near-certain even without a question frame ("can i kill vorkath
-		// without a shield" has no "how to" but is unmistakably fight prep).
+		// A resolved entity makes intent near-certain without a question
+		// frame ("can i kill vorkath without a shield").
 		if (monsterResolved && FIGHT_VERB_ANYWHERE.matcher(ql).find())
 		{
 			addMissing(needs, NEED_STRATEGY);
@@ -323,14 +282,9 @@ class Router
 		return page.endsWith(" Diary");
 	}
 
-	/**
-	 * True when the player refers to their Slayer task instead of naming the
-	 * creature, and the client knows what that task is. A monster resolved
-	 * from the question wins -- they may be asking about something else.
-	 * A denied task ("im not on task", "off task") must not fire: injecting
-	 * the task creature would hijack the subject and, by counting as a
-	 * resolved entity, block inheritance of the real one.
-	 */
+	/** True when the player refers to their Slayer task without naming the
+	 * creature and the client knows the task. A resolved monster wins; a
+	 * denied task ("off task") must not fire. */
 	private static boolean referencesSlayerTask(String question, EntityResolver.Resolution entities)
 	{
 		if (!entities.monsters.isEmpty())

@@ -11,15 +11,9 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * OSRS Wiki + Grand Exchange API access: the facade over three
- * single-purpose collaborators, so callers keep one dependency.
- *
- * - {@link VocabSnapshots}: bulk vocabularies from published snapshots
- *   (items, monsters, locations, GE mapping, wordlist), 7-day disk cache.
- * - {@link WikiContent}: live page content, search, title resolution, and
- *   the TTL'd LRU over wiki GETs.
- * - {@link WikiLookups}: structured game data from the wiki's buckets and
- *   the prices API (drops, combat profiles, equipment stats, quests, GE).
+ * OSRS Wiki + Grand Exchange API access: facade over {@link VocabSnapshots}
+ * (bulk vocabularies), {@link WikiContent} (live content), and
+ * {@link WikiLookups} (structured data).
  */
 public class WikiApi
 {

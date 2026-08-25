@@ -9,13 +9,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Finds proper nouns in an answer that the supplied context does not contain.
- *
- * Names taken from the retrieved facts are grounded by construction; only the
- * rest can be memory, and memory is where content from other games leaks in
- * (RS3's "Anachronia" offered as an OSRS location). Extraction here is
- * deliberately generous and dumb; the narrowing happens against the context
- * and then against the wiki.
+ * Finds proper nouns in an answer that the supplied context does not
+ * contain -- the channel through which other games' content leaks in
+ * (RS3's "Anachronia" offered as an OSRS location).
  */
 class NameCheck
 {
@@ -23,25 +19,19 @@ class NameCheck
 	private static final Pattern CODE_SPAN = Pattern.compile("`[^`]*`");
 	private static final Pattern MD_LINK = Pattern.compile("\\[([^\\]]*)\\]\\([^)]*\\)");
 	private static final Pattern MD_MARKS = Pattern.compile("[*_#>\\\\]");
-	/** Table cell walls separate names: "| Blast Furnace | Keldagrim |" is
-	 * two, so they end a phrase the way a full stop does. */
+	/** Table cell walls end a phrase the way a full stop does. */
 	private static final Pattern CELL_WALL = Pattern.compile("\\|");
 
 	/** A capitalised token: "Varrock", "Zamorak's", "TzTok-Jad". */
 	private static final Pattern CAP_TOKEN = Pattern.compile("[A-Z][A-Za-z'\\-]*");
 
-	/**
-	 * Lowercase words that continue a name rather than ending it ("Tower of
-	 * Voices"). Prepositions of place are excluded: "Blast Furnace in
-	 * Keldagrim" is two names, not one.
-	 */
+	/** Lowercase words that continue a name ("Tower of Voices").
+	 * Prepositions of place are excluded: "Blast Furnace in Keldagrim" is
+	 * two names. */
 	private static final Set<String> CONNECTORS = Set.of(
 		"of", "the", "and", "de", "der", "van");
 
-	/**
-	 * Pronouns and articles that start sentences; the common-English wordlist
-	 * covers the rest of the generic vocabulary, so this stays tiny.
-	 */
+	/** Pronouns and articles that start sentences. */
 	private static final Set<String> ALWAYS_IGNORE = Set.of(
 		"i", "you", "your", "it", "its", "a", "an", "the", "this", "that", "these",
 		"those", "they", "we", "he", "she", "there", "here");
@@ -50,11 +40,8 @@ class NameCheck
 	{
 	}
 
-	/**
-	 * Proper nouns in the answer that no variant of appears in the context.
-	 * Case-insensitive containment, so "blast furnace" in a wiki table grounds
-	 * "Blast Furnace" in prose.
-	 */
+	/** Proper nouns with no variant present in the context
+	 * (case-insensitive containment). */
 	static List<String> ungroundedNames(String answer, String context, Set<String> englishWords)
 	{
 		String haystack = context == null ? "" : context.toLowerCase(Locale.ROOT);
@@ -64,12 +51,9 @@ class NameCheck
 		return out;
 	}
 
-	/**
-	 * Forms of a name worth trying, most specific first. A sentence opener
-	 * glues ordinary English to a real name ("Requires The Giant Dwarf"), and
-	 * plurals often have no page of their own ("Skeletal Wyverns"), so both
-	 * the trimmed and singular forms count as the same claim.
-	 */
+	/** Forms of a name worth trying, most specific first: trimmed sentence
+	 * openers ("Requires The Giant Dwarf") and singulars ("Skeletal
+	 * Wyverns" often has no page of its own). */
 	static List<String> variants(String name, Set<String> englishWords)
 	{
 		Set<String> out = new LinkedHashSet<>();
@@ -120,10 +104,8 @@ class NameCheck
 				continue;
 			}
 
-			// Phrases are built maximally: "Mining Guild" must not lose its
-			// head just because "mining" is a generic word on its own. Any
-			// separator ends the phrase, so a list stays a list ("Edgeville,
-			// Falador" is two names).
+		// Phrases are built maximally ("Mining Guild" keeps its head);
+		// any separator ends the phrase ("Edgeville, Falador" is two).
 			StringBuilder phrase = new StringBuilder(word);
 			int j = i + 1;
 			while (j < words.length && !endsPhrase(words[j - 1]))
@@ -157,14 +139,9 @@ class NameCheck
 		}
 	}
 
-	/**
-	 * Whether a name is game-specific vocabulary rather than ordinary
-	 * title-case English. Answers are full of capitalised prose -- section
-	 * labels ("Gear Setup"), emphasis, table headers -- and none of it makes a
-	 * claim about the game world, while the leaks worth catching are words
-	 * English doesn't have ("Anachronia", "Menaphos"). Costs the ability to
-	 * catch a fabricated name built only from dictionary words.
-	 */
+	/** Whether a name is game vocabulary rather than title-case English
+	 * ("Gear Setup" makes no claim; "Anachronia" does). A fabricated name
+	 * built purely from dictionary words is missed. */
 	static boolean looksGameSpecific(String name, Set<String> englishWords)
 	{
 		for (String word : name.split("[\\s\\-]+"))
@@ -181,12 +158,9 @@ class NameCheck
 		return true;
 	}
 
-	/**
-	 * Whether a name and the wiki page it resolved to refer to the same thing.
-	 * Plural, casing, punctuation and qualifier differences are the same thing
-	 * ("Aviansies" -> "Aviansie", "Wilderness Resource Area" -> "Resource
-	 * Area"); an unrelated title is not ("Anachronia" -> "Fossil Island").
-	 */
+	/** Whether a name and the page it resolved to are the same thing:
+	 * plural/casing/qualifier differences are ("Aviansies" -> "Aviansie");
+	 * an unrelated title is not ("Anachronia" -> "Fossil Island"). */
 	static boolean namesSameThing(String name, String resolvedTitle)
 	{
 		String a = fold(name);
@@ -217,9 +191,8 @@ class NameCheck
 		{
 			return true;
 		}
-		// Contractions are ordinary English wearing a capital ("You'll").
-		// Possessives keep their apostrophe in phrases, because page titles
-		// do too ("Gertrude's Cat"), so only the check strips it.
+		// Possessives keep their apostrophe, as page titles do
+		// ("Gertrude's Cat"); only the check strips it.
 		int tick = word.indexOf('\'');
 		return tick > 0 && isGenericExact(fold(word.substring(0, tick)), englishWords);
 	}

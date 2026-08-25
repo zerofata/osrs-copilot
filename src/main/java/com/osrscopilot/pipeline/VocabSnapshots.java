@@ -16,25 +16,20 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Bulk vocabularies (every item, monster, place...), served from published
- * snapshots. A weekly CI job (VocabSnapshotTool) runs the wiki's expensive
- * bulk queries once and publishes gzipped snapshots; clients only download
- * the published result from GitHub's CDN, with a 7-day disk cache and
- * stale-beats-broken fallback.
+ * Bulk vocabularies served from published snapshots: a weekly CI job
+ * (VocabSnapshotTool) runs the wiki's bulk queries once; clients download
+ * the gzipped result with a 7-day disk cache and stale-beats-broken
+ * fallback.
  */
 @Slf4j
 class VocabSnapshots
 {
-	/**
-	 * There is deliberately no fallback to building from the wiki: a broken
-	 * snapshot pipeline degrades the resolver instead of shifting bulk-query
-	 * load onto the wiki.
-	 */
+	/** Deliberately no fallback to building from the wiki: a broken
+	 * snapshot pipeline must not shift bulk-query load onto the wiki. */
 	private static final String SNAPSHOT_BASE =
 		"https://raw.githubusercontent.com/zerofata/osrs-copilot/vocab-data/";
 
-	/** Snapshots re-download after this age, matching the weekly publish
-	 * cadence, so game/wiki changes flow in without a code update. */
+	/** Matches the weekly publish cadence. */
 	private static final long CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000;
 
 	private final Http http;
@@ -99,13 +94,9 @@ class VocabSnapshots
 		return monsterNames;
 	}
 
-	/**
-	 * Exact wiki titles of every {Monster}/Strategies subpage that exists,
-	 * from the weekly snapshot's batch existence check. Lets the prefetcher
-	 * skip guaranteed-404 strategy fetches and advertise guide pages without
-	 * any live traffic. Callers must treat IOException as "index unknown"
-	 * and fall back to blind-fetch behavior, never as "page absent".
-	 */
+	/** Exact titles of every {Monster}/Strategies subpage. Callers must
+	 * treat IOException as "index unknown" and keep blind-fetch behavior,
+	 * never as "page absent". */
 	synchronized Set<String> strategiesPages() throws IOException
 	{
 		if (strategiesPages == null)
@@ -116,13 +107,9 @@ class VocabSnapshots
 		return strategiesPages;
 	}
 
-	/**
-	 * Exact wiki titles of every "Slayer task/..." guide subpage, redirect
-	 * aliases included, from the weekly snapshot's prefix listing. Lets the
-	 * prefetcher fetch a task guide only when one exists, with zero live
-	 * traffic. Callers must treat IOException as "index unknown", never as
-	 * "page absent".
-	 */
+	/** Exact titles of every "Slayer task/..." guide subpage, redirect
+	 * aliases included. IOException means "index unknown", never "page
+	 * absent". */
 	synchronized Set<String> slayerTaskPages() throws IOException
 	{
 		if (slayerTaskPages == null)
@@ -133,13 +120,9 @@ class VocabSnapshots
 		return slayerTaskPages;
 	}
 
-	/**
-	 * Every item in the game as {item name (per version), canonical page},
-	 * from the wiki's item infoboxes. The GE catalogue only covers
-	 * tradeables; this closes the gap (fire capes, void, quest items) for
-	 * the resolver and the UI decorator. Versioned names ("Fire cape (l)")
-	 * each map to their shared page. Removed content is excluded.
-	 */
+	/** Every item as {name (per version), canonical page} from the wiki's
+	 * item infoboxes; covers the untradeables the GE catalogue lacks.
+	 * Removed content is excluded. */
 	synchronized List<String[]> allItemNames() throws IOException
 	{
 		if (itemNameIndex == null)
@@ -150,23 +133,12 @@ class VocabSnapshots
 		return itemNameIndex;
 	}
 
-	/**
-	 * The one item-name list both the resolver and the UI decorator use:
-	 * the GE catalogue (authoritative for tradeables), extended with
-	 * untradeable names from the item infobox index. Infobox entries whose
-	 * name is a single common English word are excluded: they are obscure
-	 * quest junk and interface pseudo-items ("Key", "Note", "Prayer
-	 * (interface item)"), and claiming bare dictionary words breaks real
-	 * references ("Varrock diary", "prayer level").
-	 *
-	 * Entries whose canonical page the wiki marks as a non-world sprite
-	 * (interface, unobtainable, animation, beta-only) are excluded
-	 * outright: a player can never mean them, their names are real speech
-	 * ("Dart", "Torch", "Magic carpet"), and claiming a mention locally
-	 * blocks the redirect pass from resolving it to the real thing. The
-	 * marker is matched anywhere in the disambiguator, not just as a
-	 * suffix: "Torch (animation item, Sea Slug)".
-	 */
+	/** The one item-name list the resolver and UI decorator share: the GE
+	 * catalogue plus untradeable names from the infobox index. Excluded:
+	 * single-common-word names ("Key", "Note" -- claiming bare dictionary
+	 * words breaks real references) and non-world sprites (interface,
+	 * animation, beta items -- claiming real speech like "Dart" or
+	 * "Torch" blocks the redirect pass from resolving the real thing). */
 	synchronized List<String[]> knownItemNames() throws IOException
 	{
 		List<String[]> out = new ArrayList<>();
@@ -214,19 +186,16 @@ class VocabSnapshots
 			|| page.contains("(RuneScape 2 Beta");
 	}
 
-	/** 10k most common English words; used by the resolver to spot slang
-	 * (OSRS abbreviations are almost never dictionary words). Empty set on
-	 * fetch failure -- the resolver degrades gracefully. */
+	/** 10k most common English words, frequency-ordered. Empty on fetch
+	 * failure. */
 	synchronized Set<String> englishWords()
 	{
 		loadWordlist();
 		return englishWords;
 	}
 
-	/** The high-frequency band of the wordlist (it is frequency-ordered,
-	 * most common first). Hostile redirects come from this band ("up",
-	 * "want", "game"), while genuine game-flavoured English sits far below
-	 * it ("bow", "cave") or is absent entirely ("whip", "fury"). */
+	/** The high-frequency band of the wordlist; hostile redirects come
+	 * from here ("up", "want"), genuine game words sit below it. */
 	synchronized Set<String> commonEnglishWords()
 	{
 		loadWordlist();
@@ -261,17 +230,13 @@ class VocabSnapshots
 		}
 	}
 
-	/** Rank cutoff for the common band: hostile redirect words top out
-	 * around rank 305, so 1,000 gives 3x margin. The only game-adjacent
-	 * word inside the band is "staff" (511), a real item that resolves
-	 * through the vocabulary pass instead. */
+	/** Hostile redirect words top out near rank 305; "staff" (511), the
+	 * one game word inside the band, resolves through the vocabulary
+	 * pass instead. */
 	private static final int COMMON_ENGLISH_BAND = 1000;
 
-	/**
-	 * Named places with world coordinates, joined from the wiki's location
-	 * infoboxes and map bucket by the snapshot job. Entirely wiki-maintained
-	 * -- new areas appear on the next published snapshot, no code changes.
-	 */
+	/** Named places with world coordinates, joined from the wiki's
+	 * location infoboxes and map bucket by the snapshot job. */
 	synchronized List<WikiApi.NamedPoint> locationIndex() throws IOException
 	{
 		if (locationIndex == null)
@@ -301,12 +266,8 @@ class VocabSnapshots
 		}
 	}
 
-	/**
-	 * A vocabulary snapshot: fresh disk copy, else download from the
-	 * published vocab-data branch, else stale disk copy (stale beats
-	 * broken). Building the dataset from the wiki is deliberately not in
-	 * this chain -- see SNAPSHOT_BASE.
-	 */
+	/** Fresh disk copy, else download, else stale disk copy (stale beats
+	 * broken). */
 	private String snapshot(String filename) throws IOException
 	{
 		File f = new File(cacheDir, filename);

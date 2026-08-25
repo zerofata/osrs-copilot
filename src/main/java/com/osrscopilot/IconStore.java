@@ -18,22 +18,15 @@ import net.runelite.client.util.AsyncBufferedImage;
 
 /**
  * Real game icons for decorated answers, rendered from the client's own
- * caches -- item sprites via {@link ItemManager}, skill icons via
- * {@link SkillIconManager}, the quest point icon via {@link SpriteManager}.
- * Nothing is fetched over the network.
- *
- * Icons persist as PNGs because the Swing HTML renderer references images
- * by URL; each renders once and is a file URL thereafter.
- *
- * Fail-soft by contract: any miss returns null and the caller renders
- * without an icon. A decoration layer must never break an answer.
+ * caches; nothing is fetched over the network. Icons persist as PNGs
+ * because the Swing HTML renderer references images by URL. Fail-soft:
+ * any miss returns null and the caller renders without an icon.
  */
 @Slf4j
 final class IconStore
 {
-	/** Bound on a decorate-time wait for the client to draw an item
-	 * sprite: normally single-digit millis, but a wedged client thread
-	 * must not stall an answer. */
+	/** Bound on a decorate-time wait for the client to draw a sprite; a
+	 * wedged client thread must not stall an answer. */
 	private static final long ITEM_RENDER_TIMEOUT_MS = 2000;
 
 	private final File dir;
@@ -123,12 +116,9 @@ final class IconStore
 		return url;
 	}
 
-	/**
-	 * Render one item sprite to disk. AsyncBufferedImage paints on the
+	/** Render one item sprite to disk. AsyncBufferedImage paints on the
 	 * client thread while decoration runs on the pipeline worker, so a
-	 * bounded wait here is safe; decorated HTML is cached verbatim, so a
-	 * missed icon stays missing for that answer.
-	 */
+	 * bounded wait here is safe. */
 	private boolean renderItem(int itemId, File f)
 	{
 		if (itemManager == null)

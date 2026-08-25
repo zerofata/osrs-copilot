@@ -2,11 +2,9 @@ package com.osrscopilot.pipeline;
 
 import java.io.IOException;
 
-/** The model finished without producing usable answer text -- empty content
- * or leaked tool-call markup -- even after a corrective retry. Surfaced as
- * its own type so the UI can offer a resubmit instead of a network error,
- * and carries the tool trace: an errored turn leaves nothing else to
- * diagnose with. */
+/** The model finished without usable answer text even after a corrective
+ * retry. Its own type so the UI can offer a resubmit; carries the tool
+ * trace. */
 public class EmptyAnswerException extends IOException
 {
 	public EmptyAnswerException(int turns, String toolNames, boolean truncatedByLength)

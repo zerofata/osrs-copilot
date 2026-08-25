@@ -15,15 +15,8 @@ import okhttp3.OkHttpClient;
 
 /**
  * OSRS Copilot pipeline: resolve -> classify -> prefetch -> synthesize.
- * Runs entirely inside the plugin against a GameCapture; the only external
- * dependencies are the OSRS Wiki/GE APIs and the user's own LLM endpoint.
- *
- * Everything non-fuzzy stays out of the LLM:
- * - Entity resolution is deterministic (closed vocab + wiki redirects).
- * - Needs classification is rule-based.
- * - Every resolved entity gets a core fact bundle unconditionally; needs only
- *   add extras (drop tables, prices, strategy pages).
- * - Ownership lives in the state block; quest gates arrive pre-verified.
+ * The only external dependencies are the OSRS Wiki/GE APIs and the user's
+ * own LLM endpoint.
  */
 @Slf4j
 public class CopilotPipeline
@@ -44,12 +37,8 @@ public class CopilotPipeline
 		}
 	}
 
-	/**
-	 * The deterministic routing decision for one question: everything chosen
-	 * before the model runs, as a single inspectable artifact. Routes are
-	 * profiles over one pipeline spine, never separate code paths -- a wrong
-	 * route costs extra or missing prefetch, not a different behavior.
-	 */
+	/** The deterministic routing decision for one question, made before
+	 * the model runs. */
 	public static class Route
 	{
 		public EntityResolver.Resolution entities;
@@ -76,26 +65,17 @@ public class CopilotPipeline
 		public String prompt;
 		/** Token usage summed across every LLM call for this question. */
 		public Llm.Usage usage;
-		/**
-		 * Names the answer introduced that the wiki says aren't this game's
-		 * ("Anachronia -> Fossil Island"). Empty is the expected case.
-		 */
+		/** Names the answer introduced that the wiki says aren't this
+		 * game's ("Anachronia -> Fossil Island"). */
 		public List<String> suspectNames = List.of();
-		/**
-		 * The turn's inheritable subject -- question entities plus what the
-		 * answer's opening introduced (see subjectOf). Store THIS in the
-		 * Exchange, not route.entities, so follow-ups can point at things
-		 * the answer brought up.
-		 */
+		/** The turn's inheritable subject (see subjectOf). Store this in
+		 * the Exchange, not route.entities, so follow-ups can point at
+		 * things the answer brought up. */
 		public EntityResolver.Resolution subject;
 	}
 
-	/**
-	 * Everything the model gets, before it runs: the route plus the assembled
-	 * user message. Produced without any LLM call, so retrieval can be
-	 * inspected and regression-tested; answer() synthesizes from this same
-	 * object, so what you inspect is what ships.
-	 */
+	/** Everything the model gets, produced without any LLM call so
+	 * retrieval can be inspected and regression-tested. */
 	public static class Prepared
 	{
 		public Route route;
@@ -154,42 +134,28 @@ public class CopilotPipeline
 		}
 	}
 
-	/**
-	 * The deterministic front half: entity resolution, needs classification,
-	 * facility intents, subject inheritance. No LLM involved -- callable on
-	 * its own for free route regression testing.
-	 */
+	/** The deterministic front half; callable on its own for route
+	 * regression testing. */
 	public Route route(String question, GameCapture cap, EntityResolver.Resolution previous)
 		throws IOException
 	{
 		return router.route(question, cap, previous);
 	}
 
-	/** The subject usually opens the answer ("Here's how to make your
-	 * Scorching bow: ..."); scanning further mostly picks up supporting
-	 * cast (teleports, side quests, alternatives). */
+	/** The subject usually opens the answer; deeper text is supporting
+	 * cast. */
 	private static final int SUBJECT_SCAN_CHARS = 600;
-	/** An answer that opens with a list or table is enumerating (an
-	 * inventory, a route); enumerated names are supporting cast by
-	 * construction, so the subject scan stops at the first such row. */
+	/** The scan stops at the first list/table row: enumerated names are
+	 * supporting cast. */
 	private static final Pattern SUBJECT_SCAN_STOP =
 		Pattern.compile("(?m)^\\s*(?:[-*|]|\\d+\\.)\\s");
-	/** Per kind, at most this many answer-introduced names join the
-	 * subject. Question entities always come first, and prefetch budgets
-	 * (3-4 per kind) mean anything past a few inherited names is dead
-	 * weight anyway. */
+	/** Cap on answer-introduced names joining the subject, per kind. */
 	private static final int SUBJECT_ADDITIONS = 3;
 
-	/**
-	 * The inheritable subject of a completed turn. A question can hand the
-	 * subject to its answer: "take me through making the bow" resolves the
-	 * Tormented synapse, the answer replies in terms of the Scorching bow,
-	 * and "what arrows can I use with this bow" then points at the bow --
-	 * which the question's entities alone can't provide. So the subject is
-	 * the question's entities plus the leading names the answer introduced.
-	 * Best-effort: inheritance is an enrichment, never worth failing an
-	 * already-delivered answer over.
-	 */
+	/** The turn's inheritable subject: the question's entities plus the
+	 * leading names the answer introduced ("make the bow" resolves the
+	 * Tormented synapse, the answer talks about the Scorching bow, "this
+	 * bow" then means the bow). Best-effort. */
 	public EntityResolver.Resolution subjectOf(EntityResolver.Resolution question,
 		String answer, GameCapture cap)
 	{
@@ -270,11 +236,9 @@ public class CopilotPipeline
 		}
 	}
 
-	/** Every plain monster name, for UI entity linking: answers introduce
-	 * monsters the route never resolved ("kill Greater demons" in a Slayer
-	 * answer). Variant pages with parenthetical disambiguators are excluded
-	 * -- prose never writes "Black demon (The Grand Tree)". Best-effort:
-	 * empty when the snapshot is unavailable. */
+	/** Every plain monster name, for UI entity linking. Variant pages with
+	 * parenthetical disambiguators are excluded: prose never writes "Black
+	 * demon (The Grand Tree)". Empty when the snapshot is unavailable. */
 	public List<String> knownMonsterNames()
 	{
 		try
@@ -346,11 +310,9 @@ public class CopilotPipeline
 		{
 			ownershipComplete = prefetcher.addOwnershipFromFacts(facts, p.ownedIndex, p.ownedNames);
 		}
-		// The search tool is withheld only when the facts carry a gear list
-		// (Recommended equipment section) with a complete ownership slice:
-		// the model re-verifies visible gear otherwise. Without a gear
-		// list, "complete" covers only incidental page items, and a loadout
-		// answer needs equipment the facts never mention.
+		// Withhold the search tool only when the facts carry a gear list
+		// with a complete ownership slice; without a gear list, "complete"
+		// covers only incidental page items.
 		boolean equipmentListed = facts.stream()
 			.anyMatch(f -> f.startsWith("### Recommended equipment: "));
 		p.offerOwnedSearch = !p.bankInlined && !(ownershipComplete && equipmentListed);
@@ -381,9 +343,8 @@ public class CopilotPipeline
 		Route route = prepared.route;
 		String userMessage = prepared.prompt;
 
-		// History enters as real chat messages: prior turns carry only the
-		// question and the distilled answer; state and facts always accompany
-		// the latest turn (retrieval context is transient, answers persist).
+		// Prior turns carry only question + answer; state and facts
+		// accompany the latest turn only.
 		JsonArray messages = new JsonArray();
 		messages.add(AgentLoop.message("system", PromptBuilder.systemPrompt(simpleMode)));
 		for (Exchange ex : PromptBuilder.boundedHistory(history))
@@ -401,8 +362,7 @@ public class CopilotPipeline
 			toolSpecs, tools, maxTurns, listener);
 
 		// The simple-mode prompt alone doesn't hold on formatting-happy
-		// models; stripping emphasis markers is the guarantee. Runs before
-		// the answer enters history, so later turns see plain text too.
+		// models; strip before the answer enters history.
 		String answer = simpleMode ? stripEmphasisMarkdown(agent.answer) : agent.answer;
 
 		Result result = new Result();
@@ -420,13 +380,9 @@ public class CopilotPipeline
 		return result;
 	}
 
-	/**
-	 * Removes emphasis markup (bold, italics, headers, inline code) without
-	 * touching meaning -- the common leaks when the simple-mode prompt loses
-	 * to a model's formatting habit. Lists and tables are left alone: they
-	 * can't be flattened to prose mechanically, and the renderer displays
-	 * them gracefully as-is.
-	 */
+	/** Removes emphasis markup (bold, italics, headers, inline code).
+	 * Lists and tables are left alone: they can't be flattened to prose
+	 * mechanically, and the renderer handles them. */
 	static String stripEmphasisMarkdown(String answer)
 	{
 		return answer
@@ -436,13 +392,8 @@ public class CopilotPipeline
 			.replaceAll("`([^`]+)`", "$1");
 	}
 
-	/**
-	 * Post-hoc grounding check: proper nouns the answer introduced that the
-	 * wiki has no matching page for. Retrieval and prompting reduce memory
-	 * leakage but can't preclude it, so the last line of defence is checking
-	 * the output against the game's own vocabulary. One batched request; a
-	 * failure here must never cost the player their answer.
-	 */
+	/** Post-hoc grounding check: proper nouns the answer introduced that
+	 * the wiki has no page for. A failure never costs the answer. */
 	private List<String> suspectNames(String answer, String context)
 	{
 		try

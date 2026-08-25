@@ -8,14 +8,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Checks an answer's proper nouns against the OSRS wiki, after discarding the
- * ones the supplied context already grounds.
- *
- * The wiki is the closed vocabulary of what exists in this game, and the page
- * a name lands on says how the name relates to it: an unchanged or
- * near-identical title is the thing itself, a wholly different title means the
- * name is not this game's name for anything, and no page at all means the wiki
- * has never heard of it. One batched request per answer, no LLM.
+ * Checks an answer's proper nouns against the OSRS wiki, after discarding
+ * ones the supplied context grounds. The landing page classifies each name:
+ * same or near-identical title is the thing itself, a different title means
+ * another game's name, no page means unknown. One batched request, no LLM.
  */
 class GroundingCheck
 {

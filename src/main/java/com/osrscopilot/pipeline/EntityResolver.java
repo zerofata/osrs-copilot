@@ -16,16 +16,10 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Deterministic entity resolution for player questions.
- *
- * The game is a closed world: ~4,700 tradeable items, ~3,200 monsters,
- * ~200 quests, 24 skills. Resolution order:
- * 1. N-gram lookup against local vocabularies (longest match wins).
- * 2. Unresolved spans batched through the wiki redirect API -- the wiki
- *    community has curated 20 years of slang as redirects ("addy bars" ->
- *    Adamantite bar, "kbd" -> King Black Dragon).
- *
- * No LLM involved: never hallucinates, latency is one HTTP call at most.
+ * Deterministic entity resolution: n-gram lookup against local vocabularies
+ * (longest match wins), then unresolved spans batched through the wiki
+ * redirect API, which resolves community slang ("addy bars" -> Adamantite
+ * bar, "kbd" -> King Black Dragon).
  */
 @Slf4j
 public class EntityResolver
@@ -41,17 +35,10 @@ public class EntityResolver
 		"hp", "hitpoints", "con", "construction", "range", "ranged", "ranging", "ranged",
 		"mage", "magic");
 
-	/** Question-meta vocabulary: the words players use to ASK about the game
-	 * rather than to name things in it -- question grammar ("whats",
-	 * "best"), quantity talk ("worth", "profit"), and gaming-register nouns
-	 * ("gear", "setup", "loadout": absent from English wordlists but never
-	 * a subject). Skips single tokens in the vocabulary pass and helps
-	 * judge whether a multi-word span is "mostly real words". Ordinary
-	 * common English needs no entry here: the frequency band in
-	 * isRedirectCandidate rejects it structurally. Two-letter words ("go",
-	 * "up") are the exception -- the wordlist cannot judge that length, so
-	 * curation here blocks their hostile redirects (the Games Room board
-	 * game, Underground Pass). */
+	/** Question vocabulary that is never a subject ("whats", "worth",
+	 * "gear"). Common English is rejected by the frequency band instead;
+	 * two-letter words ("go", "up") must be listed here because the
+	 * wordlist can't judge that length and both have wiki redirects. */
 	private static final Set<String> STOPWORDS = new HashSet<>(Arrays.asList(
 		("a an the i my me you your it its this that these those is are was be been "
 		+ "do does did can could should would will whats what's what how where when why which who "
@@ -65,9 +52,8 @@ public class EntityResolver
 		+ "player players people normally usually give giving steps step finish finished "
 		+ "complete completed start started solo group grouping").split(" ")));
 
-	/** Function words only -- no domain nouns. STOPWORDS deliberately holds
-	 * game words like "quest" and "gear" that do appear in page titles ("Cat
-	 * quest" redirects to Gertrude's Cat), so it can't judge span edges. */
+	/** Function words only; judges span edges. STOPWORDS can't: it holds
+	 * game words ("quest", "gear") that appear in page titles. */
 	private static final Set<String> GRAMMAR = new HashSet<>(Arrays.asList(
 		("a an the this that these those my your our their its his her "
 		+ "i me you it we they "
@@ -75,42 +61,28 @@ public class EntityResolver
 		+ "if while during until when where what whats what's how why which who whose "
 		+ "and or nor but not no yes vs versus "
 		+ "of in on at to from into onto with without for by about than then as "
-		// Apostrophe-less contractions and interjections: typed constantly,
-		// and some have real wiki redirects ("Im" -> Ironman Mode, "Ah" ->
-		// Alchemical Hydra) that would hijack the redirect pass.
+		// Some contractions have wiki redirects ("Im" -> Ironman Mode).
 		+ "im ive id ill youre ur hes shes theyre weve youve "
 		+ "dont doesnt didnt isnt arent wasnt werent cant wont couldnt "
 		+ "wouldnt shouldnt havent hasnt hadnt "
 		+ "ah hm hmm eh oh ok okay um uh huh hey yo "
-		// "nearest"/"closest" belong here, not just STOPWORDS: the wiki
-		// redirects "Nearest bank" to its "Closest..." navigation page, so
-		// the two-word span leaks through content counting. No real entity
-		// name begins or ends on a locational superlative.
+		// "Nearest bank" is a real wiki redirect; keeping the superlatives
+		// here stops such spans at the edge check.
 		+ "between above below over under across behind among upon after before near "
 		+ "nearest closest there here also just really please any some").split(" ")));
 
-	/**
-	 * What kind of text is being resolved. The vocabulary pass is safe on
-	 * anything; this only decides how eagerly the redirect pass may guess,
-	 * because guessing costs differ by register: a player's question is
-	 * slang-dense and worth wide guesses, model answer prose is ordinary
-	 * English where wide guesses manufacture junk ("Go" -> the Burthorpe
-	 * Games Room board game).
-	 */
+	/** The register of the text; controls how eagerly the redirect pass
+	 * guesses on single dictionary words. */
 	public enum Source
 	{
-		/** A context-free player question: nothing resolved means nothing
-		 * to talk about, so even bare dictionary words are worth trying
-		 * ("fury", "whip"). */
+		/** Context-free player question: bare dictionary words are tried
+		 * when nothing else resolved. */
 		QUESTION,
-		/** A follow-up in a conversation that already has a subject: the
-		 * need desperation exists to fill is already met, so dictionary
-		 * words are not tried. */
+		/** The conversation already has a subject: dictionary words are
+		 * not tried. */
 		FOLLOW_UP,
-		/** Model-written answer prose (subject inheritance): single words
-		 * are prose, not slang -- no single-token redirect guesses at all.
-		 * Real answer-introduced subjects are multi-word proper names
-		 * ("Meiyerditch Labs"), which still resolve. */
+		/** Model answer prose: no single-token guesses; multi-word proper
+		 * names still resolve. */
 		ANSWER
 	}
 
@@ -155,9 +127,8 @@ public class EntityResolver
 	{
 		if (itemVocab == null)
 		{
-			// GE catalogue plus untradeables, junk-filtered at the source;
-			// values are the canonical page, so versioned names ("Fire cape
-			// (l)") retrieve their shared page.
+			// Values are the canonical page: versioned names ("Fire cape
+			// (l)") map to their shared page.
 			Map<String, String> items = new HashMap<>();
 			for (String[] it : wiki.knownItemNames())
 			{
@@ -178,8 +149,7 @@ public class EntityResolver
 	public void resolveInto(String text, Collection<String> questNames, Resolution into)
 		throws IOException
 	{
-		// QUESTION register: game-state text is a bare trusted name
-		// ("Greater demons") and gets the full resolution a question would.
+		// Game-state names are trusted; resolve at full question register.
 		Resolution extra = resolve(text, questNames, Source.QUESTION);
 		for (String kind : new String[]{"items", "monsters", "quests", "skills", "pages"})
 		{
@@ -194,13 +164,6 @@ public class EntityResolver
 		}
 	}
 
-	/**
-	 * @param source the text's register (see {@link Source}). Desperation
-	 * widening (trying bare dictionary words as redirects) exists to find
-	 * SOMETHING in a context-free question; anywhere else it manufactures
-	 * junk pages from ordinary words ("master", "list") that crowd the real
-	 * subject out of the prefetch budget.
-	 */
 	public Resolution resolve(String question, Collection<String> questNames, Source source)
 		throws IOException
 	{
@@ -224,10 +187,8 @@ public class EntityResolver
 		{
 			questVocab.put(norm(q), q);
 		}
-		// Players name series quests bare ("Dragon Slayer", "Monkey Madness")
-		// but the client's quest list only has numbered entries. Alias the
-		// bare name to the series opener; a real quest with that exact name
-		// keeps priority via putIfAbsent.
+		// Alias bare series names ("Dragon Slayer") to the numbered opener;
+		// putIfAbsent keeps a real quest with that exact name first.
 		for (String q : questNames)
 		{
 			String n = norm(q);
@@ -255,10 +216,8 @@ public class EntityResolver
 					continue;
 				}
 				String gram = String.join(" ", Arrays.copyOfRange(tokens, i, i + size));
-				// Single letters are noise; two-letter slang is real and
-				// resolves through redirects ("cg", "kc") or skill aliases
-				// ("hp", "rc"). GRAMMAR and the digit guard keep chat
-				// shorthand and level numbers out of the redirect pass.
+				// Single letters are noise; two-letter slang ("hp", "cg")
+				// is real.
 				if (size == 1 && (STOPWORDS.contains(gram) || gram.length() < 2))
 				{
 					continue;
@@ -296,8 +255,7 @@ public class EntityResolver
 		boolean vocabHit = !result.items.isEmpty() || !result.monsters.isEmpty()
 			|| !result.quests.isEmpty() || !result.skills.isEmpty();
 
-		// Candidate spans that don't overlap a confirmed match.
-		// Short spans are the likeliest slang, so prefer them.
+		// Shortest spans first: they are the likeliest slang.
 		unresolved.sort((a, b) -> Integer.compare(a[1], b[1]));
 		Map<String, int[]> chosen = new LinkedHashMap<>();
 		Set<String> english = wiki.englishWords();
@@ -314,8 +272,6 @@ public class EntityResolver
 				continue;
 			}
 			String gram = String.join(" ", gramTokens);
-			// Inherited conversation context counts as "already resolved":
-			// it satisfies the same need desperation exists to fill.
 			if (!chosen.containsKey(gram)
 				&& isRedirectCandidate(span[1], gramTokens, gram, english, common,
 					vocabHit || source != Source.QUESTION, source))
@@ -324,9 +280,7 @@ public class EntityResolver
 			}
 		}
 
-		// Longest mention wins, as in the vocabulary pass: a hit from a longer
-		// span suppresses hits from spans it overlaps ("crystal armor" beats
-		// "armor"), and prefetch sees the most specific pages first.
+		// Accept longest span first: "crystal armor" suppresses "armor".
 		List<Map.Entry<String, String[]>> hits =
 			new ArrayList<>(redirectBatch(new ArrayList<>(chosen.keySet()), questVocab).entrySet());
 		hits.sort((a, b) -> Integer.compare(chosen.get(b.getKey())[1], chosen.get(a.getKey())[1]));
@@ -337,14 +291,9 @@ public class EntityResolver
 			{
 				continue;
 			}
-			// An English word must prove itself by landing on a typed
-			// entity: "fury" -> Amulet of fury resolves, but "bow" -> Bow
-			// is the word's ordinary sense wearing a page title. Slang
-			// keeps generic pages ("toa" -> Tombs of Amascut), two-letter
-			// shorthand is exempt because the wordlist cannot judge it
-			// ("ge" -> Grand Exchange), and facility nouns are exempt
-			// because their pages ARE generic ("house" -> Player-owned
-			// house).
+			// An English word must land on a typed entity ("fury" ->
+			// Amulet of fury yes, "bow" -> the Bow page no). Two-letter
+			// shorthand and facility nouns are exempt.
 			String gram = hit.getKey();
 			if (span[1] == 1 && gram.length() > 2 && english.contains(gram)
 				&& !facilityNoun(gram) && "pages".equals(hit.getValue()[0]))
@@ -377,10 +326,8 @@ public class EntityResolver
 			String pl = p.toLowerCase(Locale.ROOT);
 			return allNames.stream().anyMatch(other -> !pl.equals(other) && other.contains(pl));
 		});
-		// Glossary pages define a term ("kc" redirects to Kill count). The
-		// definition is the subject only when nothing else resolved; next
-		// to a real subject ("kc for corrupted gauntlet") it is noise in a
-		// page slot the subject may need.
+		// A glossary page ("kc" -> Kill count) is only the subject when
+		// nothing else resolved.
 		if (hasSubjectBesides(result, GLOSSARY_PAGES))
 		{
 			result.pages.removeIf(GLOSSARY_PAGES::contains);
@@ -400,16 +347,13 @@ public class EntityResolver
 		return result.pages.stream().anyMatch(p -> !ignoredPages.contains(p));
 	}
 
-	/** Exclusion cues. "not" covers "not on X" / "not X"; the rest are the
-	 * prepositions of exclusion. Deliberately NOT "don't/haven't": "I don't
-	 * have the armor" is a statement about the armor, and the armor's facts
-	 * are exactly what the answer needs. */
+	/** Exclusion cues. "don't/haven't" are deliberately absent: "I don't
+	 * have the armor" still needs the armor's facts. */
 	private static final Set<String> NEGATIONS = new HashSet<>(Arrays.asList(
 		"not", "without", "excluding", "except", "besides", "minus", "ignoring"));
 
-	/** True when the question mentions the word at least once NOT under a
-	 * negation cue ("on task" yes; "not on task" no). Lets keyword rules
-	 * outside the vocabulary pass share the resolver's negation semantics. */
+	/** True when the word appears at least once outside a negation
+	 * ("on task" yes; "not on task" no). */
 	static boolean mentionsAffirmatively(String question, String word)
 	{
 		String[] tokens = norm(question).split(" +");
@@ -423,13 +367,9 @@ public class EntityResolver
 		return false;
 	}
 
-	/**
-	 * True when the span sits under a negation ("not on consumables",
-	 * "except for the amulet"): the player is excluding the thing, so it
-	 * must not drive prefetch. Only function words may intervene between the
-	 * cue and the mention; a content word ("don't HAVE the armor") breaks
-	 * the chain, so absence-talk still resolves its entity.
-	 */
+	/** True when the span sits under a negation cue with only function
+	 * words between; a content word breaks the chain ("don't HAVE the
+	 * armor" still resolves the armor). */
 	private static boolean negated(String[] tokens, int start)
 	{
 		for (int back = 1; back <= 3 && start - back >= 0; back++)
@@ -447,24 +387,15 @@ public class EntityResolver
 		return false;
 	}
 
-	/**
-	 * A mention of a thing never begins or ends on a function word. Without
-	 * this the window straddles conjunctions and the wiki resolves the result:
-	 * "blowpipe or" (from "blowpipe or bowfa") is a real redirect to a blowpipe
-	 * ornament kit, since "(or)" is how the game names those. Nothing is lost
-	 * by rejecting the span -- its content core is its own candidate span.
-	 */
+	/** A mention never begins or ends on a function word: "blowpipe or"
+	 * is a real redirect (the game names ornament kits "(or)"). */
 	private static boolean spansFunctionWord(String[] gramTokens)
 	{
 		return GRAMMAR.contains(gramTokens[0]) || GRAMMAR.contains(gramTokens[gramTokens.length - 1]);
 	}
 
-	/** Common nouns whose game-facility sense dominates in a game question:
-	 * "my bank", "closer to a bank", "difference between houses" are about
-	 * the facilities, not the English words. Exempt from the common-band
-	 * block and from the typed-entity requirement (their pages are generic),
-	 * but still desperation-only like any dictionary word. Deliberately a
-	 * tiny closed set. */
+	/** Common nouns whose game-facility sense dominates in a game question;
+	 * exempt from the common-band block and the typed-entity requirement. */
 	private static final Set<String> FACILITY_NOUNS =
 		new HashSet<>(Arrays.asList("bank", "house"));
 
@@ -474,41 +405,26 @@ public class EntityResolver
 			|| (gram.endsWith("s") && FACILITY_NOUNS.contains(gram.substring(0, gram.length() - 1)));
 	}
 
-	/**
-	 * Single-token candidacy follows one principle: absence from English is
-	 * evidence of slang, so the redirect is trusted ("kbd", "tbow", "toa");
-	 * membership in English demands proof. Common-band words ("up", "want",
-	 * "game") never qualify -- their ordinary sense always dominates, and
-	 * many carry real wiki redirects ("Want" -> Wanted!, "Up" ->
-	 * Underground Pass). Rare-band words ("fury",
-	 * "bow") are tried only in desperation, and their hit must additionally
-	 * land on a typed entity (see the acceptance loop in resolve()).
-	 */
+	/** Absence from English is evidence of slang, so the redirect is
+	 * trusted ("kbd", "toa"); English words need proof. Common-band words
+	 * never qualify, rare-band words only when nothing else resolved. */
 	private static boolean isRedirectCandidate(int size, String[] gramTokens, String gram,
 		Set<String> english, Set<String> common, boolean subjectKnown, Source source)
 	{
 		if (size == 1)
 		{
-			// Answer prose has no single-word slang, only single English
-			// words. Real answer-introduced subjects are multi-word names,
-			// which the branch below still tries.
 			if (source == Source.ANSWER)
 			{
 				return false;
 			}
-			// A bare number is a level or quantity, never a subject; the
-			// wiki redirects "99" to Skill mastery, which would pollute
-			// every level-target question.
+			// A bare number is a level, not a subject ("99" redirects to
+			// Skill mastery).
 			if (gram.chars().allMatch(Character::isDigit))
 			{
 				return false;
 			}
-			// At two letters the wordlist can't judge anything: it holds
-			// junk entries like "cg" and "ge" that would shelve real
-			// player shorthand, AND common words like "ca" that ARE real
-			// shorthand here (Combat Achievements). Curation owns this
-			// length -- function grammar lives in GRAMMAR, question-meta
-			// ("go", "up") in STOPWORDS, both filtered before this point.
+			// The wordlist can't judge two-letter words; GRAMMAR and
+			// STOPWORDS have already filtered the junk ones.
 			if (gram.length() == 2)
 			{
 				return true;
@@ -550,9 +466,8 @@ public class EntityResolver
 			{
 				return new String[]{"monsters", monsterVocab.get(candidate)};
 			}
-			// Skills outrank items: the item index contains interface
-			// pseudo-items named exactly after skills ("Smithing (interface
-			// item)"), and a bare skill name always means the skill.
+			// Skills outrank items: the item index has interface
+			// pseudo-items named exactly after skills.
 			if (SKILL_ALIASES.containsKey(candidate))
 			{
 				return new String[]{"skills", capitalize(SKILL_ALIASES.get(candidate))};
@@ -577,7 +492,6 @@ public class EntityResolver
 		{
 			return out;
 		}
-		// The wiki API caps a query at 50 titles.
 		List<String> capped = grams.subList(0, Math.min(25, grams.size()));
 		StringBuilder titles = new StringBuilder();
 		for (String g : capped)
@@ -632,8 +546,6 @@ public class EntityResolver
 			{
 				target = target.substring(0, frag);
 			}
-			// Wiki naming convention for navigation-only pages: no prose to
-			// retrieve, so they are never worth a fact block.
 			if (target.endsWith("(disambiguation)"))
 			{
 				continue;
@@ -645,7 +557,7 @@ public class EntityResolver
 	}
 
 	/** Parses a MediaWiki "normalized"/"redirects" hop array into a
-	 * from -> to map. Shared with WikiContent's redirect resolution. */
+	 * from -> to map. */
 	static Map<String, String> fromToMap(JsonObject q, String key)
 	{
 		Map<String, String> map = new HashMap<>();

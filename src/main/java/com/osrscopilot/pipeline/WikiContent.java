@@ -34,17 +34,13 @@ class WikiContent
 	private static final int PAGE_CHAR_LIMIT = 7000;
 	private static final int WIKITEXT_CHAR_LIMIT = 12000;
 
-	/**
-	 * TTL for the wiki-GET cache. Follow-up turns re-prefetch the same
-	 * pages, and wiki content rarely changes within a day. Not applied to
-	 * the prices API (prices move) or snapshots (own 7-day disk cache).
-	 */
+	/** TTL for the wiki-GET cache. Not applied to the prices API (prices
+	 * move) or snapshots (own 7-day disk cache). */
 	private static final long CONTENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 	private static final int CONTENT_CACHE_MAX_ENTRIES = 256;
 
-	/** Standard wiki appendix and boilerplate sections; never worth a
-	 * heading slot in the TOC line, and dropped first when a page fact is
-	 * over budget. */
+	/** Standard wiki appendix sections; excluded from the TOC line and
+	 * dropped first when over budget. */
 	private static final Set<String> NOISE_SECTIONS = Set.of(
 		"changes", "references", "trivia", "gallery", "see also", "external links",
 		"official worlds", "music", "developers");
@@ -87,10 +83,9 @@ class WikiContent
 		return fresh;
 	}
 
-	/** Runs a bucket query. API-level errors (bad field name after an
-	 * upstream schema change, malformed query) throw rather than reading
-	 * as an empty result: an empty result means the subject doesn't
-	 * exist, and conflating the two hides schema drift. */
+	/** Runs a bucket query. API-level errors throw rather than reading as
+	 * empty: empty means the subject doesn't exist, and conflating the
+	 * two hides upstream schema drift. */
 	JsonObject bucket(String query) throws IOException
 	{
 		JsonObject r = cachedGet(WIKI_API + "?action=bucket&format=json&query=" + Http.enc(query));
@@ -109,9 +104,8 @@ class WikiContent
 		return cachedGet(WIKI_API + "?action=query&format=json&" + params);
 	}
 
-	/** Search the wiki. Returns [{title, snippet, headings}]. Headings (top
-	 * hits only) show each page's structure up front, so the follow-up can
-	 * be a targeted section fetch instead of a blind full-page read. */
+	/** Search the wiki: [{title, snippet, headings}]. Headings let the
+	 * follow-up be a targeted section fetch. */
 	List<Map<String, Object>> search(String query)
 	{
 		try
@@ -144,9 +138,8 @@ class WikiContent
 		}
 	}
 
-	/** Top-level section headings of a page, appendix noise excluded.
-	 * Empty on failure: headings decorate search results and error
-	 * messages, and are never worth failing the caller over. */
+	/** Top-level headings, appendix noise excluded. Empty on failure:
+	 * headings only decorate. */
 	List<String> topSections(String title)
 	{
 		try
@@ -176,14 +169,8 @@ class WikiContent
 		}
 	}
 
-	/**
-	 * Resolves each name to the wiki page it lands on, or null when the wiki
-	 * has no such page. The landing page says how a name relates to the game:
-	 * an unchanged title is the thing itself, a near-identical title is a
-	 * spelling or plural variant, and a wholly different title means the name
-	 * is not this game's name for anything (RS3's "Anachronia" resolves to
-	 * "Fossil Island"). Batched 50 per request (API limit).
-	 */
+	/** Resolves each name to the wiki page it lands on, or null when no
+	 * such page exists. Batched 50 per request (API limit). */
 	Map<String, String> resolveTitles(Collection<String> names) throws IOException
 	{
 		Map<String, String> resolved = new LinkedHashMap<>();
@@ -227,12 +214,9 @@ class WikiContent
 		return resolved;
 	}
 
-	/**
-	 * Page content, truncated. Plaintext extract normally; falls back to raw
-	 * wikitext when the extract lost the page's substance. Returns null when
-	 * the page doesn't exist -- the one not-found convention for all content
-	 * methods here; only the LLM tool boundary turns that into an error value.
-	 */
+	/** Page content, truncated: plaintext extract, falling back to raw
+	 * wikitext when the extract lost the page's substance. Null when the
+	 * page doesn't exist. */
 	String page(String title)
 	{
 		return page(title, 0);
@@ -243,8 +227,8 @@ class WikiContent
 	{
 		try
 		{
-			// prop=info gives the page's wikitext size, so the extract can be
-			// measured against what it was made from in the same request.
+		// prop=info returns the wikitext size, so the extract can be
+		// measured against its source in one request.
 			JsonObject r = wikiQuery("prop=extracts%7Cinfo&explaintext=1&redirects=1"
 				+ "&titles=" + Http.enc(title));
 			JsonObject pages = r.getAsJsonObject("query").getAsJsonObject("pages");
@@ -280,13 +264,9 @@ class WikiContent
 		return null;
 	}
 
-	/**
-	 * Whether a plaintext extract lost the page's substance to table
-	 * stripping. Table-only pages extract to a shell of section headings
-	 * with nothing under them, which reads as "the wiki has nothing here"
-	 * and invites the model to fill the gap from memory. Table-gutted pages
-	 * measure well below the 0.3 threshold; prose pages sit at 0.39+.
-	 */
+	/** Whether a plaintext extract lost the page's substance to table
+	 * stripping. Table-gutted pages measure below the 0.3 threshold;
+	 * prose pages sit at 0.39+. */
 	private static boolean isHusk(String extract, int pageBytes)
 	{
 		return pageBytes > 0 && (double) extract.length() / pageBytes < HUSK_RATIO;
@@ -301,11 +281,8 @@ class WikiContent
 		return r.getAsJsonObject("parse").getAsJsonArray("sections");
 	}
 
-	/**
-	 * Fetch one section of a page by heading, using the wiki's own document
-	 * structure. Returns null when the page has no matching section --
-	 * callers treat that as "nothing to add".
-	 */
+	/** Fetch one section of a page by heading; null when no section
+	 * matches. */
 	String sectionByHeading(String title, Pattern headingPattern, int charLimit)
 	{
 		try
@@ -331,9 +308,8 @@ class WikiContent
 		return null;
 	}
 
-	/** Wiki pages often keep large tables on subpages transcluded as
-	 * {{/Locations}} etc.; the raw wikitext only has the stub. Follow the
-	 * wiki's own structure one level down. */
+	/** Large tables often live on transcluded subpages ({{/Locations}});
+	 * the raw wikitext only has the stub, so follow one level down. */
 	private static final Pattern SUBPAGE_TRANSCLUSION =
 		Pattern.compile("\\{\\{/([^}|{]+)(\\|[^}]*)?\\}\\}");
 
@@ -359,11 +335,8 @@ class WikiContent
 	// ------------------------------------------------------------------
 
 	/** Sections whose whole body is a render-time query template are
-	 * invisible to both extraction paths: the plaintext extract strips the
-	 * rendered table and the raw wikitext holds only the {{...}} stub.
-	 * "Used in recommended equipment" -- the wiki's ranked index of which
-	 * strategy pages recommend an item, the data a best-in-slot question
-	 * needs -- exists nowhere else, so it is rendered explicitly. */
+	 * invisible to both extraction paths. "Used in recommended equipment"
+	 * exists nowhere else, so it is rendered explicitly. */
 	private static final String USED_IN_REC_EQUIP = "Used in recommended equipment";
 	private static final Pattern REC_EQUIP_HUSK = Pattern.compile(
 		"(\\{\\{Used in recommended equipment[^}]*\\}\\}|==+ *Used in recommended equipment *==+)");
@@ -383,12 +356,8 @@ class WikiContent
 	private static final Pattern SORT_VALUE_ATTR =
 		Pattern.compile("data-sort-value=\"[^\"\\n]*\" *\\| *");
 
-	/**
-	 * Removes wikitext with zero semantic content for a text model: image
-	 * and file links (with their captions), gallery blocks, citation
-	 * templates (tweet/news/forum references with archive URLs), and
-	 * sort-value cell attributes.
-	 */
+	/** Removes wikitext with no semantic content: image/file links,
+	 * gallery blocks, citation templates, sort-value cell attributes. */
 	static String scrubWikitext(String text)
 	{
 		text = GALLERY_BLOCK.matcher(text).replaceAll("");
@@ -401,10 +370,9 @@ class WikiContent
 
 	/**
 	 * Removes every occurrence of a balanced construct that starts with
-	 * startToken (matched case-insensitively), tracking nesting -- file
-	 * captions can contain [[links]] and citation templates can
-	 * nest templates. An unclosed construct is left untouched rather than
-	 * eating the rest of the page.
+	 * startToken (matched case-insensitively), tracking nesting: captions
+	 * contain [[links]] and citations nest templates. An unclosed
+	 * construct is left untouched.
 	 */
 	private static String stripBalanced(String text, String startToken, String open, String close)
 	{
@@ -447,20 +415,10 @@ class WikiContent
 		}
 	}
 
-	/**
-	 * Spends an over-budget page's char limit on whole sections instead of
-	 * cutting at a byte position: position-cut truncation lets one bloated
-	 * early section starve everything after it and ends facts mid-table,
-	 * dangling wikitext the model misreads. The lead always ships,
-	 * known-noise sections are dropped first, remaining sections are
-	 * admitted whole in page order, and a single section bigger than half
-	 * the budget is considered last so it can't crowd out the rest of the
-	 * page. Anything skipped is still named in the TOC line and one
-	 * wiki_page section call away.
-	 *
-	 * Degenerate pages (no headings, or one giant section holding all the
-	 * substance) fall back to position-cut: a cut table beats an empty fact.
-	 */
+	/** Spends an over-budget page's char limit on whole sections: the lead
+	 * always ships, noise sections drop first, the rest are admitted whole
+	 * in page order, and a section bigger than half the budget is weighed
+	 * last. Pages with no usable sections fall back to a position cut. */
 	static String budgetBySections(String text, int limit)
 	{
 		if (text.length() <= limit)
@@ -494,8 +452,7 @@ class WikiContent
 			}
 			int end = i + 1 < starts.size() ? starts.get(i + 1) : text.length();
 			String section = text.substring(starts.get(i), end);
-			// A giant section is weighed after everything else: admitted
-			// only into whatever budget the rest of the page left over.
+			// Admitted only into whatever budget the rest left over.
 			(section.length() > limit / 2 ? deferred : ordered).add(section);
 		}
 		ordered.addAll(deferred);
@@ -509,16 +466,13 @@ class WikiContent
 				admitted++;
 			}
 		}
-		// No section fit at all: the page's substance lives in one giant
-		// section (pure-table pages), and a bare lead reads as "the wiki
-		// has nothing here". A position-cut section carries more substance.
+		// No section fit: the substance is one giant section, and a
+		// position cut beats a bare lead.
 		return admitted == 0 && !ordered.isEmpty() ? truncate(text, limit) : out.toString();
 	}
 
-	/** The page's own table of contents, from the FULL text before any
-	 * truncation. Sits at the top like on the wiki itself, so a reader of
-	 * a truncated page still knows every section that exists and can fetch
-	 * one via wiki_page's section argument. */
+	/** The page's TOC from the full pre-truncation text, so a reader of a
+	 * truncated page still sees every section that exists. */
 	static String tocLine(String text)
 	{
 		List<String> toc = new ArrayList<>();
@@ -535,14 +489,9 @@ class WikiContent
 		return toc.size() >= 2 ? "[Sections: " + String.join("; ", toc) + "]\n\n" : "";
 	}
 
-	/**
-	 * Truncate page text to its budget, then re-attach any render-time query
-	 * section rendered for real. Appending AFTER truncation is deliberate:
-	 * the section sits at the tail of long pages, where a fixed budget would
-	 * silently drop the page's only unique data. The in-place husk (stub or
-	 * bare heading) is removed so the model never sees an empty section and
-	 * concludes the wiki has nothing there.
-	 */
+	/** Truncate, then append any render-time query section rendered for
+	 * real: the section sits at the tail of long pages where the budget
+	 * would drop it. The in-place husk is removed. */
 	private String withQuerySections(String title, String text, int charLimit)
 	{
 		boolean present = text.contains(USED_IN_REC_EQUIP);

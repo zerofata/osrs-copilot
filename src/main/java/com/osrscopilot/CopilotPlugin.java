@@ -59,12 +59,10 @@ import net.runelite.client.util.ImageUtil;
 import okhttp3.OkHttpClient;
 
 /**
- * OSRS Copilot: ask questions in the side panel, answered by an LLM with your
- * live game state and facts fetched from the OSRS Wiki / Grand Exchange.
- *
- * Fully self-contained: the whole pipeline (entity resolution, prefetch,
- * tool-calling synthesis) runs inside the plugin. The only things the user
- * configures are their LLM endpoint, key, model, and sampling settings.
+ * OSRS Copilot: ask questions in the side panel, answered by an LLM with
+ * your live game state and facts fetched from the OSRS Wiki / Grand
+ * Exchange. The user configures only their LLM endpoint, key, model, and
+ * sampling.
  */
 @Slf4j
 @PluginDescriptor(
@@ -109,13 +107,10 @@ public class CopilotPlugin extends Plugin
 	@Inject
 	private ScheduledExecutorService sharedExecutor;
 
-	/**
-	 * Dedicated worker for the pipeline. RuneLite's injected executor is a
-	 * SINGLE shared thread serving every plugin's background work; parking
-	 * it on a multi-minute LLM stream would stall the whole client. A
-	 * private single thread also serializes questions and dies with the
-	 * plugin.
-	 */
+	/** Dedicated pipeline worker: RuneLite's injected executor is one
+	 * shared thread for every plugin, and a multi-minute LLM stream would
+	 * stall it. A private single thread also serializes questions and
+	 * dies with the plugin. */
 	private ExecutorService pipelineExecutor;
 
 	private CopilotPipeline pipeline;
@@ -174,9 +169,8 @@ public class CopilotPlugin extends Plugin
 			return t;
 		});
 		pipeline = new CopilotPipeline(okHttpClient, gson, CACHE_DIR);
-		// The Plugin Hub install warning covers third-party-server consent;
-		// warming only fetches static vocabulary from the plugin's GitHub,
-		// and nothing reaches an LLM until the user configures an endpoint.
+		// Warming only fetches static vocabulary from the plugin's GitHub;
+		// nothing reaches an LLM until the user configures an endpoint.
 		pipelineExecutor.execute(pipeline::warmCaches);
 		iconStore = new IconStore(new File(CACHE_DIR, "icons"),
 			itemManager, spriteManager, skillIconManager);
@@ -289,13 +283,9 @@ public class CopilotPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * A theme is baked into every component at construction, so switching
-	 * means building a fresh panel. The conversation replays into it exactly
-	 * as rendered, so a rebuild never costs the player their chat; old
-	 * messages keep the previous theme's entity colors, since re-running
-	 * decoration would need each past turn's game capture.
-	 */
+	/** A theme is baked into every component at construction, so switching
+	 * builds a fresh panel and replays the conversation into it exactly as
+	 * rendered. */
 	private void applyTheme()
 	{
 		if (panel == null)
@@ -420,9 +410,8 @@ public class CopilotPlugin extends Plugin
 			log.debug("answered in {}ms, {} fact blocks, {} tool calls, {} context chars",
 				result.millis, result.factBlocks, result.toolLog.size(), result.contextChars);
 			String meta = answerMeta(result, gson);
-			// Entity decoration (wiki links, quest/item state colors) runs
-			// here on the worker thread: it may fetch the GE catalogue. A
-			// failure costs only the styling, never the answer.
+			// Decoration runs on the worker (it may fetch the GE
+			// catalogue); a failure costs only the styling.
 			String decorated = null;
 			try
 			{
@@ -455,11 +444,9 @@ public class CopilotPlugin extends Plugin
 	}
 
 	/** One dim HTML line under each answer disclosing what the model was
-	 * given: retrieved facts, tools it called, and token cost. Every wiki
-	 * page the answer drew on links its edit history: the page's
-	 * contributors hold the copyright (CC BY-NC-SA), and a history link is
-	 * the accepted way to credit them. Underlines are explicit because the
-	 * shared stylesheet suppresses them for the answer body's entity links. */
+	 * given. Wiki pages link their edit history: the contributors hold the
+	 * copyright (CC BY-NC-SA). Underlines are explicit because the shared
+	 * stylesheet suppresses them for entity links. */
 	static String answerMeta(CopilotPipeline.Result result, Gson gson)
 	{
 		StringBuilder sb = new StringBuilder();
@@ -621,10 +608,9 @@ public class CopilotPlugin extends Plugin
 		int id = event.getContainerId();
 		if (id == InventoryID.BANK)
 		{
-			// Authoritative capture. The drift audit (how far the tracked
-			// prediction strayed while the bank was closed) runs only on the
-			// visit's first capture: later captures fire per withdrawal and
-			// deposit, and diffing those merely echoes each interaction.
+			// The drift audit runs only on the visit's first capture:
+			// later captures fire per withdrawal/deposit, and diffing
+			// those merely echoes each interaction.
 			List<Map<String, Object>> fresh = reader.itemList(event.getItemContainer());
 			if (bankDriftAuditArmed)
 			{
@@ -650,10 +636,9 @@ public class CopilotPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		// Game messages (drops, task completions, level-ups) are useful
-		// question context; player chat is not. The disk log applies the
-		// SAME filter: other players' public and private chat is their
-		// data, and must never land in a file -- diagnostics or not.
+		// Game messages are useful question context; player chat is not.
+		// The disk log applies the same filter: other players' chat must
+		// never land in a file.
 		if (event.getType() == ChatMessageType.GAMEMESSAGE
 			|| event.getType() == ChatMessageType.SPAM)
 		{

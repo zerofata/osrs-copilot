@@ -15,13 +15,10 @@ import java.util.regex.Pattern;
 import net.runelite.api.Skill;
 
 /**
- * Entity-aware answer styling: quest names colored by the player's actual
- * progress, item names by where the player holds them (carried, banked, not
- * owned), monsters and pages from the answer's own retrieval linked plainly.
- * Every name links to its OSRS Wiki page.
- *
- * Purely deterministic: names are matched against vocabularies the client or
- * wiki provides; the model plays no part.
+ * Entity-aware answer styling: quest names colored by the player's
+ * progress, item names by where the player holds them, monsters and pages
+ * linked plainly. Every name links to its OSRS Wiki page. Deterministic;
+ * the model plays no part.
  */
 final class AnswerDecorator
 {
@@ -87,13 +84,9 @@ final class AnswerDecorator
 		.map(Skill::getName)
 		.collect(java.util.stream.Collectors.toList());
 
-	/**
-	 * Assemble the name vocabularies in precedence order: a name known
+	/** Assemble the name vocabularies in precedence order: a name known
 	 * several ways keeps its richest meaning (quest state over item over
-	 * plain page link). monsterNames covers monsters the route never
-	 * resolved; itemIds supplies sprites for unowned items (owned items
-	 * carry IDs in the capture).
-	 */
+	 * plain page link). */
 	static AnswerDecorator build(GameCapture cap, EntityResolver.Resolution entities,
 		List<String> monsterNames, List<String[]> itemNames,
 		Map<String, Integer> itemIds, IconStore icons)
@@ -141,9 +134,8 @@ final class AnswerDecorator
 		}
 		if (itemNames != null)
 		{
-			// {name, page}: versioned names ("Fire cape (l)") match by name
-			// but link to their shared page. Untradeables without a mapped
-			// ID render iconless rather than with a guessed image.
+			// Versioned names ("Fire cape (l)") match by name but link to
+			// their shared page; unmapped untradeables render iconless.
 			for (String[] it : itemNames)
 			{
 				Integer id = itemIds != null
@@ -285,8 +277,7 @@ final class AnswerDecorator
 				? icons.itemIconUrl(rule.iconItemId) : null;
 			if (iconUrl != null)
 			{
-				// border=0: linked images otherwise get the ancient
-				// browser-style link border box.
+				// border=0 kills the browser-style link border on images.
 				out.append("<img src='").append(iconUrl)
 					.append("' width='").append(rule.iconW)
 					.append("' height='").append(rule.iconH)
@@ -336,13 +327,9 @@ final class AnswerDecorator
 	private static final Pattern PROPER_NOUN_CONTINUES =
 		Pattern.compile("\\s+(?:(?:of|the|de)\\s+)*\\p{Lu}");
 
-	/**
-	 * True when the matched name is only a fragment of a longer proper noun
-	 * ("Bank" in "Bank of Gielinor", "Varrock" in "Varrock Teleport"). The
-	 * rule's page describes the whole name's referent, not the fragment's,
-	 * so linking the fragment would mislabel it. The longer name, if it is a
-	 * real page, is still caught by the unverified-name check.
-	 */
+	/** True when the matched name is only a fragment of a longer proper
+	 * noun ("Bank" in "Bank of Gielinor"); linking the fragment would
+	 * mislabel it. */
 	private static boolean fragmentOfLargerName(String html, int end)
 	{
 		Matcher m = PROPER_NOUN_CONTINUES.matcher(html);
@@ -357,24 +344,15 @@ final class AnswerDecorator
 	private static final Pattern PROPER_NOUN_PRECEDES =
 		Pattern.compile("(?<!\\p{L})\\p{Lu}[\\p{L}'-]*(?:\\s+(?:of|the|de))*\\s+\\z");
 
-	/**
-	 * Mirror of {@link #fragmentOfLargerName}: the match is the tail of a
-	 * longer title-case phrase ("demons" in "Greater demons", "Slayer" in
-	 * "Dragon Slayer II"), so linking it would mislabel the fragment. When
-	 * the longer phrase is itself a known name, its rule has already
-	 * claimed the whole span (rules match longest-first).
-	 *
-	 * A preceding capital only counts as evidence mid-sentence:
-	 * sentence-opening words are capitalized no matter what they are
-	 * ("The demons"), so a capital straight after start-of-text,
-	 * punctuation, or a tag must not suppress the link. A proper phrase
-	 * that itself opens a sentence is an accepted miss.
-	 */
+	/** The match is the tail of a longer title-case phrase ("demons" in
+	 * "Greater demons"); linking it would mislabel the fragment. A
+	 * preceding capital only counts mid-sentence: sentence openers are
+	 * capitalized no matter what ("The demons" must not suppress the
+	 * link). */
 	private static boolean tailOfLargerName(String html, int start)
 	{
 		Matcher m = PROPER_NOUN_PRECEDES.matcher(html);
-		// The preceding word sits within a few dozen chars; a bounded
-		// region keeps the scan O(1) per candidate match.
+		// A bounded region keeps the scan O(1) per candidate match.
 		m.region(Math.max(0, start - 48), start);
 		m.useTransparentBounds(true);
 		if (!m.find())

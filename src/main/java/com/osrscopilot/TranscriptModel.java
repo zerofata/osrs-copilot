@@ -6,10 +6,8 @@ import java.util.List;
 
 /**
  * The conversation transcript and its streaming state machine, free of any
- * Swing: which blocks exist, which one is receiving streamed text, what
- * rolls back on error. The panel renders from this and never mutates it
- * directly, so partial-answer and rollback behavior is unit-testable
- * without a display.
+ * Swing, so partial-answer and rollback behavior is unit-testable without
+ * a display.
  */
 class TranscriptModel
 {
@@ -23,9 +21,8 @@ class TranscriptModel
 		/** Interim activity (tool-call preamble, "Looking up ..." lines),
 		 * shown dim above the text; cleared when the final answer arrives. */
 		final List<String> working = new ArrayList<>();
-		/** Finished answers arrive pre-rendered and entity-decorated (wiki
-		 * links, quest/item state colors); streaming text renders live from
-		 * markdown until then. */
+		/** Finished answers arrive pre-rendered and entity-decorated;
+		 * streaming text renders live from markdown until then. */
 		String decoratedHtml;
 
 		Block(String who)
@@ -102,9 +99,8 @@ class TranscriptModel
 		return created;
 	}
 
-	/** Streamed text turned out not to be the answer (tool-call preamble).
-	 * It moves to a dim working note rather than vanishing, so the real
-	 * answer streams in clean below it. Returns true if anything changed. */
+	/** Streamed text turned out not to be the answer (tool-call preamble);
+	 * it moves to a dim working note. Returns true if anything changed. */
 	boolean discardPartial()
 	{
 		if (answerBlock == null)
@@ -129,11 +125,8 @@ class TranscriptModel
 		return created;
 	}
 
-	/**
-	 * Canonicalize the finished turn: the block becomes exactly the final
-	 * answer and working notes are dropped (the meta line keeps the record
-	 * of what ran). Returns the finished block for the view to re-render.
-	 */
+	/** Canonicalize the finished turn: the block becomes exactly the final
+	 * answer, working notes are dropped. Returns the block to re-render. */
 	Block completeAnswer(String answer, String decoratedHtml, String meta)
 	{
 		ensureAnswerBlock();

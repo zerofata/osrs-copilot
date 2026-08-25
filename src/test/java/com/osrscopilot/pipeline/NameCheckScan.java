@@ -9,12 +9,9 @@ import java.util.List;
 import okhttp3.OkHttpClient;
 
 /**
- * Measures the grounding check against real answers, so its noise level is a
- * number rather than a hope.
+ * Measures the grounding check's noise level against real answers.
  *
  * Usage: --answer FILE [--context FILE]
- *   answer   an answer the model produced
- *   context  the prompt it was given (grounded names come from here)
  */
 public class NameCheckScan
 {

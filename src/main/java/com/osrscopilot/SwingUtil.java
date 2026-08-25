@@ -57,8 +57,7 @@ final class SwingUtil
 	}
 
 	/** HTML pane tuned for card bodies: transparent, non-editable, entity
-	 * links colored but not underlined (color carries the state; underlining
-	 * every known name turns dense answers into noise). */
+	 * links colored but not underlined. */
 	static JEditorPane newHtmlPane(HyperlinkListener links, int fontPx)
 	{
 		JEditorPane pane = new JEditorPane()

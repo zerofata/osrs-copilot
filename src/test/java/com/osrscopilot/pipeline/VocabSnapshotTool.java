@@ -17,19 +17,12 @@ import java.util.zip.GZIPOutputStream;
 import okhttp3.OkHttpClient;
 
 /**
- * Compiles the bulk vocabularies the plugin needs (every item, monster,
- * place, the GE catalogue, the English wordlist) and writes them as gzipped
- * snapshots for publishing to the repo's vocab-data branch.
- *
- * This is the ONLY code that runs the wiki's expensive bulk queries, and it
- * runs once a week in our CI (.github/workflows/vocab-snapshot.yml) -- never
- * on a user's machine. Fifty thousand installs re-deriving the same 30k-row
- * item index against the wiki's database-backed bucket API is the load
- * pattern API operators rightly resent; one job publishing to a CDN is not.
- *
- * Every dataset has a minimum-size threshold. A wiki API change that guts a
- * dataset fails the job loudly and leaves the previous snapshot published:
- * we would rather serve week-old vocab than an empty one.
+ * Compiles the bulk vocabularies the plugin needs and writes them as
+ * gzipped snapshots for publishing to the vocab-data branch. The only code
+ * that runs the wiki's expensive bulk queries; it runs weekly in CI, never
+ * on a user's machine. Every dataset has a minimum-size threshold: a wiki
+ * API change that guts a dataset fails the job and leaves the previous
+ * snapshot published.
  */
 public final class VocabSnapshotTool
 {
@@ -64,11 +57,8 @@ public final class VocabSnapshotTool
 			System.out.println("pacing: " + (paceMs / 1000) + "s before each request");
 		}
 
-		// Thresholds are ~85% of the live counts measured 2026-08-16
-		// (mapping 4652, monsters 1617, items 11432, locations 895,
-		// wordlist 10000; strategy subpages 128 measured 2026-08-20). These
-		// datasets only ever grow with game updates; a dip below means the
-		// query broke, not the game shrank.
+		// ~85% of the live counts measured 2026-08. These datasets only
+		// grow with game updates; a dip below means the query broke.
 		tool.write(outDir, "ge_mapping.json", tool.geMapping(), 4000, "GE mapping entries");
 		Set<String> monsters = tool.monsterNameSet();
 		tool.write(outDir, "monsters_v2.json",
@@ -128,11 +118,9 @@ public final class VocabSnapshotTool
 		return new Sized(text, text.split("\n").length);
 	}
 
-	/** Prefer page_name over the infobox name: it is the exact wiki title,
-	 * so strategy subpages and dropsline page_name queries match without
-	 * casing surprises. Paginated defensively: the bucket fits in one page
-	 * today (~1.6k unique names), but versioned monsters multiply rows and
-	 * nothing warns when a dataset outgrows a single request. */
+	/** page_name is the exact wiki title, so downstream queries match
+	 * without casing surprises. Paginated defensively: versioned monsters
+	 * multiply rows and nothing warns when a dataset outgrows one page. */
 	private Set<String> monsterNameSet() throws IOException
 	{
 		Set<String> names = new TreeSet<>();
@@ -167,18 +155,10 @@ public final class VocabSnapshotTool
 		return names;
 	}
 
-	/**
-	 * Every /Strategies guide subpage that exists, from two sweeps run
-	 * weekly on the CI runner (never on clients). Strategies hang off far
-	 * more than monsters -- raids, minigames, activities (Tombs of
-	 * Amascut, Wintertodt, Inferno) -- so a title search finds every REAL
-	 * page with the suffix (~3 paginated requests). Search skips redirect
-	 * titles, which still fetch fine (Dust devil/Strategies redirects to
-	 * its guide), so monster-derived titles are additionally batch
-	 * existence-checked, 50 per request (~35 requests). Clients use the
-	 * union to skip guaranteed-404 strategy fetches and to advertise
-	 * existing guide pages at zero request cost.
-	 */
+	/** Every /Strategies guide subpage that exists. A title search finds
+	 * every real page with the suffix but skips redirect titles (which
+	 * still fetch fine), so monster-derived titles are additionally batch
+	 * existence-checked, 50 per request. */
 	private Sized strategiesIndex(Set<String> monsterNames) throws IOException
 	{
 		Set<String> exists = new TreeSet<>();
@@ -216,12 +196,9 @@ public final class VocabSnapshotTool
 		return new Sized(gson.toJson(exists), exists.size());
 	}
 
-	/**
-	 * Every "Slayer task/..." guide subpage, redirect aliases included
-	 * ("Slayer task/Bloodveld" and ".../Bloodvelds" both resolve): the
-	 * aliases are free matching surface for clients mapping a creature
-	 * name to its task guide. One paginated prefix query.
-	 */
+	/** Every "Slayer task/..." guide subpage, redirect aliases included:
+	 * the aliases are matching surface for mapping a creature name to its
+	 * task guide. */
 	private Sized slayerTaskIndex() throws IOException
 	{
 		Set<String> titles = new TreeSet<>();

@@ -6,10 +6,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Table-driven phrasing corpus over the pure classification seam
- * (Router.classifyNeeds). The anti-brittleness ratchet: every phrasing a
- * real player used that missed becomes a one-line row here, so coverage
- * only ever grows. No network, no resolver -- entity presence is a flag.
+ * Table-driven phrasing corpus over Router.classifyNeeds. Every phrasing a
+ * real player used that missed becomes a one-line row here. No network, no
+ * resolver -- entity presence is a flag.
  */
 public class RouterPhrasingTest
 {

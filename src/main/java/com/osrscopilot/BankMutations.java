@@ -13,18 +13,11 @@ import net.runelite.api.gameval.InventoryID;
 import net.runelite.client.game.ItemManager;
 
 /**
- * Applies the bank changes that happen while the bank is closed, so the
- * stored snapshot stays accurate between authoritative captures. Two paths
- * are tracked: deposit boxes (inventory/equipment decreases while the
- * deposit box interface is open are deposits) and the Grand Exchange's
- * collect-to-bank (uncollected buy fills and cancelled-sell remainders are
- * credited when banked). Client thread only.
- *
- * Deltas are credit-only and deliberately conservative: an ambiguous
- * collect clears the tracking instead of guessing, because a missed credit
- * self-heals at the next bank open while an invented one is a wrong
- * ownership answer until then. Untracked paths (POH butlers,
- * direct-to-bank rewards, play on other devices) self-heal the same way.
+ * Applies bank changes that happen while the bank is closed: deposit-box
+ * deposits and the Grand Exchange's collect-to-bank. Client thread only.
+ * Deltas are credit-only and conservative: an ambiguous collect clears the
+ * tracking instead of guessing -- a missed credit self-heals at the next
+ * bank open, an invented one is a wrong ownership answer until then.
  */
 @Slf4j
 class BankMutations
@@ -225,13 +218,9 @@ class BankMutations
 		return out;
 	}
 
-	/**
-	 * The GE bookkeeping: per slot, the offer's item and how many of it are
-	 * sitting uncollected. Buy fills accrue from quantitySold deltas; a
-	 * cancelled sell's remainder becomes collectable as items. Sold-portion
-	 * proceeds and refunds are coins, which are not tracked. Pure state
-	 * machine, no client types.
-	 */
+	/** Per GE slot, the offer's item and how much sits uncollected. Buy
+	 * fills accrue from quantitySold deltas; a cancelled sell's remainder
+	 * becomes collectable. Coins are not tracked. */
 	static class GeSlots
 	{
 		private static final int SLOTS = 8;
