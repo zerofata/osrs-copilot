@@ -109,7 +109,7 @@ public class CopilotPipeline
 		this.router = new Router(resolver);
 		this.prefetcher = new Prefetcher(wiki, gson);
 		this.toolRegistry = new ToolRegistry(wiki, gson);
-		this.promptBuilder = new PromptBuilder(gson, wiki, hiscores);
+		this.promptBuilder = new PromptBuilder(gson, hiscores);
 	}
 
 	/** Invalidates the hiscores cache; see {@link Hiscores}. */
@@ -126,7 +126,6 @@ public class CopilotPipeline
 			wiki.geMapping();
 			wiki.monsterNames();
 			wiki.englishWords();
-			wiki.locationIndex();
 		}
 		catch (IOException e)
 		{

@@ -67,7 +67,6 @@ public final class VocabSnapshotTool
 		// 178 live titles measured 2026-08-21, redirect aliases included.
 		tool.write(outDir, "slayer_tasks.json", tool.slayerTaskIndex(), 150, "slayer task subpages");
 		tool.write(outDir, "items.json", tool.itemIndex(), 10000, "item index rows");
-		tool.write(outDir, "locations-v2.json", tool.locationIndex(), 750, "location points");
 		tool.write(outDir, "english_10k.txt", tool.wordlist(), 9000, "wordlist lines");
 
 		// For humans inspecting the branch; clients never read this.
@@ -280,110 +279,6 @@ public final class VocabSnapshotTool
 			}
 		}
 		return new Sized(gson.toJson(out), out.size());
-	}
-
-	/** Named places with world coordinates: pages with a location infobox
-	 * (what counts as a place) joined to the map bucket (where each page's
-	 * map is centered), dungeons tagged as entrances. */
-	private Sized locationIndex() throws IOException
-	{
-		Set<String> places = new HashSet<>();
-		for (int offset = 0; offset < 100_000; offset += 5000)
-		{
-			JsonObject r = bucket("bucket('infobox_location').select('page_name')"
-				+ ".limit(5000).offset(" + offset + ").run()");
-			JsonArray rows = r.getAsJsonArray("bucket");
-			if (rows == null || rows.size() == 0)
-			{
-				break;
-			}
-			for (JsonElement row : rows)
-			{
-				JsonElement name = row.getAsJsonObject().get("page_name");
-				if (name != null && !name.isJsonNull())
-				{
-					places.add(name.getAsString());
-				}
-			}
-			if (rows.size() < 5000)
-			{
-				break;
-			}
-		}
-		Set<String> dungeons = categoryMembers("Dungeons");
-
-		List<WikiApi.NamedPoint> points = new ArrayList<>();
-		Set<String> seen = new HashSet<>();
-		for (int offset = 0; offset < 100_000; offset += 5000)
-		{
-			JsonObject page = bucket("bucket('map').select('page_name','options')"
-				+ ".limit(5000).offset(" + offset + ").run()");
-			JsonArray rows = page.getAsJsonArray("bucket");
-			if (rows == null || rows.size() == 0)
-			{
-				break;
-			}
-			for (JsonElement e : rows)
-			{
-				JsonObject row = e.getAsJsonObject();
-				if (!row.has("page_name") || row.get("page_name").isJsonNull()
-					|| !row.has("options") || row.get("options").isJsonNull())
-				{
-					continue;
-				}
-				String name = row.get("page_name").getAsString();
-				if (!places.contains(name) || !seen.add(name))
-				{
-					continue;
-				}
-				try
-				{
-					JsonObject opts = gson.fromJson(row.get("options").getAsString(), JsonObject.class);
-					// mapID 0 = the main game world surface map.
-					if (opts.has("mapID") && opts.get("mapID").getAsInt() != 0)
-					{
-						seen.remove(name);
-						continue;
-					}
-					WikiApi.NamedPoint p = new WikiApi.NamedPoint();
-					p.name = name;
-					p.x = (int) opts.get("x").getAsDouble();
-					p.y = (int) opts.get("y").getAsDouble();
-					p.plane = opts.has("plane") ? opts.get("plane").getAsInt() : 0;
-					p.entrance = dungeons.contains(name);
-					points.add(p);
-				}
-				catch (Exception ignored)
-				{
-					seen.remove(name);
-				}
-			}
-			if (rows.size() < 5000)
-			{
-				break;
-			}
-		}
-		return new Sized(gson.toJson(points), points.size());
-	}
-
-	/** All page titles in a wiki category, following pagination. */
-	private Set<String> categoryMembers(String category) throws IOException
-	{
-		Set<String> titles = new HashSet<>();
-		String cont = null;
-		do
-		{
-			JsonObject r = getJson(WIKI_API + "?action=query&list=categorymembers&format=json"
-				+ "&cmtitle=" + Http.enc("Category:" + category) + "&cmlimit=500"
-				+ (cont != null ? "&cmcontinue=" + Http.enc(cont) : ""));
-			for (JsonElement e : r.getAsJsonObject("query").getAsJsonArray("categorymembers"))
-			{
-				titles.add(e.getAsJsonObject().get("title").getAsString());
-			}
-			cont = r.has("continue")
-				? r.getAsJsonObject("continue").get("cmcontinue").getAsString() : null;
-		} while (cont != null);
-		return titles;
 	}
 
 	private JsonObject bucket(String query) throws IOException

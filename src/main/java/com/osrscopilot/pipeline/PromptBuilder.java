@@ -1,10 +1,13 @@
 package com.osrscopilot.pipeline;
 
 import com.google.gson.Gson;
+import com.osrscopilot.area.GameArea;
+import com.osrscopilot.area.GameAreaType;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import net.runelite.api.coords.WorldPoint;
 
 /**
  * Assembles everything the model reads: the system prompt, the user message
@@ -74,13 +77,11 @@ class PromptBuilder
 		+ "question and reflect the current moment; earlier answers may describe older state.\n";
 
 	private final Gson gson;
-	private final WikiApi wiki;
 	private final Hiscores hiscores;
 
-	PromptBuilder(Gson gson, WikiApi wiki, Hiscores hiscores)
+	PromptBuilder(Gson gson, Hiscores hiscores)
 	{
 		this.gson = gson;
-		this.wiki = wiki;
 		this.hiscores = hiscores;
 	}
 
@@ -226,9 +227,9 @@ class PromptBuilder
 		}
 	}
 
-	/** Resolve raw coordinates to named places; the coordinates stay in
-	 * as supplementary data. */
-	private Map<String, Object> groundedLocation(GameCapture cap)
+	/** Resolve raw coordinates to the named game area containing them; the
+	 * coordinates stay in as supplementary data. */
+	private static Map<String, Object> groundedLocation(GameCapture cap)
 	{
 		if (cap.location == null)
 		{
@@ -242,56 +243,40 @@ class PromptBuilder
 		Object yo = cap.location.get("y");
 		if (xo instanceof Number && yo instanceof Number)
 		{
-			int x = ((Number) xo).intValue();
-			int y = ((Number) yo).intValue();
-		// The primary place must be one the player can BE in: a dungeon's
-		// surface marker is its entrance, not the dungeon.
-			WikiApi.NamedPoint place = null;
-			WikiApi.NamedPoint second = null;
-			WikiApi.NamedPoint entrance = null;
-			for (WikiApi.NamedPoint p : wiki.nearestPlaces(x, y, 4))
+			Object po = cap.location.get("plane");
+			WorldPoint point = new WorldPoint(((Number) xo).intValue(),
+				((Number) yo).intValue(),
+				po instanceof Number ? ((Number) po).intValue() : 0);
+			GameArea area = GameArea.fromPoint(point);
+			if (area != null)
 			{
-				if (Math.round(Math.sqrt(WikiApi.distSq(p, x, y))) > 300)
-				{
-					break;
-				}
-				if (p.entrance)
-				{
-					entrance = entrance == null ? p : entrance;
-				}
-				else if (place == null)
-				{
-					place = p;
-				}
-				else if (second == null)
-				{
-					second = p;
-				}
+				out.put("place", area.getState() + placeQualifier(area.getGameAreaType()));
 			}
-			if (place != null)
+			else if (point.getY() >= 6400)
 			{
-				long dist = Math.round(Math.sqrt(WikiApi.distSq(place, x, y)));
-				out.put("place", place.name + (dist <= 40 ? "" : " (~" + dist + " tiles away)"));
-				if (second != null)
-				{
-					out.put("also_near", second.name);
-				}
+				// Above y=6400 is dungeons and instances.
+				out.put("place", "underground or instanced area");
 			}
-			if (entrance != null)
-			{
-				long dist = Math.round(Math.sqrt(WikiApi.distSq(entrance, x, y)));
-				out.put("nearby_entrance", entrance.name
-					+ " (surface entrance ~" + dist + " tiles away; the player is NOT inside)");
-			}
-			if (place == null && entrance == null && y >= 6400)
-			{
-				// Above y=6400 is dungeons and instances; the index
-				// covers only the surface map.
-				out.put("place", "underground or instanced area (off the surface map)");
-			}
-			// No named place within range; say nothing rather than guess.
+			// Unmapped surface spot: say nothing rather than guess.
 		}
 		return out;
+	}
+
+	/** Area names like "Kraken" or "Barrows" read as monsters or activities
+	 * without a hint that they name the player's surroundings. */
+	private static String placeQualifier(GameAreaType type)
+	{
+		switch (type)
+		{
+			case BOSSES:
+				return " (boss area)";
+			case MINIGAMES:
+				return " (minigame area)";
+			case RAIDS:
+				return " (raid)";
+			default:
+				return "";
+		}
 	}
 
 	/** Newest-first budget: keep the most recent exchanges within both the

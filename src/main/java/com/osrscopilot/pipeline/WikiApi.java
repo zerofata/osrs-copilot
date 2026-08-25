@@ -21,31 +21,11 @@ public class WikiApi
 	private final WikiContent content;
 	private final WikiLookups lookups;
 
-	/** A named place on the world map, from the wiki's live map data. */
-	public static class NamedPoint
-	{
-		public String name;
-		public int x;
-		public int y;
-		public int plane;
-		/** True for dungeons: their marker on the surface map is the
-		 * entrance, not the place itself -- a surface player standing on
-		 * it is NEXT TO the dungeon, never in it. */
-		public boolean entrance;
-	}
-
 	public WikiApi(Http http, Gson gson, File cacheDir)
 	{
 		this.vocab = new VocabSnapshots(http, gson, cacheDir);
 		this.content = new WikiContent(http);
 		this.lookups = new WikiLookups(http, gson, content, vocab);
-	}
-
-	static long distSq(NamedPoint p, int x, int y)
-	{
-		long dx = p.x - x;
-		long dy = p.y - y;
-		return dx * dx + dy * dy;
 	}
 
 	// ---- vocabularies (VocabSnapshots) --------------------------------
@@ -88,16 +68,6 @@ public class WikiApi
 	Set<String> commonEnglishWords()
 	{
 		return vocab.commonEnglishWords();
-	}
-
-	List<NamedPoint> locationIndex() throws IOException
-	{
-		return vocab.locationIndex();
-	}
-
-	List<NamedPoint> nearestPlaces(int x, int y, int count)
-	{
-		return vocab.nearestPlaces(x, y, count);
 	}
 
 	// ---- live content (WikiContent) -----------------------------------

@@ -40,7 +40,6 @@ class VocabSnapshots
 	private Set<String> monsterNames;
 	private Set<String> englishWords;
 	private Set<String> commonEnglishWords;
-	private List<WikiApi.NamedPoint> locationIndex;
 	private List<String[]> itemNameIndex;
 	private Map<String, Integer> itemIdsByName;
 	private Set<String> strategiesPages;
@@ -234,37 +233,6 @@ class VocabSnapshots
 	 * one game word inside the band, resolves through the vocabulary
 	 * pass instead. */
 	private static final int COMMON_ENGLISH_BAND = 1000;
-
-	/** Named places with world coordinates, joined from the wiki's
-	 * location infoboxes and map bucket by the snapshot job. */
-	synchronized List<WikiApi.NamedPoint> locationIndex() throws IOException
-	{
-		if (locationIndex == null)
-		{
-			locationIndex = gson.fromJson(snapshot("locations-v2.json"),
-				new TypeToken<List<WikiApi.NamedPoint>>() { }.getType());
-		}
-		return locationIndex;
-	}
-
-	/** Nearest named places to a world point, closest first. Empty on
-	 * index failure -- callers fall back to raw coordinates. */
-	List<WikiApi.NamedPoint> nearestPlaces(int x, int y, int count)
-	{
-		try
-		{
-			List<WikiApi.NamedPoint> index = locationIndex();
-			List<WikiApi.NamedPoint> sorted = new ArrayList<>(index);
-			sorted.sort((a, b) -> Long.compare(
-				WikiApi.distSq(a, x, y), WikiApi.distSq(b, x, y)));
-			return sorted.subList(0, Math.min(count, sorted.size()));
-		}
-		catch (Exception e)
-		{
-			log.warn("location index unavailable", e);
-			return new ArrayList<>();
-		}
-	}
 
 	/** Fresh disk copy, else download, else stale disk copy (stale beats
 	 * broken). */
