@@ -162,23 +162,8 @@ class ToolRegistry
 						: ". Sections: " + String.join("; ", available)));
 			}
 			String text = wiki.page(title);
-			if (text == null)
-			{
-				return Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
-			}
-			// A strategy page's recommended gear lives in a table the
-			// plaintext extract drops; append it as wikitext, mirroring
-			// the prefetcher's "Recommended equipment" fact.
-			if (title.endsWith("/Strategies"))
-			{
-				String equip = wiki.sectionByHeading(title,
-					Prefetcher.EQUIPMENT_HEADING, SECTION_CHAR_LIMIT);
-				if (equip != null)
-				{
-					text += "\n\n[Recommended equipment section, tables intact]\n" + equip;
-				}
-			}
-			return text;
+			return text != null ? text
+				: Map.of("error", "No page found for '" + title + "'. Try wiki_search first.");
 		}));
 		tools.put("item_sources", annotated(owned, ownedNames, annotateOwnership,
 			args -> wiki.itemSources(str(args, "item_name"))));

@@ -42,9 +42,8 @@ class Prefetcher
 	private static final Pattern LOCATION_ROW_DEST =
 		Pattern.compile("(?m)^\\|\\s*location\\s*=\\s*\\[\\[([^\\]|]+)");
 
-	/** Strategy pages keep recommended gear in an equipment/setup section.
-	 * Shared with ToolRegistry's wiki_page so both fetch paths find it. */
-	static final Pattern EQUIPMENT_HEADING =
+	/** Strategy pages keep recommended gear in an equipment/setup section. */
+	private static final Pattern EQUIPMENT_HEADING =
 		Pattern.compile("(?i)\\b(equipment|gear|setups?|loadout)\\b");
 
 	private final WikiApi wiki;
