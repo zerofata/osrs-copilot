@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.inject.Provides;
+import com.osrscopilot.area.Areas;
 import com.osrscopilot.pipeline.CopilotPipeline;
 import com.osrscopilot.pipeline.EmptyAnswerException;
 import com.osrscopilot.pipeline.GameCapture;
@@ -29,6 +30,7 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.CommandExecuted;
@@ -589,6 +591,31 @@ public class CopilotPlugin extends Plugin
 		if ("probe".equalsIgnoreCase(event.getCommand()))
 		{
 			pendingSnapshotLabel = "manual";
+		}
+		// Dev aid: ::place prints what the prompt's location line will say
+		// for the current position.
+		if ("place".equalsIgnoreCase(event.getCommand()))
+		{
+			WorldPoint wp = client.getLocalPlayer() != null
+				? client.getLocalPlayer().getWorldLocation() : null;
+			String msg;
+			if (wp == null)
+			{
+				msg = "Copilot place: no player location";
+			}
+			else
+			{
+				String name = Areas.resolve(wp);
+				if (name == null)
+				{
+					name = wp.getY() >= 6400
+						? "(unresolved; prompt says: underground or instanced area)"
+						: "(unresolved; prompt omits place)";
+				}
+				msg = "Copilot place: (" + wp.getX() + ", " + wp.getY() + ", "
+					+ wp.getPlane() + ") region " + wp.getRegionID() + " -> " + name;
+			}
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", msg, null);
 		}
 	}
 
