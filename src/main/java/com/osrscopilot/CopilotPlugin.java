@@ -560,6 +560,11 @@ public class CopilotPlugin extends Plugin
 			{
 				return "Endpoint unavailable (" + he.code + ") - resubmit in a moment. " + detail;
 			}
+			// Code 0: a mid-stream failure that carried no HTTP status.
+			if (he.code == 0)
+			{
+				return "Model provider error - resubmit in a moment. " + detail;
+			}
 			return "HTTP " + he.code + ": " + detail;
 		}
 		if (e instanceof IOException)

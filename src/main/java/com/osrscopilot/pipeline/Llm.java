@@ -117,9 +117,15 @@ public class Llm
 			body.add("tools", tools);
 			body.addProperty("tool_choice", "auto");
 		}
-		Map<String, String> headers = settings.apiKey.isEmpty()
-			? Map.of()
-			: Map.of("Authorization", "Bearer " + settings.apiKey);
+		// The attribution headers are OpenRouter's app identification;
+		// other endpoints ignore them.
+		Map<String, String> headers = new TreeMap<>();
+		headers.put("HTTP-Referer", "https://github.com/zerofata/osrs-copilot");
+		headers.put("X-Title", "OSRS Copilot");
+		if (!settings.apiKey.isEmpty())
+		{
+			headers.put("Authorization", "Bearer " + settings.apiKey);
+		}
 		String url = settings.baseUrl + "/chat/completions";
 
 		body.addProperty("stream", true);
@@ -132,8 +138,9 @@ public class Llm
 		}
 	}
 
-	/** Reassembles SSE delta chunks into a complete assistant message. */
-	private JsonObject readSseStream(BufferedSource source, StreamListener listener) throws IOException
+	/** Reassembles SSE delta chunks into a complete assistant message.
+	 * Package-private for tests. */
+	JsonObject readSseStream(BufferedSource source, StreamListener listener) throws IOException
 	{
 		StringBuilder content = new StringBuilder();
 		Map<Integer, JsonObject> toolCalls = new TreeMap<>();
@@ -152,6 +159,14 @@ public class Llm
 				break;
 			}
 			JsonObject chunk = gson.fromJson(data, JsonObject.class);
+			// A failure after streaming begins can't change the committed
+			// 200 status; OpenRouter delivers it as a chunk with a
+			// top-level error object and ends the stream.
+			if (chunk.has("error") && chunk.get("error").isJsonObject())
+			{
+				listener.onTurnDiscarded();
+				throw midStreamError(chunk.getAsJsonObject("error"));
+			}
 			if (chunk.has("usage") && chunk.get("usage").isJsonObject())
 			{
 				recordUsage(chunk.getAsJsonObject("usage"));
@@ -206,6 +221,23 @@ public class Llm
 		log.debug("llm call: finish={} contentChars={} toolCalls={}",
 			finishReason, content.length(), toolCalls.size());
 		return msg;
+	}
+
+	/** The error's code field is the upstream HTTP status when the
+	 * provider failed, but a string like "server_error" for internal
+	 * failures; string codes map to 0. */
+	private HttpException midStreamError(JsonObject err)
+	{
+		int code = 0;
+		if (err.has("code") && err.get("code").isJsonPrimitive()
+			&& err.getAsJsonPrimitive("code").isNumber())
+		{
+			code = err.get("code").getAsInt();
+		}
+		String message = err.has("message") && !err.get("message").isJsonNull()
+			? err.get("message").getAsString()
+			: "provider failed mid-stream";
+		return new HttpException(code, settings.baseUrl + "/chat/completions", message);
 	}
 
 	/** Tool calls stream as fragments keyed by index; id/name arrive once,
