@@ -117,15 +117,9 @@ public class Llm
 			body.add("tools", tools);
 			body.addProperty("tool_choice", "auto");
 		}
-		// The attribution headers are OpenRouter's app identification;
-		// other endpoints ignore them.
-		Map<String, String> headers = new TreeMap<>();
-		headers.put("HTTP-Referer", "https://github.com/zerofata/osrs-copilot");
-		headers.put("X-Title", "OSRS Copilot");
-		if (!settings.apiKey.isEmpty())
-		{
-			headers.put("Authorization", "Bearer " + settings.apiKey);
-		}
+		Map<String, String> headers = settings.apiKey.isEmpty()
+			? Map.of()
+			: Map.of("Authorization", "Bearer " + settings.apiKey);
 		String url = settings.baseUrl + "/chat/completions";
 
 		body.addProperty("stream", true);
@@ -164,7 +158,6 @@ public class Llm
 			// top-level error object and ends the stream.
 			if (chunk.has("error") && chunk.get("error").isJsonObject())
 			{
-				listener.onTurnDiscarded();
 				throw midStreamError(chunk.getAsJsonObject("error"));
 			}
 			if (chunk.has("usage") && chunk.get("usage").isJsonObject())
@@ -236,7 +229,7 @@ public class Llm
 		}
 		String message = err.has("message") && !err.get("message").isJsonNull()
 			? err.get("message").getAsString()
-			: "provider failed mid-stream";
+			: "";
 		return new HttpException(code, settings.baseUrl + "/chat/completions", message);
 	}
 

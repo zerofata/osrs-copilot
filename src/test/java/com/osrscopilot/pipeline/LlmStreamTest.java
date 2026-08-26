@@ -6,8 +6,6 @@ import java.io.IOException;
 import okio.Buffer;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
@@ -21,7 +19,6 @@ public class LlmStreamTest
 	private static class Recorder implements StreamListener
 	{
 		final StringBuilder deltas = new StringBuilder();
-		boolean discarded;
 
 		@Override
 		public void onDelta(String text)
@@ -32,7 +29,6 @@ public class LlmStreamTest
 		@Override
 		public void onTurnDiscarded()
 		{
-			discarded = true;
 		}
 
 		@Override
@@ -114,8 +110,7 @@ public class LlmStreamTest
 
 	/** A mid-stream failure arrives as a chunk with a top-level error
 	 * object under HTTP 200. It must surface as an exception carrying the
-	 * server's message, not as a truncated or empty answer, and the
-	 * partial text must be pulled off the display. */
+	 * server's message, not as a truncated or empty answer. */
 	@Test
 	public void midStreamErrorThrowsWithServerMessage()
 	{
@@ -138,7 +133,6 @@ public class LlmStreamTest
 		{
 			fail("expected HttpException, got " + e);
 		}
-		assertTrue("partial text must be discarded", listener.discarded);
 	}
 
 	/** Internal failures carry a string code ("server_error") instead of
@@ -163,16 +157,6 @@ public class LlmStreamTest
 		{
 			fail("expected HttpException, got " + e);
 		}
-	}
-
-	/** A clean stream must never signal a discard. */
-	@Test
-	public void cleanStreamDoesNotDiscard() throws IOException
-	{
-		parse(
-			"data: {\"choices\":[{\"delta\":{\"content\":\"fine\"},\"finish_reason\":\"stop\"}]}",
-			"data: [DONE]");
-		assertFalse(listener.discarded);
 	}
 
 	/** Endpoints that end the stream without [DONE] (connection close)
