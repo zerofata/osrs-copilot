@@ -251,10 +251,17 @@ class PromptBuilder
 			{
 				out.put("place", place);
 			}
+			else if (point.getX() >= 6400)
+			{
+				// Instanced content is translated to template coordinates
+				// before this check, so an untranslated far-x point is the
+				// sailing ocean.
+				out.put("place", "sailing at sea on a boat");
+			}
 			else if (point.getY() >= 6400)
 			{
-				// Above y=6400 is dungeons and instances.
-				out.put("place", "underground or instanced area");
+				// Above y=6400 with normal x is dungeons.
+				out.put("place", "underground area");
 			}
 			// Unmapped surface spot: say nothing rather than guess.
 		}

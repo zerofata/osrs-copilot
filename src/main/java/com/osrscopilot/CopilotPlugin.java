@@ -607,8 +607,10 @@ public class CopilotPlugin extends Plugin
 				String name = Areas.resolve(wp);
 				if (name == null)
 				{
-					name = wp.getY() >= 6400
-						? "(unresolved; prompt says: underground or instanced area)"
+					name = wp.getX() >= 6400
+						? "(unresolved; prompt says: sailing at sea on a boat)"
+						: wp.getY() >= 6400
+						? "(unresolved; prompt says: underground area)"
 						: "(unresolved; prompt omits place)";
 				}
 				msg = "Copilot place: (" + wp.getX() + ", " + wp.getY() + ", "
