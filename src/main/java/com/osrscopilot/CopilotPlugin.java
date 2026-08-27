@@ -253,6 +253,32 @@ public class CopilotPlugin extends Plugin
 		p.setSimpleMode(config.simpleMode());
 		p.setSimpleModeHandler(on ->
 			configManager.setConfiguration("osrscopilot", "simpleMode", on));
+		// Same deal for the setup form: it reads and writes the config
+		// entries the settings panel edits.
+		p.setSetupState(config.provider(), config.apiKey(), config.model(), config.apiBaseUrl());
+		p.setSetupHandler((provider, apiKey, model, customUrl, onDone) -> {
+			configManager.setConfiguration("osrscopilot", "provider", provider);
+			configManager.setConfiguration("osrscopilot", "apiKey", apiKey);
+			configManager.setConfiguration("osrscopilot", "model", model);
+			if (provider == LlmProvider.CUSTOM)
+			{
+				configManager.setConfiguration("osrscopilot", "apiBaseUrl", customUrl);
+			}
+			pipelineExecutor.execute(() -> {
+				String error = null;
+				try
+				{
+					pipeline.testEndpoint(llmSettings());
+				}
+				catch (Exception e)
+				{
+					log.debug("endpoint test failed", e);
+					error = friendlyError(e);
+				}
+				String err = error;
+				SwingUtilities.invokeLater(() -> onDone.accept(err));
+			});
+		});
 		return p;
 	}
 
@@ -282,6 +308,14 @@ public class CopilotPlugin extends Plugin
 		{
 			// Changed from the RuneLite config panel: mirror it on the toggle.
 			SwingUtilities.invokeLater(() -> panel.setSimpleMode(config.simpleMode()));
+		}
+		String key = event.getKey();
+		if (("provider".equals(key) || "apiKey".equals(key) || "model".equals(key)
+			|| "apiBaseUrl".equals(key)) && panel != null)
+		{
+			// Mirror config-panel edits into the setup form.
+			SwingUtilities.invokeLater(() -> panel.setSetupState(
+				config.provider(), config.apiKey(), config.model(), config.apiBaseUrl()));
 		}
 	}
 
@@ -320,8 +354,8 @@ public class CopilotPlugin extends Plugin
 		Llm.Settings settings = llmSettings();
 		if (!settings.isConfigured())
 		{
-			panel.showError("Set the API base URL and model in the plugin settings first "
-				+ "(wrench icon -> OSRS Copilot).");
+			panel.showError("Set up your LLM first: click New chat and fill in the form, "
+				+ "or use the plugin settings (wrench icon -> OSRS Copilot).");
 			return;
 		}
 		if (client.getGameState() != GameState.LOGGED_IN)
@@ -531,7 +565,9 @@ public class CopilotPlugin extends Plugin
 
 	private Llm.Settings llmSettings()
 	{
-		return new Llm.Settings(config.apiBaseUrl(), config.apiKey(), config.model(),
+		LlmProvider provider = config.provider();
+		String baseUrl = provider.baseUrl != null ? provider.baseUrl : config.apiBaseUrl();
+		return new Llm.Settings(baseUrl, config.apiKey(), config.model(),
 			config.temperature(), config.maxTokens());
 	}
 

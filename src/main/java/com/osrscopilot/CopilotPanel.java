@@ -15,10 +15,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
@@ -69,6 +72,8 @@ class CopilotPanel extends PluginPanel
 	private Consumer<String> askHandler;
 	private Runnable clearHandler;
 	private Consumer<Boolean> simpleModeHandler;
+	private SetupHandler setupHandler;
+	private final SetupCard setupCard;
 	private boolean busy;
 	private String statusBase = " ";
 
@@ -93,6 +98,7 @@ class CopilotPanel extends PluginPanel
 		popOut = new FlatButton("Pop out", theme, false);
 		simple = new FlatToggle("Simple", theme);
 		simple.setToolTipText("Short plain-text answers");
+		setupCard = new SetupCard();
 		popOutManager = new PopOutManager(this, content, popOut, input, theme);
 
 		messageList.setBackground(theme.surface);
@@ -210,6 +216,26 @@ class CopilotPanel extends PluginPanel
 	void setSimpleModeHandler(Consumer<Boolean> handler)
 	{
 		simpleModeHandler = handler;
+	}
+
+	/** Persist the connection settings, then verify them with one tiny
+	 * completion. Called on the EDT; onDone must also run on the EDT and
+	 * receives null on success, else a display error message. */
+	interface SetupHandler
+	{
+		void saveAndTest(LlmProvider provider, String apiKey, String model,
+			String customUrl, Consumer<String> onDone);
+	}
+
+	void setSetupHandler(SetupHandler handler)
+	{
+		setupHandler = handler;
+	}
+
+	/** Sync the setup form to the config values without firing the handler. */
+	void setSetupState(LlmProvider provider, String apiKey, String model, String customUrl)
+	{
+		setupCard.setState(provider, apiKey, model, customUrl);
 	}
 
 	/** Sync the toggle to the config value without firing the handler. */
@@ -400,6 +426,7 @@ class CopilotPanel extends PluginPanel
 		if (model.isEmpty())
 		{
 			messageList.add(welcomePane());
+			messageList.add(setupCard);
 		}
 		for (TranscriptModel.Block block : model.blocks())
 		{
@@ -473,8 +500,7 @@ class CopilotPanel extends PluginPanel
 			+ "\u201cwhere do i get addy bars\u201d<br>"
 			+ "\u201cis my slayer task worth doing\u201d</font>"
 			+ "<br><br><font size='3' color='" + theme.welcomeTextHex + "'>"
-			+ "Requires an OpenAI-compatible LLM endpoint, set in plugin settings."
-			+ "<br><br>Game data from the <a href='https://oldschool.runescape.wiki/'>OSRS Wiki</a>"
+			+ "Game data from the <a href='https://oldschool.runescape.wiki/'>OSRS Wiki</a>"
 			+ " and the wiki's <a href='https://prices.runescape.wiki/'>GE price API</a>."
 			+ "</font></center></body></html>");
 		return pane;
@@ -653,6 +679,160 @@ class CopilotPanel extends PluginPanel
 			{
 				SwingUtil.paintRounded(g, this, arc, bg, edge, bevel);
 			}
+			super.paintComponent(g);
+		}
+	}
+
+	/** LLM connection form, shown in the empty state; "New chat" brings it
+	 * back. Painted like an answer card so it reads as part of the
+	 * conversation surface. */
+	private final class SetupCard extends JPanel
+	{
+		private final JComboBox<LlmProvider> provider = new JComboBox<>(LlmProvider.values());
+		private final JPanel urlRow;
+		private final RoundedField customUrl = new RoundedField(theme);
+		private final RoundedPassword apiKey = new RoundedPassword(theme);
+		private final RoundedField model = new RoundedField(theme);
+		private final FlatButton save = new FlatButton("Save & test", theme, true);
+		private final JLabel note = SwingUtil.smoothLabel(" ");
+
+		SetupCard()
+		{
+			setOpaque(false);
+			setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+			setBorder(BorderFactory.createEmptyBorder(9, 12, 9, 11));
+
+			JLabel header = SwingUtil.smoothLabel("LLM CONNECTION");
+			header.setForeground(theme.botLabelFg);
+			header.setFont(theme.chromeFont != null ? theme.chromeFont.deriveFont(16f)
+				: header.getFont().deriveFont(Font.BOLD, 11f));
+			header.setAlignmentX(LEFT_ALIGNMENT);
+			header.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+			add(header);
+
+			provider.setAlignmentX(LEFT_ALIGNMENT);
+			add(row("Provider", provider));
+			urlRow = row("Base URL", customUrl);
+			add(urlRow);
+			add(row("API key", apiKey));
+			add(row("Model", model));
+
+			note.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
+				: note.getFont().deriveFont(Font.ITALIC, 12f));
+			note.setForeground(theme.statusFg);
+			JPanel actions = new JPanel(new BorderLayout(8, 0));
+			actions.setOpaque(false);
+			actions.setAlignmentX(LEFT_ALIGNMENT);
+			actions.add(save, BorderLayout.WEST);
+			actions.add(note, BorderLayout.CENTER);
+			add(actions);
+
+			provider.addActionListener(e -> syncVisibility());
+			save.addActionListener(e -> submit());
+			syncVisibility();
+		}
+
+		private JPanel row(String name, java.awt.Component field)
+		{
+			JLabel label = SwingUtil.smoothLabel(name);
+			label.setForeground(theme.statusFg);
+			label.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
+				: label.getFont().deriveFont(12f));
+			JPanel p = new JPanel(new BorderLayout(0, 2));
+			p.setOpaque(false);
+			p.setAlignmentX(LEFT_ALIGNMENT);
+			p.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+			p.add(label, BorderLayout.NORTH);
+			p.add(field, BorderLayout.CENTER);
+			return p;
+		}
+
+		private void syncVisibility()
+		{
+			urlRow.setVisible(provider.getSelectedItem() == LlmProvider.CUSTOM);
+			revalidate();
+			messageList.revalidate();
+			messageList.repaint();
+		}
+
+		void setState(LlmProvider p, String key, String modelName, String url)
+		{
+			provider.setSelectedItem(p);
+			apiKey.setText(key);
+			model.setText(modelName);
+			customUrl.setText(url);
+		}
+
+		private void submit()
+		{
+			LlmProvider p = (LlmProvider) provider.getSelectedItem();
+			String key = new String(apiKey.getPassword()).trim();
+			String modelName = model.getText().trim();
+			String url = customUrl.getText().trim();
+			if (p == LlmProvider.CUSTOM && url.isEmpty())
+			{
+				showNote("Enter the endpoint's base URL.", true);
+				return;
+			}
+			if (p == LlmProvider.OPENROUTER && key.isEmpty())
+			{
+				showNote("OpenRouter requires an API key.", true);
+				return;
+			}
+			if (modelName.isEmpty())
+			{
+				showNote("Enter a model name.", true);
+				return;
+			}
+			if (setupHandler == null)
+			{
+				return;
+			}
+			save.setEnabled(false);
+			showNote("Testing connection...", false);
+			setupHandler.saveAndTest(p, key, modelName, url, error -> {
+				save.setEnabled(true);
+				showNote(error == null ? "Connected. Ask away!" : error, error != null);
+			});
+		}
+
+		private void showNote(String text, boolean isError)
+		{
+			note.setText(text);
+			note.setToolTipText(text);
+			note.setForeground(isError ? ColorScheme.PROGRESS_ERROR_COLOR : theme.statusFg);
+		}
+
+		@Override
+		protected void paintComponent(Graphics g)
+		{
+			SwingUtil.paintRounded(g, this, theme.arc, theme.botCardBg,
+				theme.botCardEdge, theme.bevelLight);
+			super.paintComponent(g);
+		}
+	}
+
+	/** Themed password field; twin of {@link RoundedField}. */
+	private static final class RoundedPassword extends JPasswordField
+	{
+		private final Theme theme;
+
+		RoundedPassword(Theme theme)
+		{
+			this.theme = theme;
+			setOpaque(false);
+			setBackground(theme.inputBg);
+			setForeground(theme.inputText);
+			setCaretColor(theme.inputText);
+			setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+		}
+
+		@Override
+		protected void paintComponent(Graphics g)
+		{
+			SwingUtil.paintRounded(g, this, theme.arc, theme.inputBg,
+				hasFocus() ? theme.inputFocusEdge : theme.inputEdge, null);
+			SwingUtil.smooth(g);
 			super.paintComponent(g);
 		}
 	}

@@ -36,6 +36,7 @@ public final class UiPreview
 					render(name, 242, 620, true);
 					render(name, 560, 720, true);
 					render(name + "-welcome", 242, 620, false);
+					render(name + "-welcome-custom", 242, 620, false);
 				}
 			}
 			catch (Exception e)
@@ -58,6 +59,12 @@ public final class UiPreview
 			// The welcome render keeps Simple off, so both states appear
 			// across the preview set.
 			panel.setSimpleMode(true);
+		}
+		else if (tag.endsWith("-custom"))
+		{
+			// The setup form's second state: Custom endpoint with the
+			// base URL row revealed.
+			panel.setSetupState(LlmProvider.CUSTOM, "", "llama3", "http://localhost:8000/v1");
 		}
 		// Streamed content renders on a coalescing timer that can't fire
 		// while this thread owns the EDT; flush the pending render directly.

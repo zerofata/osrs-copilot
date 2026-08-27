@@ -52,15 +52,15 @@ public interface CopilotConfig extends Config
 	// The third-party-server disclosure is the Plugin Hub install warning;
 	// nothing is sent to an LLM until the user configures an endpoint here.
 	@ConfigItem(
-		keyName = "apiBaseUrl",
-		name = "API base URL",
-		description = "OpenAI-compatible base URL, e.g. https://openrouter.ai/api/v1 or http://localhost:11434/v1 (local)",
+		keyName = "provider",
+		name = "Provider",
+		description = "OpenRouter, or any custom OpenAI-compatible endpoint",
 		section = endpointSection,
 		position = 0
 	)
-	default String apiBaseUrl()
+	default LlmProvider provider()
 	{
-		return "";
+		return LlmProvider.OPENROUTER;
 	}
 
 	@ConfigItem(
@@ -84,6 +84,19 @@ public interface CopilotConfig extends Config
 		position = 2
 	)
 	default String model()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "apiBaseUrl",
+		name = "Custom base URL",
+		description = "OpenAI-compatible base URL, used only when Provider is Custom endpoint, "
+			+ "e.g. http://localhost:11434/v1",
+		section = endpointSection,
+		position = 3
+	)
+	default String apiBaseUrl()
 	{
 		return "";
 	}

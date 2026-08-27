@@ -2,6 +2,7 @@ package com.osrscopilot.pipeline;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -327,6 +328,35 @@ public class CopilotPipeline
 		p.prompt = promptBuilder.buildUserMessage(question, cap, facts,
 			p.bankInlined, ownershipComplete, p.offerOwnedSearch);
 		return p;
+	}
+
+	/** One minimal completion so the setup form can verify an endpoint;
+	 * throws with the provider's error on failure. */
+	public void testEndpoint(Llm.Settings settings) throws IOException
+	{
+		Llm llm = new Llm(http, gson, settings);
+		JsonObject m = new JsonObject();
+		m.addProperty("role", "user");
+		m.addProperty("content", "Reply with one word: OK");
+		JsonArray messages = new JsonArray();
+		messages.add(m);
+		llm.chat(messages, null, new StreamListener()
+		{
+			@Override
+			public void onDelta(String text)
+			{
+			}
+
+			@Override
+			public void onTurnDiscarded()
+			{
+			}
+
+			@Override
+			public void onStatus(String status)
+			{
+			}
+		});
 	}
 
 	public Result answer(String question, List<Exchange> history, GameCapture cap,
