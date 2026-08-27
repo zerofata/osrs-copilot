@@ -74,6 +74,10 @@ class CopilotPanel extends PluginPanel
 	private Consumer<Boolean> simpleModeHandler;
 	private SetupHandler setupHandler;
 	private final SetupCard setupCard;
+	private final JLabel setupLink;
+	private boolean setupOpen;
+	private boolean setupConfigured;
+	private boolean setupLinkHover;
 	private boolean busy;
 	private String statusBase = " ";
 
@@ -99,6 +103,38 @@ class CopilotPanel extends PluginPanel
 		simple = new FlatToggle("Simple", theme);
 		simple.setToolTipText("Short plain-text answers");
 		setupCard = new SetupCard();
+		setupLink = SwingUtil.smoothLabel(" ");
+		setupLink.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+		setupLink.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		setupLink.setToolTipText("Show or hide the LLM connection settings");
+		setupLink.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
+			: setupLink.getFont().deriveFont(12f));
+		setupLink.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				if (SwingUtilities.isLeftMouseButton(e))
+				{
+					setSetupOpen(!setupOpen);
+				}
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				setupLinkHover = true;
+				styleSetupLink();
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				setupLinkHover = false;
+				styleSetupLink();
+			}
+		});
+		styleSetupLink();
 		popOutManager = new PopOutManager(this, content, popOut, input, theme);
 
 		messageList.setBackground(theme.surface);
@@ -218,12 +254,15 @@ class CopilotPanel extends PluginPanel
 		simpleModeHandler = handler;
 	}
 
-	/** Persist the connection settings, then verify them with one tiny
-	 * completion. Called on the EDT; onDone must also run on the EDT and
-	 * receives null on success, else a display error message. */
+	/** Both methods are called on the EDT with the form's current values.
+	 * Test fires one tiny completion against those values without saving
+	 * them; onDone must run on the EDT and receives null on success, else
+	 * a display error message. */
 	interface SetupHandler
 	{
-		void saveAndTest(LlmProvider provider, String apiKey, String model,
+		void save(LlmProvider provider, String apiKey, String model, String customUrl);
+
+		void test(LlmProvider provider, String apiKey, String model,
 			String customUrl, Consumer<String> onDone);
 	}
 
@@ -236,6 +275,18 @@ class CopilotPanel extends PluginPanel
 	void setSetupState(LlmProvider provider, String apiKey, String model, String customUrl)
 	{
 		setupCard.setState(provider, apiKey, model, customUrl);
+		setupConfigured = model != null && !model.trim().isEmpty();
+		if (setupLink != null)
+		{
+			styleSetupLink();
+		}
+	}
+
+	/** Expand or collapse the setup form (dev tool + tests). */
+	void setSetupOpen(boolean open)
+	{
+		setupOpen = open;
+		rebuild();
 	}
 
 	/** Sync the toggle to the config value without firing the handler. */
@@ -426,7 +477,11 @@ class CopilotPanel extends PluginPanel
 		if (model.isEmpty())
 		{
 			messageList.add(welcomePane());
-			messageList.add(setupCard);
+			messageList.add(setupLink);
+			if (setupOpen)
+			{
+				messageList.add(setupCard);
+			}
 		}
 		for (TranscriptModel.Block block : model.blocks())
 		{
@@ -485,6 +540,16 @@ class CopilotPanel extends PluginPanel
 			JScrollBar bar = scroll.getVerticalScrollBar();
 			bar.setValue(bar.getMaximum());
 		});
+	}
+
+	/** Unconfigured, the link is the call to action; configured, it recedes
+	 * to status-line styling. */
+	private void styleSetupLink()
+	{
+		setupLink.setText(setupConfigured ? "LLM connection settings"
+			: "Set up your LLM to get started");
+		setupLink.setForeground(setupLinkHover ? theme.buttonFg
+			: setupConfigured ? theme.statusFg : theme.accent);
 	}
 
 	private JEditorPane welcomePane()
@@ -693,8 +758,12 @@ class CopilotPanel extends PluginPanel
 		private final RoundedField customUrl = new RoundedField(theme);
 		private final RoundedPassword apiKey = new RoundedPassword(theme);
 		private final RoundedField model = new RoundedField(theme);
-		private final FlatButton save = new FlatButton("Save & test", theme, true);
+		private final FlatButton save = new FlatButton("Save", theme, true);
+		private final FlatButton test = new FlatButton("Test", theme, false);
 		private final JLabel note = SwingUtil.smoothLabel(" ");
+		/** Body-on-card text color; statusFg is chrome-only and washes out
+		 * on the parchment card. */
+		private final Color labelFg = Color.decode(theme.noteHex);
 
 		SetupCard()
 		{
@@ -719,23 +788,27 @@ class CopilotPanel extends PluginPanel
 
 			note.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
 				: note.getFont().deriveFont(Font.ITALIC, 12f));
-			note.setForeground(theme.statusFg);
-			JPanel actions = new JPanel(new BorderLayout(8, 0));
-			actions.setOpaque(false);
-			actions.setAlignmentX(LEFT_ALIGNMENT);
-			actions.add(save, BorderLayout.WEST);
-			actions.add(note, BorderLayout.CENTER);
-			add(actions);
+			note.setForeground(labelFg);
+			JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+			buttons.setOpaque(false);
+			buttons.setAlignmentX(LEFT_ALIGNMENT);
+			buttons.add(save);
+			buttons.add(test);
+			add(buttons);
+			note.setAlignmentX(LEFT_ALIGNMENT);
+			note.setBorder(BorderFactory.createEmptyBorder(6, 2, 0, 2));
+			add(note);
 
 			provider.addActionListener(e -> syncVisibility());
-			save.addActionListener(e -> submit());
+			save.addActionListener(e -> save());
+			test.addActionListener(e -> test());
 			syncVisibility();
 		}
 
 		private JPanel row(String name, java.awt.Component field)
 		{
 			JLabel label = SwingUtil.smoothLabel(name);
-			label.setForeground(theme.statusFg);
+			label.setForeground(labelFg);
 			label.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
 				: label.getFont().deriveFont(12f));
 			JPanel p = new JPanel(new BorderLayout(0, 2));
@@ -763,36 +836,65 @@ class CopilotPanel extends PluginPanel
 			customUrl.setText(url);
 		}
 
-		private void submit()
+		/** Null when the form is submittable, else the message to show. */
+		private String invalidReason(LlmProvider p, String key, String modelName, String url)
+		{
+			if (p == LlmProvider.CUSTOM && url.isEmpty())
+			{
+				return "Enter the endpoint's base URL.";
+			}
+			if (p == LlmProvider.OPENROUTER && key.isEmpty())
+			{
+				return "OpenRouter requires an API key.";
+			}
+			if (modelName.isEmpty())
+			{
+				return "Enter a model name.";
+			}
+			return null;
+		}
+
+		private void save()
 		{
 			LlmProvider p = (LlmProvider) provider.getSelectedItem();
 			String key = new String(apiKey.getPassword()).trim();
 			String modelName = model.getText().trim();
 			String url = customUrl.getText().trim();
-			if (p == LlmProvider.CUSTOM && url.isEmpty())
+			String invalid = invalidReason(p, key, modelName, url);
+			if (invalid != null)
 			{
-				showNote("Enter the endpoint's base URL.", true);
-				return;
-			}
-			if (p == LlmProvider.OPENROUTER && key.isEmpty())
-			{
-				showNote("OpenRouter requires an API key.", true);
-				return;
-			}
-			if (modelName.isEmpty())
-			{
-				showNote("Enter a model name.", true);
+				showNote(invalid, true);
 				return;
 			}
 			if (setupHandler == null)
 			{
 				return;
 			}
-			save.setEnabled(false);
+			setupHandler.save(p, key, modelName, url);
+			showNote("Saved.", false);
+		}
+
+		private void test()
+		{
+			LlmProvider p = (LlmProvider) provider.getSelectedItem();
+			String key = new String(apiKey.getPassword()).trim();
+			String modelName = model.getText().trim();
+			String url = customUrl.getText().trim();
+			String invalid = invalidReason(p, key, modelName, url);
+			if (invalid != null)
+			{
+				showNote(invalid, true);
+				return;
+			}
+			if (setupHandler == null)
+			{
+				return;
+			}
+			test.setEnabled(false);
 			showNote("Testing connection...", false);
-			setupHandler.saveAndTest(p, key, modelName, url, error -> {
-				save.setEnabled(true);
-				showNote(error == null ? "Connected. Ask away!" : error, error != null);
+			setupHandler.test(p, key, modelName, url, error -> {
+				test.setEnabled(true);
+				showNote(error == null ? "Connected." : error, error != null);
 			});
 		}
 
@@ -800,7 +902,7 @@ class CopilotPanel extends PluginPanel
 		{
 			note.setText(text);
 			note.setToolTipText(text);
-			note.setForeground(isError ? ColorScheme.PROGRESS_ERROR_COLOR : theme.statusFg);
+			note.setForeground(isError ? ColorScheme.PROGRESS_ERROR_COLOR : labelFg);
 		}
 
 		@Override
@@ -812,7 +914,9 @@ class CopilotPanel extends PluginPanel
 		}
 	}
 
-	/** Themed password field; twin of {@link RoundedField}. */
+	/** Themed password field; twin of {@link RoundedField}. Pinned to the
+	 * basic UI: the client LAF adds a reveal-eye icon in its own fixed
+	 * grey, unreadable on the parchment card. */
 	private static final class RoundedPassword extends JPasswordField
 	{
 		private final Theme theme;
@@ -825,6 +929,12 @@ class CopilotPanel extends PluginPanel
 			setForeground(theme.inputText);
 			setCaretColor(theme.inputText);
 			setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+		}
+
+		@Override
+		public void updateUI()
+		{
+			setUI(new javax.swing.plaf.basic.BasicPasswordFieldUI());
 		}
 
 		@Override

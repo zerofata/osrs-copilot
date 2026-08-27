@@ -256,28 +256,42 @@ public class CopilotPlugin extends Plugin
 		// Same deal for the setup form: it reads and writes the config
 		// entries the settings panel edits.
 		p.setSetupState(config.provider(), config.apiKey(), config.model(), config.apiBaseUrl());
-		p.setSetupHandler((provider, apiKey, model, customUrl, onDone) -> {
-			configManager.setConfiguration("osrscopilot", "provider", provider);
-			configManager.setConfiguration("osrscopilot", "apiKey", apiKey);
-			configManager.setConfiguration("osrscopilot", "model", model);
-			if (provider == LlmProvider.CUSTOM)
+		p.setSetupHandler(new CopilotPanel.SetupHandler()
+		{
+			@Override
+			public void save(LlmProvider provider, String apiKey, String model, String customUrl)
 			{
-				configManager.setConfiguration("osrscopilot", "apiBaseUrl", customUrl);
+				configManager.setConfiguration("osrscopilot", "provider", provider);
+				configManager.setConfiguration("osrscopilot", "apiKey", apiKey);
+				configManager.setConfiguration("osrscopilot", "model", model);
+				if (provider == LlmProvider.CUSTOM)
+				{
+					configManager.setConfiguration("osrscopilot", "apiBaseUrl", customUrl);
+				}
 			}
-			pipelineExecutor.execute(() -> {
-				String error = null;
-				try
-				{
-					pipeline.testEndpoint(llmSettings());
-				}
-				catch (Exception e)
-				{
-					log.debug("endpoint test failed", e);
-					error = friendlyError(e);
-				}
-				String err = error;
-				SwingUtilities.invokeLater(() -> onDone.accept(err));
-			});
+
+			@Override
+			public void test(LlmProvider provider, String apiKey, String model,
+				String customUrl, java.util.function.Consumer<String> onDone)
+			{
+				String baseUrl = provider.baseUrl != null ? provider.baseUrl : customUrl;
+				Llm.Settings settings = new Llm.Settings(baseUrl, apiKey, model,
+					config.temperature(), config.maxTokens());
+				pipelineExecutor.execute(() -> {
+					String error = null;
+					try
+					{
+						pipeline.testEndpoint(settings);
+					}
+					catch (Exception e)
+					{
+						log.debug("endpoint test failed", e);
+						error = friendlyError(e);
+					}
+					String err = error;
+					SwingUtilities.invokeLater(() -> onDone.accept(err));
+				});
+			}
 		});
 		return p;
 	}

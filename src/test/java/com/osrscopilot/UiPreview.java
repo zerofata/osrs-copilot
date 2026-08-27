@@ -62,9 +62,10 @@ public final class UiPreview
 		}
 		else if (tag.endsWith("-custom"))
 		{
-			// The setup form's second state: Custom endpoint with the
-			// base URL row revealed.
+			// The setup form expanded, in its second state: Custom endpoint
+			// with the base URL row revealed.
 			panel.setSetupState(LlmProvider.CUSTOM, "", "llama3", "http://localhost:8000/v1");
+			panel.setSetupOpen(true);
 		}
 		// Streamed content renders on a coalescing timer that can't fire
 		// while this thread owns the EDT; flush the pending render directly.
