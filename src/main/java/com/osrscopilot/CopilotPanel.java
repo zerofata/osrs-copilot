@@ -74,10 +74,10 @@ class CopilotPanel extends PluginPanel
 	private Consumer<Boolean> simpleModeHandler;
 	private SetupHandler setupHandler;
 	private final SetupCard setupCard;
-	private final JLabel setupLink;
+	private final FlatButton setupLink;
+	private final JPanel setupLinkRow;
 	private boolean setupOpen;
 	private boolean setupConfigured;
-	private boolean setupLinkHover;
 	private boolean busy;
 	private String statusBase = " ";
 
@@ -103,37 +103,12 @@ class CopilotPanel extends PluginPanel
 		simple = new FlatToggle("Simple", theme);
 		simple.setToolTipText("Short plain-text answers");
 		setupCard = new SetupCard();
-		setupLink = SwingUtil.smoothLabel(" ");
-		setupLink.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-		setupLink.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		setupLink = new FlatButton(" ", theme, false);
 		setupLink.setToolTipText("Show or hide the LLM connection settings");
-		setupLink.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
-			: setupLink.getFont().deriveFont(12f));
-		setupLink.addMouseListener(new MouseAdapter()
-		{
-			@Override
-			public void mousePressed(MouseEvent e)
-			{
-				if (SwingUtilities.isLeftMouseButton(e))
-				{
-					setSetupOpen(!setupOpen);
-				}
-			}
-
-			@Override
-			public void mouseEntered(MouseEvent e)
-			{
-				setupLinkHover = true;
-				styleSetupLink();
-			}
-
-			@Override
-			public void mouseExited(MouseEvent e)
-			{
-				setupLinkHover = false;
-				styleSetupLink();
-			}
-		});
+		setupLink.addActionListener(e -> setSetupOpen(!setupOpen));
+		setupLinkRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 8));
+		setupLinkRow.setOpaque(false);
+		setupLinkRow.add(setupLink);
 		styleSetupLink();
 		popOutManager = new PopOutManager(this, content, popOut, input, theme);
 
@@ -477,7 +452,7 @@ class CopilotPanel extends PluginPanel
 		if (model.isEmpty())
 		{
 			messageList.add(welcomePane());
-			messageList.add(setupLink);
+			messageList.add(setupLinkRow);
 			if (setupOpen)
 			{
 				messageList.add(setupCard);
@@ -542,14 +517,9 @@ class CopilotPanel extends PluginPanel
 		});
 	}
 
-	/** Unconfigured, the link is the call to action; configured, it recedes
-	 * to status-line styling. */
 	private void styleSetupLink()
 	{
-		setupLink.setText(setupConfigured ? "LLM connection settings"
-			: "Set up your LLM to get started");
-		setupLink.setForeground(setupLinkHover ? theme.buttonFg
-			: setupConfigured ? theme.statusFg : theme.accent);
+		setupLink.setText(setupConfigured ? "LLM settings" : "Set up your LLM");
 	}
 
 	private JEditorPane welcomePane()
