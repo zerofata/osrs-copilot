@@ -91,7 +91,7 @@ public interface CopilotConfig extends Config
 	@ConfigItem(
 		keyName = "apiBaseUrl",
 		name = "Custom base URL",
-		description = "OpenAI-compatible base URL, used only when Provider is Custom endpoint, "
+		description = "OpenAI-compatible base URL, used only when Provider is Custom, "
 			+ "e.g. http://localhost:11434/v1",
 		section = endpointSection,
 		position = 3

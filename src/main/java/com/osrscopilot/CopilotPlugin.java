@@ -255,28 +255,30 @@ public class CopilotPlugin extends Plugin
 			configManager.setConfiguration("osrscopilot", "simpleMode", on));
 		// Same deal for the setup form: it reads and writes the config
 		// entries the settings panel edits.
-		p.setSetupState(config.provider(), config.apiKey(), config.model(), config.apiBaseUrl());
+		p.setSetupState(setupValues());
 		p.setSetupHandler(new CopilotPanel.SetupHandler()
 		{
 			@Override
-			public void save(LlmProvider provider, String apiKey, String model, String customUrl)
+			public void save(CopilotPanel.SetupValues v)
 			{
-				configManager.setConfiguration("osrscopilot", "provider", provider);
-				configManager.setConfiguration("osrscopilot", "apiKey", apiKey);
-				configManager.setConfiguration("osrscopilot", "model", model);
-				if (provider == LlmProvider.CUSTOM)
+				configManager.setConfiguration("osrscopilot", "provider", v.provider);
+				configManager.setConfiguration("osrscopilot", "apiKey", v.apiKey);
+				configManager.setConfiguration("osrscopilot", "model", v.model);
+				if (v.provider == LlmProvider.CUSTOM)
 				{
-					configManager.setConfiguration("osrscopilot", "apiBaseUrl", customUrl);
+					configManager.setConfiguration("osrscopilot", "apiBaseUrl", v.customUrl);
 				}
+				configManager.setConfiguration("osrscopilot", "temperature", v.temperature);
+				configManager.setConfiguration("osrscopilot", "maxTokens", v.maxTokens);
+				configManager.setConfiguration("osrscopilot", "maxToolTurns", v.toolTurns);
 			}
 
 			@Override
-			public void test(LlmProvider provider, String apiKey, String model,
-				String customUrl, java.util.function.Consumer<String> onDone)
+			public void test(CopilotPanel.SetupValues v, java.util.function.Consumer<String> onDone)
 			{
-				String baseUrl = provider.baseUrl != null ? provider.baseUrl : customUrl;
-				Llm.Settings settings = new Llm.Settings(baseUrl, apiKey, model,
-					config.temperature(), config.maxTokens());
+				String baseUrl = v.provider.baseUrl != null ? v.provider.baseUrl : v.customUrl;
+				Llm.Settings settings = new Llm.Settings(baseUrl, v.apiKey, v.model,
+					v.temperature, v.maxTokens);
 				pipelineExecutor.execute(() -> {
 					String error = null;
 					try
@@ -294,6 +296,13 @@ public class CopilotPlugin extends Plugin
 			}
 		});
 		return p;
+	}
+
+	private CopilotPanel.SetupValues setupValues()
+	{
+		return new CopilotPanel.SetupValues(config.provider(), config.apiKey(),
+			config.model(), config.apiBaseUrl(), config.temperature(),
+			config.maxTokens(), config.maxToolTurns());
 	}
 
 	private NavigationButton createNavButton(CopilotPanel forPanel)
@@ -325,11 +334,11 @@ public class CopilotPlugin extends Plugin
 		}
 		String key = event.getKey();
 		if (("provider".equals(key) || "apiKey".equals(key) || "model".equals(key)
-			|| "apiBaseUrl".equals(key)) && panel != null)
+			|| "apiBaseUrl".equals(key) || "temperature".equals(key)
+			|| "maxTokens".equals(key) || "maxToolTurns".equals(key)) && panel != null)
 		{
 			// Mirror config-panel edits into the setup form.
-			SwingUtilities.invokeLater(() -> panel.setSetupState(
-				config.provider(), config.apiKey(), config.model(), config.apiBaseUrl()));
+			SwingUtilities.invokeLater(() -> panel.setSetupState(setupValues()));
 		}
 	}
 

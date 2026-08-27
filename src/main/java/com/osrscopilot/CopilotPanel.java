@@ -229,16 +229,39 @@ class CopilotPanel extends PluginPanel
 		simpleModeHandler = handler;
 	}
 
+	/** Everything the setup form edits, mirroring the config entries. */
+	static final class SetupValues
+	{
+		final LlmProvider provider;
+		final String apiKey;
+		final String model;
+		final String customUrl;
+		final double temperature;
+		final int maxTokens;
+		final int toolTurns;
+
+		SetupValues(LlmProvider provider, String apiKey, String model, String customUrl,
+			double temperature, int maxTokens, int toolTurns)
+		{
+			this.provider = provider;
+			this.apiKey = apiKey;
+			this.model = model;
+			this.customUrl = customUrl;
+			this.temperature = temperature;
+			this.maxTokens = maxTokens;
+			this.toolTurns = toolTurns;
+		}
+	}
+
 	/** Both methods are called on the EDT with the form's current values.
 	 * Test fires one tiny completion against those values without saving
 	 * them; onDone must run on the EDT and receives null on success, else
 	 * a display error message. */
 	interface SetupHandler
 	{
-		void save(LlmProvider provider, String apiKey, String model, String customUrl);
+		void save(SetupValues values);
 
-		void test(LlmProvider provider, String apiKey, String model,
-			String customUrl, Consumer<String> onDone);
+		void test(SetupValues values, Consumer<String> onDone);
 	}
 
 	void setSetupHandler(SetupHandler handler)
@@ -247,10 +270,10 @@ class CopilotPanel extends PluginPanel
 	}
 
 	/** Sync the setup form to the config values without firing the handler. */
-	void setSetupState(LlmProvider provider, String apiKey, String model, String customUrl)
+	void setSetupState(SetupValues values)
 	{
-		setupCard.setState(provider, apiKey, model, customUrl);
-		setupConfigured = model != null && !model.trim().isEmpty();
+		setupCard.setState(values);
+		setupConfigured = values.model != null && !values.model.trim().isEmpty();
 		if (setupLink != null)
 		{
 			styleSetupLink();
@@ -728,6 +751,9 @@ class CopilotPanel extends PluginPanel
 		private final RoundedField customUrl = new RoundedField(theme);
 		private final RoundedPassword apiKey = new RoundedPassword(theme);
 		private final RoundedField model = new RoundedField(theme);
+		private final RoundedField temperature = new RoundedField(theme);
+		private final RoundedField maxTokens = new RoundedField(theme);
+		private final RoundedField toolTurns = new RoundedField(theme);
 		private final FlatButton save = new FlatButton("Save", theme, true);
 		private final FlatButton test = new FlatButton("Test", theme, false);
 		private final JLabel note = SwingUtil.smoothLabel(" ");
@@ -741,20 +767,18 @@ class CopilotPanel extends PluginPanel
 			setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 			setBorder(BorderFactory.createEmptyBorder(9, 12, 9, 11));
 
-			JLabel header = SwingUtil.smoothLabel("LLM CONNECTION");
-			header.setForeground(theme.botLabelFg);
-			header.setFont(theme.chromeFont != null ? theme.chromeFont.deriveFont(16f)
-				: header.getFont().deriveFont(Font.BOLD, 11f));
-			header.setAlignmentX(LEFT_ALIGNMENT);
-			header.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
-			add(header);
-
+			add(header("LLM CONNECTION", 0));
 			provider.setAlignmentX(LEFT_ALIGNMENT);
 			add(row("Provider", provider));
 			urlRow = row("Base URL", customUrl);
 			add(urlRow);
-			add(row("API key", apiKey));
+			add(row("API key", withReveal(apiKey)));
 			add(row("Model", model));
+
+			add(header("SAMPLING", 2));
+			add(row("Temperature (0-2)", temperature));
+			add(row("Max response tokens", maxTokens));
+			add(row("Tool call turns (1-8)", toolTurns));
 
 			note.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
 				: note.getFont().deriveFont(Font.ITALIC, 12f));
@@ -775,6 +799,17 @@ class CopilotPanel extends PluginPanel
 			syncVisibility();
 		}
 
+		private JLabel header(String text, int topGap)
+		{
+			JLabel h = SwingUtil.smoothLabel(text);
+			h.setForeground(theme.botLabelFg);
+			h.setFont(theme.chromeFont != null ? theme.chromeFont.deriveFont(16f)
+				: h.getFont().deriveFont(Font.BOLD, 11f));
+			h.setAlignmentX(LEFT_ALIGNMENT);
+			h.setBorder(BorderFactory.createEmptyBorder(topGap, 0, 6, 0));
+			return h;
+		}
+
 		private JPanel row(String name, java.awt.Component field)
 		{
 			JLabel label = SwingUtil.smoothLabel(name);
@@ -790,6 +825,34 @@ class CopilotPanel extends PluginPanel
 			return p;
 		}
 
+		/** Wraps the key field with a show/hide toggle, replacing the LAF
+		 * reveal eye this field opts out of. */
+		private JPanel withReveal(RoundedPassword field)
+		{
+			char echo = field.getEchoChar() != 0 ? field.getEchoChar() : '\u2022';
+			JLabel reveal = SwingUtil.smoothLabel("show");
+			reveal.setForeground(labelFg);
+			reveal.setFont(theme.statusFont != null ? theme.statusFont.deriveFont(16f)
+				: reveal.getFont().deriveFont(12f));
+			reveal.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+			reveal.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 2));
+			reveal.addMouseListener(new MouseAdapter()
+			{
+				@Override
+				public void mousePressed(MouseEvent e)
+				{
+					boolean hidden = field.getEchoChar() != 0;
+					field.setEchoChar(hidden ? (char) 0 : echo);
+					reveal.setText(hidden ? "hide" : "show");
+				}
+			});
+			JPanel p = new JPanel(new BorderLayout());
+			p.setOpaque(false);
+			p.add(field, BorderLayout.CENTER);
+			p.add(reveal, BorderLayout.EAST);
+			return p;
+		}
+
 		private void syncVisibility()
 		{
 			urlRow.setVisible(provider.getSelectedItem() == LlmProvider.CUSTOM);
@@ -798,71 +861,98 @@ class CopilotPanel extends PluginPanel
 			messageList.repaint();
 		}
 
-		void setState(LlmProvider p, String key, String modelName, String url)
+		void setState(SetupValues v)
 		{
-			provider.setSelectedItem(p);
-			apiKey.setText(key);
-			model.setText(modelName);
-			customUrl.setText(url);
+			provider.setSelectedItem(v.provider);
+			apiKey.setText(v.apiKey);
+			model.setText(v.model);
+			customUrl.setText(v.customUrl);
+			temperature.setText(trimmedDouble(v.temperature));
+			maxTokens.setText(String.valueOf(v.maxTokens));
+			toolTurns.setText(String.valueOf(v.toolTurns));
 		}
 
-		/** Null when the form is submittable, else the message to show. */
-		private String invalidReason(LlmProvider p, String key, String modelName, String url)
+		private String trimmedDouble(double d)
 		{
-			if (p == LlmProvider.CUSTOM && url.isEmpty())
-			{
-				return "Enter the endpoint's base URL.";
-			}
-			if (p == LlmProvider.OPENROUTER && key.isEmpty())
-			{
-				return "OpenRouter requires an API key.";
-			}
-			if (modelName.isEmpty())
-			{
-				return "Enter a model name.";
-			}
-			return null;
+			return d == Math.rint(d) ? String.valueOf((int) d) : String.valueOf(d);
 		}
 
-		private void save()
+		/** The form as SetupValues, or null after showing what's wrong.
+		 * Ranges mirror the config panel's. */
+		private SetupValues readValues()
 		{
 			LlmProvider p = (LlmProvider) provider.getSelectedItem();
 			String key = new String(apiKey.getPassword()).trim();
 			String modelName = model.getText().trim();
 			String url = customUrl.getText().trim();
-			String invalid = invalidReason(p, key, modelName, url);
-			if (invalid != null)
+			if (p == LlmProvider.CUSTOM && url.isEmpty())
 			{
-				showNote(invalid, true);
+				showNote("Enter the endpoint's base URL.", true);
+				return null;
+			}
+			if (p == LlmProvider.OPENROUTER && key.isEmpty())
+			{
+				showNote("OpenRouter requires an API key.", true);
+				return null;
+			}
+			if (modelName.isEmpty())
+			{
+				showNote("Enter a model name.", true);
+				return null;
+			}
+			double temp;
+			int tokens;
+			int turns;
+			try
+			{
+				temp = Double.parseDouble(temperature.getText().trim());
+				tokens = Integer.parseInt(maxTokens.getText().trim());
+				turns = Integer.parseInt(toolTurns.getText().trim());
+			}
+			catch (NumberFormatException e)
+			{
+				showNote("Sampling settings must be numbers.", true);
+				return null;
+			}
+			if (temp < 0 || temp > 2)
+			{
+				showNote("Temperature must be between 0 and 2.", true);
+				return null;
+			}
+			if (tokens < 256 || tokens > 32768)
+			{
+				showNote("Max response tokens must be 256-32768.", true);
+				return null;
+			}
+			if (turns < 1 || turns > 8)
+			{
+				showNote("Tool call turns must be 1-8.", true);
+				return null;
+			}
+			return new SetupValues(p, key, modelName, url, temp, tokens, turns);
+		}
+
+		private void save()
+		{
+			SetupValues v = readValues();
+			if (v == null || setupHandler == null)
+			{
 				return;
 			}
-			if (setupHandler == null)
-			{
-				return;
-			}
-			setupHandler.save(p, key, modelName, url);
+			setupHandler.save(v);
 			showNote("Saved.", false);
 		}
 
 		private void test()
 		{
-			LlmProvider p = (LlmProvider) provider.getSelectedItem();
-			String key = new String(apiKey.getPassword()).trim();
-			String modelName = model.getText().trim();
-			String url = customUrl.getText().trim();
-			String invalid = invalidReason(p, key, modelName, url);
-			if (invalid != null)
-			{
-				showNote(invalid, true);
-				return;
-			}
-			if (setupHandler == null)
+			SetupValues v = readValues();
+			if (v == null || setupHandler == null)
 			{
 				return;
 			}
 			test.setEnabled(false);
 			showNote("Testing connection...", false);
-			setupHandler.test(p, key, modelName, url, error -> {
+			setupHandler.test(v, error -> {
 				test.setEnabled(true);
 				showNote(error == null ? "Connected." : error, error != null);
 			});

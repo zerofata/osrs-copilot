@@ -64,7 +64,8 @@ public final class UiPreview
 		{
 			// The setup form expanded, in its second state: Custom endpoint
 			// with the base URL row revealed.
-			panel.setSetupState(LlmProvider.CUSTOM, "", "llama3", "http://localhost:8000/v1");
+			panel.setSetupState(new CopilotPanel.SetupValues(LlmProvider.CUSTOM, "",
+				"llama3", "http://localhost:8000/v1", 0.2, 8192, 4));
 			panel.setSetupOpen(true);
 		}
 		// Streamed content renders on a coalescing timer that can't fire

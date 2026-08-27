@@ -5,7 +5,7 @@ package com.osrscopilot;
 public enum LlmProvider
 {
 	OPENROUTER("OpenRouter", "https://openrouter.ai/api/v1"),
-	CUSTOM("Custom endpoint", null);
+	CUSTOM("Custom", null);
 
 	private final String label;
 	/** Fixed base URL, or null when the user supplies it. */
