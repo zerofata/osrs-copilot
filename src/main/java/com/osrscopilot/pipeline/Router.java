@@ -69,9 +69,15 @@ class Router
 	static final String NEED_XP_MATH = "xp_math";
 	static final String NEED_TRAINING = "training";
 	static final String NEED_TRANSPORT = "transport";
+	static final String NEED_RECENT_EVENTS = "recent_events";
 	static final String NEED_SLAYER_TASK = "slayer_task";
 
 	private static final Pattern SLAYER_MENTION = Pattern.compile("\\bslayer\\b");
+
+	/** References to something that just happened ("what did that drop");
+	 * gates the recent-events need. */
+	private static final Pattern EVENT_REFERENCE =
+		Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b");
 
 	// Shared phrasing frames; a pronoun variant added here fixes every rule.
 	/** "how to / how do i / how can you / how should we ..." */
@@ -158,6 +164,13 @@ class Router
 		}
 		r.needs = classifyNeeds(question,
 			!r.entities.monsters.isEmpty(), !r.entities.items.isEmpty());
+		String ql = question.toLowerCase(Locale.ROOT);
+		if (cap.recentEvents != null && !cap.recentEvents.isEmpty()
+			&& (EVENT_REFERENCE.matcher(ql).find()
+				|| ql.contains("whats this") || ql.contains("what's this")))
+		{
+			r.needs.add(NEED_RECENT_EVENTS);
+		}
 		// Not in classifyNeeds: the task-reference half needs game state.
 		if (!r.entities.monsters.isEmpty() && (taskReferenced
 			|| SLAYER_MENTION.matcher(question.toLowerCase(Locale.ROOT)).find()))
