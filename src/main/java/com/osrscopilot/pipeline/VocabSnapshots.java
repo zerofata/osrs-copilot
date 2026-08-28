@@ -6,12 +6,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,12 +32,10 @@ class VocabSnapshots
 	private final Gson gson;
 	private final File cacheDir;
 
-	private List<Map<String, Object>> geMapping;
 	private Set<String> monsterNames;
 	private Set<String> englishWords;
 	private Set<String> commonEnglishWords;
-	private List<String[]> itemNameIndex;
-	private Map<String, Integer> itemIdsByName;
+	private List<ItemDescriptor> itemCatalog;
 	private Set<String> strategiesPages;
 	private Set<String> slayerTaskPages;
 
@@ -50,37 +44,6 @@ class VocabSnapshots
 		this.http = http;
 		this.gson = gson;
 		this.cacheDir = cacheDir;
-	}
-
-	synchronized List<Map<String, Object>> geMapping() throws IOException
-	{
-		if (geMapping == null)
-		{
-			geMapping = gson.fromJson(snapshot("ge_mapping.json"),
-				new TypeToken<List<Map<String, Object>>>() { }.getType());
-		}
-		return geMapping;
-	}
-
-	/** Lowercase tradeable name to item ID, from the GE catalogue. The UI
-	 * uses IDs to render item sprites from the client's own game cache. */
-	synchronized Map<String, Integer> itemIdsByName() throws IOException
-	{
-		if (itemIdsByName == null)
-		{
-			Map<String, Integer> out = new HashMap<>();
-			for (Map<String, Object> it : geMapping())
-			{
-				String name = (String) it.get("name");
-				Object id = it.get("id");
-				if (name != null && id instanceof Number)
-				{
-					out.putIfAbsent(name.toLowerCase(Locale.ROOT), ((Number) id).intValue());
-				}
-			}
-			itemIdsByName = out;
-		}
-		return itemIdsByName;
 	}
 
 	synchronized Set<String> monsterNames() throws IOException
@@ -119,70 +82,18 @@ class VocabSnapshots
 		return slayerTaskPages;
 	}
 
-	/** Every item as {name (per version), canonical page} from the wiki's
-	 * item infoboxes; covers the untradeables the GE catalogue lacks.
-	 * Removed content is excluded. */
-	synchronized List<String[]> allItemNames() throws IOException
+	/** The one item catalogue the resolver, ownership pass, and UI
+	 * decorator share. The snapshot job canonicalizes it: removed content,
+	 * fake pages, and bare dictionary-word untradeables are already gone,
+	 * duplicate display names resolved, game IDs attached where known. */
+	synchronized List<ItemDescriptor> itemCatalog() throws IOException
 	{
-		if (itemNameIndex == null)
+		if (itemCatalog == null)
 		{
-			itemNameIndex = gson.fromJson(snapshot("items.json"),
-				new TypeToken<List<String[]>>() { }.getType());
+			itemCatalog = gson.fromJson(snapshot("items_v2.json"),
+				new TypeToken<List<ItemDescriptor>>() { }.getType());
 		}
-		return itemNameIndex;
-	}
-
-	/** The one item-name list the resolver and UI decorator share: the GE
-	 * catalogue plus untradeable names from the infobox index. Excluded:
-	 * single-common-word names ("Key", "Note" -- claiming bare dictionary
-	 * words breaks real references) and non-world sprites (interface,
-	 * animation, beta items -- claiming real speech like "Dart" or
-	 * "Torch" blocks the redirect pass from resolving the real thing). */
-	synchronized List<String[]> knownItemNames() throws IOException
-	{
-		List<String[]> out = new ArrayList<>();
-		Set<String> seen = new HashSet<>();
-		for (Map<String, Object> it : geMapping())
-		{
-			String name = (String) it.get("name");
-			if (name != null && seen.add(name.toLowerCase(Locale.ROOT)))
-			{
-				out.add(new String[]{name, name});
-			}
-		}
-		try
-		{
-			Set<String> english = englishWords();
-			for (String[] it : allItemNames())
-			{
-				String name = it[0];
-				if (name.indexOf(' ') < 0 && english.contains(name.toLowerCase(Locale.ROOT)))
-				{
-					continue;
-				}
-				if (fakeItemPage(it[1]))
-				{
-					continue;
-				}
-				if (seen.add(name.toLowerCase(Locale.ROOT)))
-				{
-					out.add(it);
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			log.warn("item infobox index unavailable; untradeables resolve as pages only", e);
-		}
-		return out;
-	}
-
-	private static boolean fakeItemPage(String page)
-	{
-		return page.contains("(unobtainable item")
-			|| page.contains("(interface item")
-			|| page.contains("(animation item")
-			|| page.contains("(RuneScape 2 Beta");
+		return itemCatalog;
 	}
 
 	/** 10k most common English words, frequency-ordered. Empty on fetch

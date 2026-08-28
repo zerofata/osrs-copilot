@@ -30,11 +30,6 @@ public class WikiApi
 
 	// ---- vocabularies (VocabSnapshots) --------------------------------
 
-	List<Map<String, Object>> geMapping() throws IOException
-	{
-		return vocab.geMapping();
-	}
-
 	Set<String> monsterNames() throws IOException
 	{
 		return vocab.monsterNames();
@@ -50,14 +45,9 @@ public class WikiApi
 		return vocab.slayerTaskPages();
 	}
 
-	public List<String[]> knownItemNames() throws IOException
+	public List<ItemDescriptor> itemCatalog() throws IOException
 	{
-		return vocab.knownItemNames();
-	}
-
-	public Map<String, Integer> itemIdsByName() throws IOException
-	{
-		return vocab.itemIdsByName();
+		return vocab.itemCatalog();
 	}
 
 	Set<String> englishWords()

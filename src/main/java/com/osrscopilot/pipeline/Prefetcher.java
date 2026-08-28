@@ -424,10 +424,10 @@ class Prefetcher
 	boolean addOwnershipFromFacts(List<String> facts, Map<String, long[]> owned,
 		Map<String, String> names)
 	{
-		List<String[]> vocabulary = null;
+		List<ItemDescriptor> vocabulary = null;
 		try
 		{
-			vocabulary = wiki.knownItemNames();
+			vocabulary = wiki.itemCatalog();
 		}
 		catch (Exception e)
 		{

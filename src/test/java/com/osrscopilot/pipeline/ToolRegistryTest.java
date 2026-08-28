@@ -144,12 +144,12 @@ public class ToolRegistryTest
 			}
 
 			@Override
-			public List<String[]> knownItemNames()
+			public List<ItemDescriptor> itemCatalog()
 			{
-				List<String[]> out = new ArrayList<>();
+				List<ItemDescriptor> out = new ArrayList<>();
 				for (String n : vocabulary)
 				{
-					out.add(new String[]{n, n});
+					out.add(new ItemDescriptor(n, n, null, false, null, null));
 				}
 				return out;
 			}

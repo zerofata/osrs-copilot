@@ -2,6 +2,7 @@ package com.osrscopilot;
 
 import com.osrscopilot.pipeline.EntityResolver;
 import com.osrscopilot.pipeline.GameCapture;
+import com.osrscopilot.pipeline.ItemDescriptor;
 import java.util.List;
 import java.util.Map;
 import org.junit.Test;
@@ -14,7 +15,7 @@ public class AnswerDecoratorTest
 	{
 		EntityResolver.Resolution entities = new EntityResolver.Resolution();
 		entities.pages.add("Bank");
-		return AnswerDecorator.build(new GameCapture(), entities, List.of(), List.of(), Map.of(), null);
+		return AnswerDecorator.build(new GameCapture(), entities, List.of(), List.of(), null);
 	}
 
 	@Test
@@ -49,7 +50,7 @@ public class AnswerDecoratorTest
 		EntityResolver.Resolution entities = new EntityResolver.Resolution();
 		entities.pages.add("Demon");
 		List<String> monsters = withMonsterVocab ? List.of("Greater demon") : List.of();
-		return AnswerDecorator.build(new GameCapture(), entities, monsters, List.of(), Map.of(), null);
+		return AnswerDecorator.build(new GameCapture(), entities, monsters, List.of(), null);
 	}
 
 	@Test
@@ -79,26 +80,98 @@ public class AnswerDecoratorTest
 		assertTrue(html.contains(">Greater demons</font>"));
 	}
 
-	private static AnswerDecorator breadDecorator()
+	@Test
+	public void bareUntradeableYieldsToALongerNameInTheSameAnswer()
 	{
-		GameCapture cap = new GameCapture();
-		cap.bank = List.of(Map.of("name", "Bread", "quantity", 9, "id", 2309));
-		return AnswerDecorator.build(cap, new EntityResolver.Resolution(),
-			List.of(), List.of(), Map.of(), null);
+		// "the totem" beside "Dark totem pieces" means the dark totem; the
+		// Legends' Quest "Totem" item must not claim it.
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Totem", "Totem", 1857, false, null, null),
+			new ItemDescriptor("Dark totem", "Dark totem", 19685, false, null, null));
+		String html = AnswerDecorator.build(new GameCapture(),
+			new EntityResolver.Resolution(), List.of(), items, null)
+			.decorate("Assemble the Dark totem pieces, then use the totem on the altar.");
+		assertTrue(html.contains(">Dark totem</font>"));
+		assertFalse(html.contains(">totem</font>"));
 	}
 
 	@Test
-	public void idiomsAreNotDecorated()
+	public void tradeableBareWordDecoratesBesideItsLongerCousin()
 	{
-		String html = breadDecorator()
-			.decorate("Port tasks are the bread and butter of early training.");
+		// Cooked shark is literally the item "Shark"; a cooking answer
+		// mentioning "Raw shark" must not suppress it.
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Shark", "Shark", 385, true, null, null),
+			new ItemDescriptor("Raw shark", "Raw shark", 383, true, null, null));
+		String html = AnswerDecorator.build(new GameCapture(),
+			new EntityResolver.Resolution(), List.of(), items, null)
+			.decorate("Cook raw sharks on the range until you have 100 sharks.");
+		assertTrue(html.contains(">raw sharks</font>"));
+		assertTrue(html.contains(">sharks</font>"));
+	}
+
+	@Test
+	public void bareUntradeableWithNoLongerCousinStillDecorates()
+	{
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Crowbar", "Crowbar", 31807, false, null, null));
+		String html = AnswerDecorator.build(new GameCapture(),
+			new EntityResolver.Resolution(), List.of(), items, null)
+			.decorate("The quest rewards the crowbar you need.");
+		assertTrue(html.contains(">crowbar</font>"));
+	}
+
+	@Test
+	public void ownedNameOutsideTheCatalogueDoesNotDecorate()
+	{
+		// The snapshot excludes "Coins" as an unsafe bare word; owning
+		// coins must not turn every gp amount into an item reference.
+		GameCapture cap = new GameCapture();
+		cap.bank = List.of(Map.of("name", "Coins", "quantity", 2_304_921, "id", 995));
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Shark", "Shark", 385, true, null, null));
+		String html = AnswerDecorator.build(cap, new EntityResolver.Resolution(),
+			List.of(), items, null)
+			.decorate("The upgrade costs 100,000 coins at the shop.");
 		assertFalse(html.contains("<a"));
 	}
 
 	@Test
-	public void literalMentionStillDecorated()
+	public void ownedVersionedItemPassesTheBaseNamePolicy()
 	{
-		String html = breadDecorator().decorate("Buy bread from the baker in Ardougne.");
-		assertTrue(html.contains(">bread</font>"));
+		GameCapture cap = new GameCapture();
+		cap.inventory = List.of(Map.of("name", "Prayer potion(4)", "quantity", 3));
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Prayer potion(4)", "Prayer potion", 2434, true, null, null));
+		String html = AnswerDecorator.build(cap, new EntityResolver.Resolution(),
+			List.of(), items, null)
+			.decorate("Bring a Prayer potion for the fight.");
+		assertTrue(html.contains(">Prayer potion</font>"));
+		assertTrue(html.contains("carried"));
+	}
+
+	@Test
+	public void unavailableCatalogueLeavesOwnedDecorationIntact()
+	{
+		// Fail-soft: with no catalogue the policy is unknowable; losing
+		// ownership badges too would compound the degradation.
+		GameCapture cap = new GameCapture();
+		cap.bank = List.of(Map.of("name", "Abyssal whip", "quantity", 1));
+		String html = AnswerDecorator.build(cap, new EntityResolver.Resolution(),
+			List.of(), List.of(), null)
+			.decorate("Sell your Abyssal whip.");
+		assertTrue(html.contains(">Abyssal whip</font>"));
+	}
+
+	@Test
+	public void versionedNameLinksToItsCanonicalPage()
+	{
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Fire cape (l)", "Fire cape", null, false, null, null));
+		String html = AnswerDecorator.build(new GameCapture(),
+			new EntityResolver.Resolution(), List.of(), items, null)
+			.decorate("Bring your Fire cape (l) along.");
+		assertTrue(html.contains("/w/Fire_cape'"));
+		assertTrue(html.contains(">Fire cape (l)</font>"));
 	}
 }

@@ -9,8 +9,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.zip.GZIPOutputStream;
@@ -59,15 +63,19 @@ public final class VocabSnapshotTool
 
 		// ~85% of the live counts measured 2026-08. These datasets only
 		// grow with game updates; a dip below means the query broke.
-		tool.write(outDir, "ge_mapping.json", tool.geMapping(), 4000, "GE mapping entries");
+		Map<String, JsonObject> geMapping = tool.geMapping();
 		Set<String> monsters = tool.monsterNameSet();
 		tool.write(outDir, "monsters_v2.json",
 			new Sized(gson.toJson(monsters), monsters.size()), 1400, "monster names");
 		tool.write(outDir, "strategies.json", tool.strategiesIndex(monsters), 105, "strategy subpages");
 		// 178 live titles measured 2026-08-21, redirect aliases included.
 		tool.write(outDir, "slayer_tasks.json", tool.slayerTaskIndex(), 150, "slayer task subpages");
-		tool.write(outDir, "items.json", tool.itemIndex(), 10000, "item index rows");
-		tool.write(outDir, "english_10k.txt", tool.wordlist(), 9000, "wordlist lines");
+		Sized wordlist = tool.wordlist();
+		tool.write(outDir, "english_10k.txt", wordlist, 9000, "wordlist lines");
+		// ~85% of the 11,006 canonical rows measured 2026-08-28.
+		tool.write(outDir, "items_v2.json",
+			tool.itemIndex(wordSet(wordlist.content), geMapping),
+			9300, "item descriptors");
 
 		// For humans inspecting the branch; clients never read this.
 		java.nio.file.Files.write(new File(outDir, "stamp.txt").toPath(),
@@ -104,11 +112,28 @@ public final class VocabSnapshotTool
 		}
 	}
 
-	private Sized geMapping() throws IOException
+	/** GE catalogue entries by lowercased name. Not published on its own:
+	 * its fields (tradeability, buy limit, high alch, ID backfill) ride on
+	 * the item descriptors. */
+	private Map<String, JsonObject> geMapping() throws IOException
 	{
 		String json = getText(PRICES_API + "/v2/osrs/mapping");
-		JsonArray parsed = gson.fromJson(json, JsonArray.class);
-		return new Sized(json, parsed.size());
+		Map<String, JsonObject> byName = new HashMap<>();
+		for (JsonElement e : gson.fromJson(json, JsonArray.class))
+		{
+			JsonObject entry = e.getAsJsonObject();
+			JsonElement name = entry.get("name");
+			if (name != null && !name.isJsonNull())
+			{
+				byName.putIfAbsent(name.getAsString().toLowerCase(Locale.ROOT), entry);
+			}
+		}
+		if (byName.size() < 4000)
+		{
+			throw new IllegalStateException("SANITY FAIL: GE mapping has " + byName.size()
+				+ " entries, expected >= 4000 -- refusing to publish");
+		}
+		return byName;
 	}
 
 	private Sized wordlist() throws IOException
@@ -238,47 +263,166 @@ public final class VocabSnapshotTool
 		}
 	}
 
-	/** Every item as {item name (per version), canonical page} from the item
-	 * infoboxes; versioned names map to their shared page, removed content
-	 * is excluded. See VocabSnapshots.knownItemNames for how clients use it. */
-	private Sized itemIndex() throws IOException
+	/** ~85% of the 10,872 id-bearing rows measured 2026-08-28. Guards the
+	 * wiki dropping or reshaping item_id, like the Module:Map incident. */
+	private static final int MIN_ITEM_IDS = 9200;
+
+	/** Every item as a canonical {@link ItemDescriptor} from the item
+	 * infoboxes, fully canonicalized here so clients just parse. */
+	private Sized itemIndex(Set<String> englishWords, Map<String, JsonObject> geByName)
+		throws IOException
 	{
-		List<String[]> out = new ArrayList<>();
-		Set<String> seen = new HashSet<>();
+		List<JsonObject> rows = new ArrayList<>();
 		for (int offset = 0; offset < 100_000; offset += 5000)
 		{
 			JsonObject page = bucket("bucket('infobox_item')"
-				+ ".select('page_name','item_name','removal_date')"
+				+ ".select('page_name','item_name','item_id','removal_date')"
 				+ ".limit(5000).offset(" + offset + ").run()");
-			JsonArray rows = page.getAsJsonArray("bucket");
-			if (rows == null || rows.size() == 0)
+			JsonArray batch = page.getAsJsonArray("bucket");
+			if (batch == null || batch.size() == 0)
 			{
 				break;
 			}
-			for (JsonElement e : rows)
+			for (JsonElement e : batch)
 			{
-				JsonObject row = e.getAsJsonObject();
-				JsonElement name = row.get("item_name");
-				JsonElement removed = row.get("removal_date");
-				if (name == null || name.isJsonNull()
-					|| (removed != null && !removed.isJsonNull()))
-				{
-					continue;
-				}
-				JsonElement pg = row.get("page_name");
-				String pageName = pg != null && !pg.isJsonNull()
-					? pg.getAsString() : name.getAsString();
-				if (seen.add(name.getAsString()))
-				{
-					out.add(new String[]{name.getAsString(), pageName});
-				}
+				rows.add(e.getAsJsonObject());
 			}
-			if (rows.size() < 5000)
+			if (batch.size() < 5000)
 			{
 				break;
 			}
 		}
-		return new Sized(gson.toJson(out), out.size());
+		List<ItemDescriptor> items = canonicalItems(rows, englishWords, geByName);
+		long withId = items.stream().filter(it -> it.id != null).count();
+		if (withId < MIN_ITEM_IDS)
+		{
+			throw new IllegalStateException("SANITY FAIL: items_v2.json has " + withId
+				+ " id-bearing descriptors, expected >= " + MIN_ITEM_IDS
+				+ " -- refusing to publish");
+		}
+		return new Sized(gson.toJson(items), items.size());
+	}
+
+	/** Canonicalization: drop removed content, fake pages, and bare
+	 * dictionary-word names (kept when tradeable: prose "bread" means the
+	 * item); resolve duplicate display names to their real page; take the
+	 * first decimal game ID, else the GE one (new tradeables get GE IDs
+	 * before wiki infobox IDs); attach GE buy limit and high alch.
+	 * Deterministic for identical input rows. Package-private for tests. */
+	static List<ItemDescriptor> canonicalItems(List<JsonObject> rows,
+		Set<String> englishWords, Map<String, JsonObject> geByName)
+	{
+		Map<String, List<JsonObject>> byName = new HashMap<>();
+		for (JsonObject row : rows)
+		{
+			JsonElement name = row.get("item_name");
+			JsonElement removed = row.get("removal_date");
+			if (name == null || name.isJsonNull()
+				|| (removed != null && !removed.isJsonNull()))
+			{
+				continue;
+			}
+			if (fakeItemPage(pageOf(row)))
+			{
+				continue;
+			}
+			String lower = name.getAsString().toLowerCase(Locale.ROOT);
+			if (name.getAsString().indexOf(' ') < 0 && englishWords.contains(lower)
+				&& !geByName.containsKey(lower))
+			{
+				continue;
+			}
+			byName.computeIfAbsent(lower, k -> new ArrayList<>()).add(row);
+		}
+		List<ItemDescriptor> out = new ArrayList<>(byName.size());
+		for (Map.Entry<String, List<JsonObject>> group : byName.entrySet())
+		{
+			JsonObject row = group.getValue().stream()
+				.min(Comparator.comparingInt(VocabSnapshotTool::pageRank)
+					.thenComparing(VocabSnapshotTool::pageOf)
+					.thenComparing(r -> r.get("item_name").getAsString()))
+				.get();
+			String name = row.get("item_name").getAsString();
+			JsonObject ge = geByName.get(group.getKey());
+			Integer id = gameId(row);
+			if (id == null && ge != null)
+			{
+				id = intField(ge, "id");
+			}
+			out.add(new ItemDescriptor(name, pageOf(row), id, ge != null,
+				ge != null ? intField(ge, "limit") : null,
+				ge != null ? intField(ge, "highalch") : null));
+		}
+		out.sort(Comparator.comparing(it -> it.name, String.CASE_INSENSITIVE_ORDER));
+		return out;
+	}
+
+	private static Integer intField(JsonObject o, String key)
+	{
+		JsonElement e = o.get(key);
+		return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isNumber()
+			? e.getAsInt() : null;
+	}
+
+	/** Prefer the page named exactly like the item, then any real article
+	 * over disambiguated ones ("Fire cape" over "Fire cape (Last Man
+	 * Standing)"). */
+	private static int pageRank(JsonObject row)
+	{
+		String page = pageOf(row);
+		return page.equals(row.get("item_name").getAsString()) ? 0
+			: page.indexOf('(') < 0 ? 1 : 2;
+	}
+
+	private static String pageOf(JsonObject row)
+	{
+		JsonElement pg = row.get("page_name");
+		return pg != null && !pg.isJsonNull()
+			? pg.getAsString() : row.get("item_name").getAsString();
+	}
+
+	/** First decimal ID in the row's item_id array; the bucket also holds
+	 * prefixed non-game IDs ("beta...") that never render as sprites. */
+	private static Integer gameId(JsonObject row)
+	{
+		JsonElement ids = row.get("item_id");
+		if (ids == null || !ids.isJsonArray())
+		{
+			return null;
+		}
+		for (JsonElement e : ids.getAsJsonArray())
+		{
+			try
+			{
+				return Integer.parseInt(e.getAsString());
+			}
+			catch (NumberFormatException ignored)
+			{
+			}
+		}
+		return null;
+	}
+
+	/** Non-obtainable infobox variants that share a real item's name. */
+	private static boolean fakeItemPage(String page)
+	{
+		return page.contains("(unobtainable item")
+			|| page.contains("(interface item")
+			|| page.contains("(animation item")
+			|| page.contains("(RuneScape 2 Beta");
+	}
+
+	private static Set<String> wordSet(String text)
+	{
+		Set<String> words = new HashSet<>();
+		for (String line : text.split("\n"))
+		{
+			if (!line.trim().isEmpty())
+			{
+				words.add(line.trim());
+			}
+		}
+		return words;
 	}
 
 	private JsonObject bucket(String query) throws IOException

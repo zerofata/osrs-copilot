@@ -39,7 +39,8 @@ class WikiLookups
 		this.vocab = vocab;
 	}
 
-	/** Best-effort canonical item name via the GE mapping, else wiki search. */
+	/** Best-effort canonical item name via tradeable catalogue names, else
+	 * wiki search. */
 	String resolveItemName(String name)
 	{
 		try
@@ -66,7 +67,7 @@ class WikiLookups
 			}
 			String lower = name.toLowerCase(Locale.ROOT);
 			String shortestPartial =
-				scanMapping(c -> c.toLowerCase(Locale.ROOT).contains(lower));
+				scanTradeables(c -> c.toLowerCase(Locale.ROOT).contains(lower));
 			if (shortestPartial != null)
 			{
 				return shortestPartial;
@@ -84,30 +85,30 @@ class WikiLookups
 		return name;
 	}
 
-	/** Case-insensitive exact match against the GE mapping, or null. */
+	/** Case-insensitive exact match against tradeable names, or null. */
 	private String mappingMatch(String name) throws IOException
 	{
-		return scanMapping(c -> c.equalsIgnoreCase(name));
+		return scanTradeables(c -> c.equalsIgnoreCase(name));
 	}
 
-	/** Shortest "Name (qualifier)" entry in the GE mapping, or null. */
+	/** Shortest "Name (qualifier)" tradeable name, or null. */
 	private String qualifiedVariant(String name) throws IOException
 	{
 		String prefix = name.toLowerCase(Locale.ROOT) + " (";
-		return scanMapping(c -> c.toLowerCase(Locale.ROOT).startsWith(prefix));
+		return scanTradeables(c -> c.toLowerCase(Locale.ROOT).startsWith(prefix));
 	}
 
-	/** Shortest GE-mapping entry satisfying the predicate, or null;
+	/** Shortest tradeable catalogue name satisfying the predicate, or null;
 	 * shortest is the least-decorated variant. */
-	private String scanMapping(java.util.function.Predicate<String> match) throws IOException
+	private String scanTradeables(java.util.function.Predicate<String> match) throws IOException
 	{
 		String best = null;
-		for (Map<String, Object> it : vocab.geMapping())
+		for (ItemDescriptor it : vocab.itemCatalog())
 		{
-			String candidate = (String) it.get("name");
-			if (match.test(candidate) && (best == null || candidate.length() < best.length()))
+			if (it.tradeable && match.test(it.name)
+				&& (best == null || it.name.length() < best.length()))
 			{
-				best = candidate;
+				best = it.name;
 			}
 		}
 		return best;
@@ -521,23 +522,22 @@ class WikiLookups
 		try
 		{
 			String canonical = resolveItemName(itemName);
-			for (Map<String, Object> it : vocab.geMapping())
+			for (ItemDescriptor it : vocab.itemCatalog())
 			{
-				if (!canonical.equals(it.get("name")))
+				if (!it.tradeable || !canonical.equals(it.name))
 				{
 					continue;
 				}
-				long id = ((Number) it.get("id")).longValue();
-				JsonObject r = http.getJson(PRICES_API + "/v2/osrs/latest?id=" + id);
-				JsonObject data = r.getAsJsonObject("data").getAsJsonObject(String.valueOf(id));
+				JsonObject r = http.getJson(PRICES_API + "/v2/osrs/latest?id=" + it.id);
+				JsonObject data = r.getAsJsonObject("data").getAsJsonObject(String.valueOf(it.id));
 				Map<String, Object> out = new LinkedHashMap<>();
 				out.put("item", canonical);
 				out.put("high", data != null && data.has("high") && !data.get("high").isJsonNull()
 					? data.get("high").getAsLong() : null);
 				out.put("low", data != null && data.has("low") && !data.get("low").isJsonNull()
 					? data.get("low").getAsLong() : null);
-				out.put("buy_limit", it.get("limit"));
-				out.put("high_alch", it.get("highalch"));
+				out.put("buy_limit", it.limit);
+				out.put("high_alch", it.highAlch);
 				return out;
 			}
 			return Map.of("error", "'" + itemName + "' is not a tradeable item.");

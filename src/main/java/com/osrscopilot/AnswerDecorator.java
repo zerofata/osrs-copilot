@@ -2,14 +2,17 @@ package com.osrscopilot;
 
 import com.osrscopilot.pipeline.EntityResolver;
 import com.osrscopilot.pipeline.GameCapture;
+import com.osrscopilot.pipeline.ItemDescriptor;
 import com.osrscopilot.pipeline.Ownership;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.runelite.api.Skill;
@@ -26,13 +29,6 @@ final class AnswerDecorator
 
 	/** Names shorter than this are too likely to collide with prose. */
 	private static final int MIN_NAME_LENGTH = 4;
-
-	/** Idioms containing item names; a match inside one would decorate
-	 * figurative prose ("bread and butter" is not the food). */
-	private static final String[] IDIOMS = {
-		"bread and butter",
-		"piece of cake",
-	};
 
 	private static final class Rule
 	{
@@ -52,9 +48,14 @@ final class AnswerDecorator
 		/** Ownership annotation ("×5,006 banked") rendered after the first
 		 * mention of the name only; null = none. */
 		final String badge;
+		/** Single-word untradeable item: yields to any longer chosen name
+		 * containing the word ("the totem" beside "Dark totem pieces"
+		 * means the dark totem, not the Legends' Quest item). */
+		final boolean yielding;
 
 		Rule(String lowerName, String title, String color, String iconUrl,
-			int iconItemId, int iconW, int iconH, boolean capitalizedOnly, String badge)
+			int iconItemId, int iconW, int iconH, boolean capitalizedOnly, String badge,
+			boolean yielding)
 		{
 			this.lowerName = lowerName;
 			this.title = title;
@@ -65,6 +66,7 @@ final class AnswerDecorator
 			this.iconH = iconH;
 			this.capitalizedOnly = capitalizedOnly;
 			this.badge = badge;
+			this.yielding = yielding;
 		}
 	}
 
@@ -95,8 +97,7 @@ final class AnswerDecorator
 	 * several ways keeps its richest meaning (quest state over item over
 	 * plain page link). */
 	static AnswerDecorator build(GameCapture cap, EntityResolver.Resolution entities,
-		List<String> monsterNames, List<String[]> itemNames,
-		Map<String, Integer> itemIds, IconStore icons)
+		List<String> monsterNames, List<ItemDescriptor> items, IconStore icons)
 	{
 		Theme theme = Theme.active();
 		Map<String, Rule> byName = new LinkedHashMap<>();
@@ -109,18 +110,18 @@ final class AnswerDecorator
 					: "IN_PROGRESS".equals(e.getValue()) ? theme.questProgressHex
 					: theme.questNotStartedHex;
 				add(byName, e.getKey(), e.getKey(), color,
-					questIcon, -1, ICON_SQUARE, ICON_SQUARE, false, null);
+					questIcon, -1, ICON_SQUARE, ICON_SQUARE, false, null, false);
 			}
 		}
 		if (cap != null)
 		{
-			addOwnedItems(byName, cap, theme);
+			addOwnedItems(byName, cap, theme, safeBaseNames(items));
 		}
 		for (String skill : SKILLS)
 		{
 			add(byName, skill, skill, theme.plainLinkHex,
 				icons != null ? icons.skillIconUrl(skill) : null,
-				-1, ICON_SQUARE, ICON_SQUARE, true, null);
+				-1, ICON_SQUARE, ICON_SQUARE, true, null, false);
 		}
 		if (entities != null)
 		{
@@ -128,7 +129,7 @@ final class AnswerDecorator
 			{
 				for (String name : kind)
 				{
-					add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null);
+					add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null, false);
 				}
 			}
 		}
@@ -136,29 +137,47 @@ final class AnswerDecorator
 		{
 			for (String name : monsterNames)
 			{
-				add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null);
+				add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null, false);
 			}
 		}
-		if (itemNames != null)
+		if (items != null)
 		{
 			// Versioned names ("Fire cape (l)") match by name but link to
-			// their shared page; unmapped untradeables render iconless.
-			for (String[] it : itemNames)
+			// their shared page; items without an ID render iconless.
+			for (ItemDescriptor it : items)
 			{
-				Integer id = itemIds != null
-					? itemIds.get(it[0].toLowerCase(Locale.ROOT)) : null;
-				add(byName, it[0], it[1], theme.itemUnownedHex,
-					null, id != null ? id : -1, ITEM_ICON_W, ICON_SQUARE, false, null);
+				add(byName, it.name, it.page, theme.itemUnownedHex,
+					null, it.id != null ? it.id : -1, ITEM_ICON_W, ICON_SQUARE, false, null,
+					!it.tradeable && it.name.indexOf(' ') < 0);
 			}
 		}
 		return new AnswerDecorator(new ArrayList<>(byName.values()), icons);
+	}
+
+	/** Lowercased base names of every catalogued item, or null when the
+	 * catalogue is unavailable. Owned rules obey the same prose-safety
+	 * policy as catalogue rules: a name the snapshot excluded ("Coins")
+	 * must not decorate just because copies are owned. */
+	private static Set<String> safeBaseNames(List<ItemDescriptor> items)
+	{
+		if (items == null || items.isEmpty())
+		{
+			return null;
+		}
+		Set<String> safe = new HashSet<>(items.size() * 2);
+		for (ItemDescriptor it : items)
+		{
+			safe.add(Ownership.baseName(it.name).toLowerCase(Locale.ROOT));
+		}
+		return safe;
 	}
 
 	/** Aggregate every owned copy of an item across containers (dose and
 	 * charge variants collapse to one base name), then emit a single rule
 	 * whose badge states quantity and place: "×5,006 banked", "equipped",
 	 * "×20 carried, ×5,006 banked". */
-	private static void addOwnedItems(Map<String, Rule> byName, GameCapture cap, Theme theme)
+	private static void addOwnedItems(Map<String, Rule> byName, GameCapture cap, Theme theme,
+		Set<String> safeNames)
 	{
 		Map<String, long[]> counts = new LinkedHashMap<>(); // {carried, equipped, banked}
 		Map<String, Integer> iconId = new LinkedHashMap<>();
@@ -167,6 +186,10 @@ final class AnswerDecorator
 		accumulate(counts, iconId, cap.bank, 2);
 		for (Map.Entry<String, long[]> e : counts.entrySet())
 		{
+			if (safeNames != null && !safeNames.contains(e.getKey().toLowerCase(Locale.ROOT)))
+			{
+				continue;
+			}
 			long[] c = e.getValue();
 			boolean carried = c[0] > 0 || c[1] > 0;
 			List<String> parts = new ArrayList<>();
@@ -186,7 +209,7 @@ final class AnswerDecorator
 			add(byName, e.getKey(), e.getKey(),
 				carried ? theme.itemCarriedHex : theme.itemBankedHex,
 				null, id != null ? id : -1, ITEM_ICON_W, ICON_SQUARE, false,
-				String.join(", ", parts));
+				String.join(", ", parts), false);
 		}
 	}
 
@@ -215,7 +238,7 @@ final class AnswerDecorator
 
 	private static void add(Map<String, Rule> byName, String name, String title,
 		String color, String iconUrl, int iconItemId, int iconW, int iconH,
-		boolean capitalizedOnly, String badge)
+		boolean capitalizedOnly, String badge, boolean yielding)
 	{
 		if (name == null || name.length() < MIN_NAME_LENGTH)
 		{
@@ -223,7 +246,7 @@ final class AnswerDecorator
 		}
 		byName.putIfAbsent(name.toLowerCase(Locale.ROOT),
 			new Rule(name.toLowerCase(Locale.ROOT), title, color,
-				iconUrl, iconItemId, iconW, iconH, capitalizedOnly, badge));
+				iconUrl, iconItemId, iconW, iconH, capitalizedOnly, badge, yielding));
 	}
 
 	/**
@@ -235,19 +258,6 @@ final class AnswerDecorator
 	{
 		String lower = html.toLowerCase(Locale.ROOT);
 		boolean[] offLimits = tagRanges(html);
-		for (String idiom : IDIOMS)
-		{
-			int from = 0;
-			int i;
-			while ((i = lower.indexOf(idiom, from)) >= 0)
-			{
-				for (int k = i; k < i + idiom.length(); k++)
-				{
-					offLimits[k] = true;
-				}
-				from = i + idiom.length();
-			}
-		}
 		List<int[]> chosen = new ArrayList<>();
 		for (int r = 0; r < rules.size(); r++)
 		{
@@ -270,6 +280,10 @@ final class AnswerDecorator
 				{
 					continue;
 				}
+				if (rules.get(r).yielding && chosenLongerNameContains(needle, chosen))
+				{
+					continue;
+				}
 				for (int k = i; k < end; k++)
 				{
 					offLimits[k] = true;
@@ -284,7 +298,7 @@ final class AnswerDecorator
 		chosen.sort((a, b) -> a[0] - b[0]);
 		StringBuilder out = new StringBuilder(html.length() + chosen.size() * 64);
 		String badgeHex = Theme.active().metaHex;
-		java.util.Set<Integer> badged = new java.util.HashSet<>();
+		Set<Integer> badged = new HashSet<>();
 		int pos = 0;
 		for (int[] m : chosen)
 		{
@@ -316,6 +330,22 @@ final class AnswerDecorator
 		}
 		out.append(html, pos, html.length());
 		return out.toString();
+	}
+
+	/** True when an already-chosen match's name contains the word. Rules
+	 * match longest-first, so every longer name mentioned anywhere in the
+	 * answer is already in chosen when a yielding rule runs. */
+	private boolean chosenLongerNameContains(String needle, List<int[]> chosen)
+	{
+		for (int[] m : chosen)
+		{
+			String longer = rules.get(m[2]).lowerName;
+			if (longer.length() > needle.length() && Ownership.mentionsWord(longer, needle))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** True in every position that sits inside an HTML tag. */

@@ -2,6 +2,7 @@ package com.osrscopilot;
 
 import com.osrscopilot.pipeline.EntityResolver;
 import com.osrscopilot.pipeline.GameCapture;
+import com.osrscopilot.pipeline.ItemDescriptor;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -37,12 +38,16 @@ public final class DecoratorScan
 		EntityResolver.Resolution entities = new EntityResolver.Resolution();
 		entities.monsters.add("Tormented Demon");
 
-		List<String[]> tradeable = List.of(
-			new String[]{"Bow of Faerdhinen", "Bow of Faerdhinen"},
-			new String[]{"Diamond", "Diamond"},
-			new String[]{"Diamond bolts", "Diamond bolts"},
-			new String[]{"Shark", "Shark"},
-			new String[]{"Emberlight", "Emberlight"});
+		// Includes the owned items: only catalogued names decorate.
+		List<ItemDescriptor> catalogue = List.of(
+			new ItemDescriptor("Bow of Faerdhinen", "Bow of Faerdhinen", null, true, null, null),
+			new ItemDescriptor("Diamond", "Diamond", null, true, null, null),
+			new ItemDescriptor("Diamond bolts", "Diamond bolts", null, true, null, null),
+			new ItemDescriptor("Shark", "Shark", null, true, null, null),
+			new ItemDescriptor("Emberlight", "Emberlight", null, false, null, null),
+			new ItemDescriptor("Prayer potion(4)", "Prayer potion", null, true, null, null),
+			new ItemDescriptor("Abyssal whip", "Abyssal whip", null, true, null, null),
+			new ItemDescriptor("Ruby dragon bolts (e)", "Ruby dragon bolts (e)", null, true, null, null));
 
 		String answer = "You need **While Guthix Sleeps** done (it is) and A Kingdom Divided "
 			+ "unlocks Dark Demonbane. The Giant Dwarf is half done.\n\n"
@@ -51,7 +56,7 @@ public final class DecoratorScan
 			+ "- Bow of Faerdhinen only if you get crystal armour\n"
 			+ "- Bring sharks to eat while fighting the tormented demons\n";
 
-		String html = AnswerDecorator.build(cap, entities, List.of(), tradeable, Map.of(), null)
+		String html = AnswerDecorator.build(cap, entities, List.of(), catalogue, null)
 			.decorate(MarkdownHtml.toHtml(answer));
 		out.println(html);
 	}

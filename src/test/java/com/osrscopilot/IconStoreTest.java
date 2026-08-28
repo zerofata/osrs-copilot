@@ -2,6 +2,7 @@ package com.osrscopilot;
 
 import com.osrscopilot.pipeline.EntityResolver;
 import com.osrscopilot.pipeline.GameCapture;
+import com.osrscopilot.pipeline.ItemDescriptor;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.List;
@@ -59,28 +60,55 @@ public class IconStoreTest
 		cap.equipment = List.of(Map.of("id", WHIP, "name", "Abyssal whip", "quantity", 1));
 
 		String html = AnswerDecorator
-			.build(cap, new EntityResolver.Resolution(), List.of(), List.of(), Map.of(), store)
+			.build(cap, new EntityResolver.Resolution(), List.of(), List.of(), store)
 			.decorate("Bring your Abyssal whip.");
 		assertTrue("owned item icon must come from its captured ID",
 			html.contains("item-" + WHIP + ".png"));
 	}
 
 	@Test
-	public void decoratorResolvesUnownedItemIconsThroughTheIdMap() throws Exception
+	public void decoratorResolvesUnownedItemIconsFromTheCatalogue() throws Exception
 	{
 		IconStore store = storeWith("item-" + WHIP + ".png");
-		List<String[]> names = List.<String[]>of(new String[]{"Abyssal whip", "Abyssal whip"});
 		String html = AnswerDecorator
-			.build(new GameCapture(), new EntityResolver.Resolution(),
-				List.of(), names, Map.of("abyssal whip", WHIP), store)
+			.build(new GameCapture(), new EntityResolver.Resolution(), List.of(),
+				List.of(new ItemDescriptor("Abyssal whip", "Abyssal whip", WHIP, true, null, null)), store)
 			.decorate("Save up for an Abyssal whip.");
-		assertTrue("unowned tradeable icon must come from the GE mapping ID",
+		assertTrue("unowned item icon must come from the catalogue ID",
 			html.contains("item-" + WHIP + ".png"));
 
 		String noId = AnswerDecorator
-			.build(new GameCapture(), new EntityResolver.Resolution(),
-				List.of(), names, Map.of(), store)
+			.build(new GameCapture(), new EntityResolver.Resolution(), List.of(),
+				List.of(new ItemDescriptor("Abyssal whip", "Abyssal whip", null, true, null, null)), store)
 			.decorate("Save up for an Abyssal whip.");
 		assertFalse("no ID means no icon, never a guess", noId.contains("<img"));
+	}
+
+	@Test
+	public void capturedIdBeatsTheCatalogueId() throws Exception
+	{
+		// The player's copy may be a variant; its captured ID wins over
+		// the catalogue's canonical one.
+		IconStore store = storeWith("item-" + WHIP + ".png", "item-9999.png");
+		GameCapture cap = new GameCapture();
+		cap.equipment = List.of(Map.of("id", WHIP, "name", "Abyssal whip", "quantity", 1));
+		String html = AnswerDecorator
+			.build(cap, new EntityResolver.Resolution(), List.of(),
+				List.of(new ItemDescriptor("Abyssal whip", "Abyssal whip", 9999, true, null, null)), store)
+			.decorate("Bring your Abyssal whip.");
+		assertTrue(html.contains("item-" + WHIP + ".png"));
+		assertFalse(html.contains("item-9999.png"));
+	}
+
+	@Test
+	public void untradeableIconComesFromItsCatalogueId() throws Exception
+	{
+		// Crowbar is not on the GE; only the infobox catalogue carries its ID.
+		IconStore store = storeWith("item-31807.png");
+		String html = AnswerDecorator
+			.build(new GameCapture(), new EntityResolver.Resolution(), List.of(),
+				List.of(new ItemDescriptor("Crowbar", "Crowbar", 31807, false, null, null)), store)
+			.decorate("The quest rewards a Crowbar.");
+		assertTrue(html.contains("item-31807.png"));
 	}
 }

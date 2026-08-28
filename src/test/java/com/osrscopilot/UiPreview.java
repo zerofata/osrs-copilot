@@ -2,6 +2,7 @@ package com.osrscopilot;
 
 import com.osrscopilot.pipeline.EntityResolver;
 import com.osrscopilot.pipeline.GameCapture;
+import com.osrscopilot.pipeline.ItemDescriptor;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -108,9 +109,14 @@ public final class UiPreview
 			Map.of("name", "Neitiznot faceguard", "quantity", 1));
 		EntityResolver.Resolution ents = new EntityResolver.Resolution();
 		ents.monsters.add("Tormented Demon");
-		List<String[]> tradeable = List.of(
-			new String[]{"Bow of Faerdhinen", "Bow of Faerdhinen"},
-			new String[]{"Dragon dart", "Dragon dart"});
+		// Includes the owned items: only catalogued names decorate.
+		List<ItemDescriptor> catalogue = List.of(
+			new ItemDescriptor("Bow of Faerdhinen", "Bow of Faerdhinen", null, true, null, null),
+			new ItemDescriptor("Dragon dart", "Dragon dart", null, true, null, null),
+			new ItemDescriptor("Prayer potion(4)", "Prayer potion", null, true, null, null),
+			new ItemDescriptor("Emberlight", "Emberlight", null, false, null, null),
+			new ItemDescriptor("Bandos chestplate", "Bandos chestplate", null, true, null, null),
+			new ItemDescriptor("Neitiznot faceguard", "Neitiznot faceguard", null, false, null, null));
 
 		ask(panel, "what should i bring for tormented demons");
 		String answer = "You have **While Guthix Sleeps** done, so you can fight them. "
@@ -127,7 +133,7 @@ public final class UiPreview
 		// a previous dev-client session left on disk, else no icons.
 		IconStore icons = new IconStore(new java.io.File("eval/icon-cache"),
 			null, null, null);
-		String decorated = AnswerDecorator.build(cap, ents, List.of(), tradeable, Map.of(), icons)
+		String decorated = AnswerDecorator.build(cap, ents, List.of(), catalogue, icons)
 			.decorate(MarkdownHtml.toHtml(answer));
 		panel.showAnswerDone(answer, decorated, 12.4, true,
 			"facts: Monster info: Tormented Demon; Strategy: Tormented Demon; "

@@ -124,7 +124,7 @@ public class CopilotPipeline
 	{
 		try
 		{
-			wiki.geMapping();
+		wiki.itemCatalog();
 			wiki.monsterNames();
 			wiki.englishWords();
 		}
@@ -220,18 +220,17 @@ public class CopilotPipeline
 		return Prefetcher.displayTitle(factTitle);
 	}
 
-	/** Every known item as {name, wiki page} (tradeable and untradeable
-	 * alike), for UI entity linking. Best-effort: empty when the sources
-	 * can't be fetched. */
-	public List<String[]> knownItemNames()
+	/** The item catalogue, for UI entity linking. Best-effort: empty when
+	 * the snapshot is unavailable. */
+	public List<ItemDescriptor> knownItems()
 	{
 		try
 		{
-			return wiki.knownItemNames();
+			return wiki.itemCatalog();
 		}
 		catch (Exception e)
 		{
-			log.debug("item names unavailable for decoration", e);
+			log.debug("item catalogue unavailable for decoration", e);
 			return List.of();
 		}
 	}
@@ -257,21 +256,6 @@ public class CopilotPipeline
 		{
 			log.debug("monster names unavailable for decoration", e);
 			return List.of();
-		}
-	}
-
-	/** Lowercase tradeable name to item ID, for rendering item sprites from
-	 * the client's game cache. Best-effort: empty when unavailable. */
-	public Map<String, Integer> knownItemIds()
-	{
-		try
-		{
-			return wiki.itemIdsByName();
-		}
-		catch (Exception e)
-		{
-			log.debug("item ids unavailable for decoration", e);
-			return Map.of();
 		}
 	}
 

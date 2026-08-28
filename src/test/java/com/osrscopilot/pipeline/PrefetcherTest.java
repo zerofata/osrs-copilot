@@ -42,12 +42,12 @@ public class PrefetcherTest
 		return new WikiApi(null, new Gson(), new File("build/tmp"))
 		{
 			@Override
-			public List<String[]> knownItemNames()
+			public List<ItemDescriptor> itemCatalog()
 			{
-				List<String[]> out = new ArrayList<>();
+				List<ItemDescriptor> out = new ArrayList<>();
 				for (String n : names)
 				{
-					out.add(new String[]{n, n});
+					out.add(new ItemDescriptor(n, n, null, false, null, null));
 				}
 				return out;
 			}
@@ -118,7 +118,7 @@ public class PrefetcherTest
 	@Test
 	public void unavailableVocabularyDropsTheCompletenessClaim()
 	{
-		// wiki=null: knownItemNames() fails, so the lacked list is unknown
+		// wiki=null: itemCatalog() fails, so the lacked list is unknown
 		// and the block may not claim completeness.
 		List<String> added = ownershipFacts(
 			null,

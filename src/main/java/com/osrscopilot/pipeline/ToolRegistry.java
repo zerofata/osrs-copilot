@@ -309,10 +309,10 @@ class ToolRegistry
 				return out;
 			}
 			String text = out instanceof String ? (String) out : gson.toJson(out);
-			List<String[]> vocabulary;
+			List<ItemDescriptor> vocabulary;
 			try
 			{
-				vocabulary = wiki.knownItemNames();
+				vocabulary = wiki.itemCatalog();
 			}
 			catch (Exception e)
 			{

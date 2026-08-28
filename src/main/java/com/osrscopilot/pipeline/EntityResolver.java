@@ -130,9 +130,9 @@ public class EntityResolver
 			// Values are the canonical page: versioned names ("Fire cape
 			// (l)") map to their shared page.
 			Map<String, String> items = new HashMap<>();
-			for (String[] it : wiki.knownItemNames())
+			for (ItemDescriptor it : wiki.itemCatalog())
 			{
-				items.putIfAbsent(norm(it[0]), it[1]);
+				items.putIfAbsent(norm(it.name), it.page);
 			}
 			Map<String, String> monsters = new HashMap<>();
 			for (String name : wiki.monsterNames())

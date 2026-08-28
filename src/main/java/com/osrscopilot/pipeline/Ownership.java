@@ -127,14 +127,13 @@ public final class Ownership
 
 	/**
 	 * @param haystackLower lowercased text to scan for item mentions
-	 * @param vocabulary every known item as {name, page}, or null when
-	 *        unavailable (the slice then omits NOT OWNED and reports
-	 *        incomplete)
+	 * @param vocabulary the item catalogue, or null when unavailable (the
+	 *        slice then omits NOT OWNED and reports incomplete)
 	 * @return the rendered lists, or null when the text mentions nothing
 	 *         catalogued or owned
 	 */
 	static Slice slice(String haystackLower, Map<String, long[]> owned,
-		Map<String, String> names, List<String[]> vocabulary)
+		Map<String, String> names, List<ItemDescriptor> vocabulary)
 	{
 		Map<String, Long> ownedMentioned = new LinkedHashMap<>();
 		List<String> ownedBases = new ArrayList<>();
@@ -206,13 +205,13 @@ public final class Ownership
 	 * helmet (i)" is covered by the player's "Black slayer helmet (i)".
 	 */
 	private static Set<String> lackedMentioned(String haystackLower,
-		List<String> ownedBases, List<String[]> vocabulary)
+		List<String> ownedBases, List<ItemDescriptor> vocabulary)
 	{
 		Set<String> lacked = new LinkedHashSet<>();
 		Set<String> seen = new HashSet<>();
-		for (String[] it : vocabulary)
+		for (ItemDescriptor it : vocabulary)
 		{
-			String base = baseName(it[0]);
+			String base = baseName(it.name);
 			String lower = base.toLowerCase(Locale.ROOT);
 			if (lower.length() < 4 || !seen.add(lower)
 				|| !mentionsWord(haystackLower, lower))
@@ -259,7 +258,7 @@ public final class Ownership
 	}
 
 	/** Case-folded whole-word containment. */
-	static boolean mentionsWord(String haystack, String needle)
+	public static boolean mentionsWord(String haystack, String needle)
 	{
 		int from = 0;
 		int i;
