@@ -609,64 +609,6 @@ public enum GameArea
 	}
 
 	/**
-	 * Check if the area contains the given point.
-	 * <p>
-	 * Note: Sub-region definitions assume that {@link WorldPoint WorldPoints} will be translated from instances,
-	 *       such as via {@code WorldPoint.fromLocalInstance}, and have the player's current plane. Points from
-	 *       instances will not return the correct value otherwise.
-	 * <br>
-	 * Furthermore, a return value of {@code true} does not mean that {@link #fromPoint(WorldPoint)} would return this
-	 * area, because both a full-region area and sub-region area overlaid on it could return {@code true}, but only the
-	 * sub-region area would be returned by {@link #fromPoint(WorldPoint)}.
-	 *
-	 * @param worldPoint The point to check whether is contained in the area.
-	 * @return {@code true} if a region or sub-region of the area contains {@code worldPoint}, {@code false} otherwise.
-	 */
-	public boolean contains(final WorldPoint worldPoint)
-	{
-		for (final RegionArea regionArea : getRegionAreas())
-		{
-			if (regionArea.contains(worldPoint))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Check if the area fully covers the given region. This does not guarantee that every possible {@link WorldPoint}
-	 * in this region would match {@link #contains(WorldPoint)} as sub-region areas of other {@link GameArea GameAreas}
-	 * may override this one.
-	 *
-	 * @param regionId ID of the region to check whether is contained in the area.
-	 * @return {@code true} if the region is fully covered by the area, {@code false} otherwise.
-	 */
-	public boolean containsRegion(final int regionId)
-	{
-		return getFullRegions().contains(regionId);
-	}
-
-	/**
-	 * Check if the given region is fully covered by any of the given game areas.
-	 *
-	 * @param regionId  ID of the region to check whether is fully contained in any of the given areas.
-	 * @param gameAreas Areas to check whether they contain the given region.
-	 * @return {@code true} if the region is fully covered by any of the given areas, {@code false} otherwise.
-	 */
-	public static boolean anyContainsRegion(final int regionId, final GameArea... gameAreas)
-	{
-		for (final GameArea gameArea : gameAreas)
-		{
-			if (gameArea.containsRegion(regionId))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
 	 * Gets the {@link GameArea} best matching the given {@link WorldPoint}. That is, if a full-region and sub-region
 	 * area both match a given point, the more specific sub-region area would be returned instead of the base
 	 * full-region area.

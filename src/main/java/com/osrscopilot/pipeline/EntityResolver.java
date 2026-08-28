@@ -1,7 +1,5 @@
 package com.osrscopilot.pipeline;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -493,50 +491,19 @@ public class EntityResolver
 			return out;
 		}
 		List<String> capped = grams.subList(0, Math.min(25, grams.size()));
-		StringBuilder titles = new StringBuilder();
-		for (String g : capped)
-		{
-			if (titles.length() > 0)
-			{
-				titles.append('|');
-			}
-			titles.append(capitalize(g));
-		}
-		JsonObject r;
+		Map<String, String> resolved;
 		try
 		{
-			r = wiki.wikiQuery("redirects=1&titles=" + Http.enc(titles.toString()));
+			resolved = wiki.resolveTitles(capped);
 		}
 		catch (Exception e)
 		{
 			log.debug("redirect batch failed", e);
 			return out;
 		}
-		JsonObject q = r.getAsJsonObject("query");
-		Map<String, String> normalized = fromToMap(q, "normalized");
-		Map<String, String> redirects = fromToMap(q, "redirects");
-		Set<String> existing = new HashSet<>();
-		if (q.has("pages"))
-		{
-			for (Map.Entry<String, JsonElement> p : q.getAsJsonObject("pages").entrySet())
-			{
-				JsonObject page = p.getValue().getAsJsonObject();
-				if (!page.has("missing"))
-				{
-					existing.add(page.get("title").getAsString());
-				}
-			}
-		}
-
 		for (String gram : capped)
 		{
-			String titleStr = capitalize(gram);
-			titleStr = normalized.getOrDefault(titleStr, titleStr);
-			String target = redirects.get(titleStr);
-			if (target == null && existing.contains(titleStr))
-			{
-				target = titleStr;
-			}
+			String target = resolved.get(gram);
 			if (target == null)
 			{
 				continue;
@@ -554,22 +521,6 @@ public class EntityResolver
 			out.put(gram, known != null ? known : new String[]{"pages", target});
 		}
 		return out;
-	}
-
-	/** Parses a MediaWiki "normalized"/"redirects" hop array into a
-	 * from -> to map. */
-	static Map<String, String> fromToMap(JsonObject q, String key)
-	{
-		Map<String, String> map = new HashMap<>();
-		if (q.has(key))
-		{
-			for (JsonElement e : q.getAsJsonArray(key))
-			{
-				JsonObject o = e.getAsJsonObject();
-				map.put(o.get("from").getAsString(), o.get("to").getAsString());
-			}
-		}
-		return map;
 	}
 
 	private static boolean anyUsed(boolean[] used, int start, int size)

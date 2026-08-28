@@ -151,7 +151,7 @@ public class RouterPhrasingTest
 		StringBuilder misses = new StringBuilder();
 		for (Object[] row : POSITIVE)
 		{
-			List<String> got = Router.classifyNeeds((String) row[0], false,
+			List<String> got = Router.classifyNeeds((String) row[0],
 				(Boolean) row[1], (Boolean) row[2]);
 			for (String want : (String[]) row[3])
 			{
@@ -171,7 +171,7 @@ public class RouterPhrasingTest
 		StringBuilder hits = new StringBuilder();
 		for (Object[] row : NEGATIVE)
 		{
-			List<String> got = Router.classifyNeeds((String) row[0], false,
+			List<String> got = Router.classifyNeeds((String) row[0],
 				(Boolean) row[1], (Boolean) row[2]);
 			if (got.contains((String) row[3]))
 			{

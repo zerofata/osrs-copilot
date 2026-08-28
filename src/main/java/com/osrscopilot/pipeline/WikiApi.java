@@ -62,11 +62,6 @@ public class WikiApi
 
 	// ---- live content (WikiContent) -----------------------------------
 
-	JsonObject wikiQuery(String params) throws IOException
-	{
-		return content.wikiQuery(params);
-	}
-
 	List<Map<String, Object>> search(String query)
 	{
 		return content.search(query);

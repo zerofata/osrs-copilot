@@ -180,14 +180,7 @@ class VocabSnapshots
 		try (java.util.zip.GZIPInputStream in = new java.util.zip.GZIPInputStream(
 			new java.io.ByteArrayInputStream(compressed)))
 		{
-			java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-			byte[] buf = new byte[8192];
-			int n;
-			while ((n = in.read(buf)) > 0)
-			{
-				out.write(buf, 0, n);
-			}
-			return new String(out.toByteArray(), StandardCharsets.UTF_8);
+			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
 		}
 	}
 }

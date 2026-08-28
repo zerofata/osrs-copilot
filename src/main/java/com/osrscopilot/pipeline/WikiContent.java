@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -99,7 +100,7 @@ class WikiContent
 		return r;
 	}
 
-	JsonObject wikiQuery(String params) throws IOException
+	private JsonObject wikiQuery(String params) throws IOException
 	{
 		return cachedGet(WIKI_API + "?action=query&format=json&" + params);
 	}
@@ -185,8 +186,8 @@ class WikiContent
 				continue;
 			}
 			Map<String, String> hops = new LinkedHashMap<>();
-			hops.putAll(EntityResolver.fromToMap(query, "normalized"));
-			hops.putAll(EntityResolver.fromToMap(query, "redirects"));
+			hops.putAll(fromToMap(query, "normalized"));
+			hops.putAll(fromToMap(query, "redirects"));
 			Set<String> missing = new LinkedHashSet<>();
 			if (query.has("pages"))
 			{
@@ -212,6 +213,22 @@ class WikiContent
 			}
 		}
 		return resolved;
+	}
+
+	/** Parses a MediaWiki "normalized"/"redirects" hop array into a
+	 * from -> to map. */
+	private static Map<String, String> fromToMap(JsonObject q, String key)
+	{
+		Map<String, String> map = new HashMap<>();
+		if (q.has(key))
+		{
+			for (JsonElement e : q.getAsJsonArray(key))
+			{
+				JsonObject o = e.getAsJsonObject();
+				map.put(o.get("from").getAsString(), o.get("to").getAsString());
+			}
+		}
+		return map;
 	}
 
 	/** Page content, truncated: plaintext extract, falling back to raw

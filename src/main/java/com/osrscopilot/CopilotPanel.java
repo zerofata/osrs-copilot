@@ -274,10 +274,7 @@ class CopilotPanel extends PluginPanel
 	{
 		setupCard.setState(values);
 		setupConfigured = values.model != null && !values.model.trim().isEmpty();
-		if (setupLink != null)
-		{
-			styleSetupLink();
-		}
+		styleSetupLink();
 	}
 
 	/** Expand or collapse the setup form (dev tool + tests). */
@@ -429,19 +426,8 @@ class CopilotPanel extends PluginPanel
 
 	private void refreshStatus()
 	{
-		if (busy && !statusBase.trim().isEmpty())
-		{
-			StringBuilder dots = new StringBuilder(statusBase);
-			for (int i = 0; i <= pulse % 3; i++)
-			{
-				dots.append('.');
-			}
-			status.setText(dots.toString());
-		}
-		else
-		{
-			status.setText(statusBase);
-		}
+		status.setText(busy && !statusBase.trim().isEmpty()
+			? statusBase + ".".repeat(1 + pulse % 3) : statusBase);
 	}
 
 	// ------------------------------------------------------------------

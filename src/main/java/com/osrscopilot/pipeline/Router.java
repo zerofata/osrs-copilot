@@ -69,15 +69,9 @@ class Router
 	static final String NEED_XP_MATH = "xp_math";
 	static final String NEED_TRAINING = "training";
 	static final String NEED_TRANSPORT = "transport";
-	static final String NEED_RECENT_EVENTS = "recent_events";
 	static final String NEED_SLAYER_TASK = "slayer_task";
 
 	private static final Pattern SLAYER_MENTION = Pattern.compile("\\bslayer\\b");
-
-	/** References to something that just happened ("what did that drop");
-	 * gates the recent-events need. */
-	private static final Pattern EVENT_REFERENCE =
-		Pattern.compile("\\b(this|that|just|my)\\b.*\\b(drop|loot|kill|got)\\b");
 
 	// Shared phrasing frames; a pronoun variant added here fixes every rule.
 	/** "how to / how do i / how can you / how should we ..." */
@@ -162,8 +156,7 @@ class Router
 			mergeMissing(previous.quests, r.entities.quests);
 			mergeMissing(previous.pages, r.entities.pages);
 		}
-		boolean hasEvents = cap.recentEvents != null && !cap.recentEvents.isEmpty();
-		r.needs = classifyNeeds(question, hasEvents,
+		r.needs = classifyNeeds(question,
 			!r.entities.monsters.isEmpty(), !r.entities.items.isEmpty());
 		// Not in classifyNeeds: the task-reference half needs game state.
 		if (!r.entities.monsters.isEmpty() && (taskReferenced
@@ -211,7 +204,7 @@ class Router
 
 	/** Pure needs classification: no network, no game state beyond the
 	 * flags. Table-tested by RouterPhrasingTest. */
-	static List<String> classifyNeeds(String question, boolean hasEvents,
+	static List<String> classifyNeeds(String question,
 		boolean monsterResolved, boolean itemResolved)
 	{
 		String ql = question.toLowerCase(Locale.ROOT);
@@ -222,10 +215,7 @@ class Router
 			{
 				for (String n : (String[]) rule[1])
 				{
-					if (!needs.contains(n))
-					{
-						needs.add(n);
-					}
+					addMissing(needs, n);
 				}
 			}
 		}
@@ -239,11 +229,6 @@ class Router
 		if (itemResolved && OBTAIN_VERB_ANYWHERE.matcher(ql).find())
 		{
 			addMissing(needs, NEED_ITEM_SOURCES);
-		}
-		if (hasEvents && (EVENT_REFERENCE.matcher(ql).find()
-			|| ql.contains("whats this") || ql.contains("what's this")))
-		{
-			needs.add(NEED_RECENT_EVENTS);
 		}
 		return needs;
 	}

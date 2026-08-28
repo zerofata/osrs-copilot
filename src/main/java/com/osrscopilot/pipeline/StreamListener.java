@@ -12,8 +12,12 @@ public interface StreamListener
 
 	/** The text streamed so far was not the final answer; discard it from
 	 * the display. */
-	void onTurnDiscarded();
+	default void onTurnDiscarded()
+	{
+	}
 
 	/** Short progress note ("Checking wiki_page...") for a status line. */
-	void onStatus(String status);
+	default void onStatus(String status)
+	{
+	}
 }

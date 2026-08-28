@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Skill;
@@ -56,7 +57,8 @@ final class IconStore
 				{
 					continue;
 				}
-				writeOnce(skillFile(skill), () -> skillIconManager.getSkillImage(skill, true));
+				writeOnce(skillFile(skill.getName()),
+					() -> skillIconManager.getSkillImage(skill, true));
 			}
 		}
 		if (spriteManager != null)
@@ -73,19 +75,11 @@ final class IconStore
 	String itemIconUrl(int itemId)
 	{
 		File f = new File(dir, "item-" + itemId + ".png");
-		String key = f.getName();
-		String cached = resolved.get(key);
-		if (cached != null)
-		{
-			return cached;
-		}
-		if (!f.exists() && !renderItem(itemId, f))
+		if (!resolved.containsKey(f.getName()) && !f.exists() && !renderItem(itemId, f))
 		{
 			return null;
 		}
-		String url = f.toURI().toString();
-		resolved.put(key, url);
-		return url;
+		return existingUrl(f);
 	}
 
 	/** File URL for a skill's icon; written at construction. */
@@ -152,12 +146,7 @@ final class IconStore
 		}
 	}
 
-	private interface ImageSource
-	{
-		BufferedImage get();
-	}
-
-	private void writeOnce(File f, ImageSource source)
+	private void writeOnce(File f, Supplier<BufferedImage> source)
 	{
 		if (f.exists())
 		{
@@ -188,11 +177,6 @@ final class IconStore
 			log.debug("icon write failed for {}", f.getName(), e);
 			return false;
 		}
-	}
-
-	private File skillFile(Skill skill)
-	{
-		return skillFile(skill.getName());
 	}
 
 	private File skillFile(String skillName)

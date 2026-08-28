@@ -324,23 +324,7 @@ public class CopilotPipeline
 		m.addProperty("content", "Reply with one word: OK");
 		JsonArray messages = new JsonArray();
 		messages.add(m);
-		llm.chat(messages, null, new StreamListener()
-		{
-			@Override
-			public void onDelta(String text)
-			{
-			}
-
-			@Override
-			public void onTurnDiscarded()
-			{
-			}
-
-			@Override
-			public void onStatus(String status)
-			{
-			}
-		});
+		llm.chat(messages, null, text -> { });
 	}
 
 	public Result answer(String question, List<Exchange> history, GameCapture cap,

@@ -14,6 +14,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -100,7 +102,7 @@ class WikiLookups
 
 	/** Shortest tradeable catalogue name satisfying the predicate, or null;
 	 * shortest is the least-decorated variant. */
-	private String scanTradeables(java.util.function.Predicate<String> match) throws IOException
+	private String scanTradeables(Predicate<String> match) throws IOException
 	{
 		String best = null;
 		for (ItemDescriptor it : vocab.itemCatalog())
@@ -386,34 +388,25 @@ class WikiLookups
 	 * fill gaps from stale priors. */
 	Map<String, Object> monsterInfo(String name)
 	{
-		try
-		{
-			JsonObject r = content.bucket("bucket('infobox_monster')"
-				+ ".select('name','combat_level','hitpoints','max_hit',"
-				+ "'slayer_level','slayer_category','attribute',"
-				+ "'attack_level','strength_level','defence_level','ranged_level','magic_level',"
-				+ "'stab_defence_bonus','slash_defence_bonus','crush_defence_bonus',"
-				+ "'magic_defence_bonus','light_range_defence_bonus',"
-				+ "'standard_range_defence_bonus','heavy_range_defence_bonus',"
-				+ "'attack_style','attack_speed','size',"
-				+ "'poison_resistance','venom_resistance','cannon_immune','burn_immune',"
-				+ "'freeze_resistance','elemental_weakness','elemental_weakness_percent')"
-				+ ".where('name','" + esc(name) + "').limit(3).run()");
-			Map<String, Object> info = firstRow(r);
-			if (info == null)
+		return firstRowLookup("bucket('infobox_monster')"
+			+ ".select('name','combat_level','hitpoints','max_hit',"
+			+ "'slayer_level','slayer_category','attribute',"
+			+ "'attack_level','strength_level','defence_level','ranged_level','magic_level',"
+			+ "'stab_defence_bonus','slash_defence_bonus','crush_defence_bonus',"
+			+ "'magic_defence_bonus','light_range_defence_bonus',"
+			+ "'standard_range_defence_bonus','heavy_range_defence_bonus',"
+			+ "'attack_style','attack_speed','size',"
+			+ "'poison_resistance','venom_resistance','cannon_immune','burn_immune',"
+			+ "'freeze_resistance','elemental_weakness','elemental_weakness_percent')"
+			+ ".where('name','" + esc(name) + "').limit(3).run()",
+			"No monster named '" + name + "' found. Check spelling via wiki_search.",
+			info ->
 			{
-				return Map.of("error", "No monster named '" + name + "' found. Check spelling via wiki_search.");
-			}
-			// The bucket carries "ERR" where the wiki's own template data
-			// is broken; junk, not a value.
-			info.values().removeIf("ERR"::equals);
-			info.replaceAll((k, v) -> stripMarkup(v));
-			return info;
-		}
-		catch (Exception e)
-		{
-			return Map.of("error", "lookup failed: " + e.getMessage());
-		}
+				// The bucket carries "ERR" where the wiki's own template
+				// data is broken; junk, not a value.
+				info.values().removeIf("ERR"::equals);
+				info.replaceAll((k, v) -> stripMarkup(v));
+			});
 	}
 
 	/** Equipment combat bonuses; infoboxes never survive plaintext
@@ -421,29 +414,17 @@ class WikiLookups
 	 * or slot fields -- those live in page prose. */
 	Map<String, Object> itemStats(String name)
 	{
-		try
-		{
-			JsonObject r = content.bucket("bucket('infobox_bonuses')"
-				+ ".select('page_name',"
-				+ "'stab_attack_bonus','slash_attack_bonus','crush_attack_bonus',"
-				+ "'magic_attack_bonus','range_attack_bonus',"
-				+ "'stab_defence_bonus','slash_defence_bonus','crush_defence_bonus',"
-				+ "'magic_defence_bonus','range_defence_bonus',"
-				+ "'strength_bonus','ranged_strength_bonus','magic_damage_bonus','prayer_bonus')"
-				+ ".where('page_name','" + esc(name) + "').limit(3).run()");
-			Map<String, Object> info = firstRow(r);
-			if (info == null)
-			{
-				return Map.of("error", "No equipment stats for '" + name
-					+ "'. It may not be wearable, or the name may differ; check via wiki_search.");
-			}
-			info.replaceAll((k, v) -> stripMarkup(v));
-			return info;
-		}
-		catch (Exception e)
-		{
-			return Map.of("error", "lookup failed: " + e.getMessage());
-		}
+		return firstRowLookup("bucket('infobox_bonuses')"
+			+ ".select('page_name',"
+			+ "'stab_attack_bonus','slash_attack_bonus','crush_attack_bonus',"
+			+ "'magic_attack_bonus','range_attack_bonus',"
+			+ "'stab_defence_bonus','slash_defence_bonus','crush_defence_bonus',"
+			+ "'magic_defence_bonus','range_defence_bonus',"
+			+ "'strength_bonus','ranged_strength_bonus','magic_damage_bonus','prayer_bonus')"
+			+ ".where('page_name','" + esc(name) + "').limit(3).run()",
+			"No equipment stats for '" + name
+				+ "'. It may not be wearable, or the name may differ; check via wiki_search.",
+			info -> info.replaceAll((k, v) -> stripMarkup(v)));
 	}
 
 	/** Quest requirements from the quest bucket; the {{Quest details}}
@@ -451,18 +432,27 @@ class WikiLookups
 	 * source of skill levels and the prerequisite tree. */
 	Map<String, Object> questInfo(String name)
 	{
+		return firstRowLookup("bucket('quest')"
+			+ ".select('page_name','requirements','items_required','start_point')"
+			+ ".where('page_name','" + esc(name) + "').limit(2).run()",
+			"No quest named '" + name + "' found. Check spelling via wiki_search.",
+			info -> info.replaceAll((k, v) ->
+				v instanceof String ? flattenWikitext((String) v) : v));
+	}
+
+	/** One-row bucket lookup: the first match, cleaned in place, or an
+	 * error map when nothing matched or the query failed. */
+	private Map<String, Object> firstRowLookup(String query, String notFound,
+		Consumer<Map<String, Object>> clean)
+	{
 		try
 		{
-			JsonObject r = content.bucket("bucket('quest')"
-				+ ".select('page_name','requirements','items_required','start_point')"
-				+ ".where('page_name','" + esc(name) + "').limit(2).run()");
-			Map<String, Object> info = firstRow(r);
+			Map<String, Object> info = firstRow(content.bucket(query));
 			if (info == null)
 			{
-				return Map.of("error", "No quest named '" + name
-					+ "' found. Check spelling via wiki_search.");
+				return Map.of("error", notFound);
 			}
-			info.replaceAll((k, v) -> v instanceof String ? flattenWikitext((String) v) : v);
+			clean.accept(info);
 			return info;
 		}
 		catch (Exception e)
