@@ -78,4 +78,27 @@ public class AnswerDecoratorTest
 		String html = demonDecorator(true).decorate("Kill the Greater demons there.");
 		assertTrue(html.contains(">Greater demons</font>"));
 	}
+
+	private static AnswerDecorator breadDecorator()
+	{
+		GameCapture cap = new GameCapture();
+		cap.bank = List.of(Map.of("name", "Bread", "quantity", 9, "id", 2309));
+		return AnswerDecorator.build(cap, new EntityResolver.Resolution(),
+			List.of(), List.of(), Map.of(), null);
+	}
+
+	@Test
+	public void idiomsAreNotDecorated()
+	{
+		String html = breadDecorator()
+			.decorate("Port tasks are the bread and butter of early training.");
+		assertFalse(html.contains("<a"));
+	}
+
+	@Test
+	public void literalMentionStillDecorated()
+	{
+		String html = breadDecorator().decorate("Buy bread from the baker in Ardougne.");
+		assertTrue(html.contains(">bread</font>"));
+	}
 }

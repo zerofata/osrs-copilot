@@ -27,6 +27,13 @@ final class AnswerDecorator
 	/** Names shorter than this are too likely to collide with prose. */
 	private static final int MIN_NAME_LENGTH = 4;
 
+	/** Idioms containing item names; a match inside one would decorate
+	 * figurative prose ("bread and butter" is not the food). */
+	private static final String[] IDIOMS = {
+		"bread and butter",
+		"piece of cake",
+	};
+
 	private static final class Rule
 	{
 		final String lowerName;
@@ -228,6 +235,19 @@ final class AnswerDecorator
 	{
 		String lower = html.toLowerCase(Locale.ROOT);
 		boolean[] offLimits = tagRanges(html);
+		for (String idiom : IDIOMS)
+		{
+			int from = 0;
+			int i;
+			while ((i = lower.indexOf(idiom, from)) >= 0)
+			{
+				for (int k = i; k < i + idiom.length(); k++)
+				{
+					offLimits[k] = true;
+				}
+				from = i + idiom.length();
+			}
+		}
 		List<int[]> chosen = new ArrayList<>();
 		for (int r = 0; r < rules.size(); r++)
 		{
