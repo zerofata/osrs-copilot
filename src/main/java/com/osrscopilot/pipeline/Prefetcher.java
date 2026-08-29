@@ -237,13 +237,14 @@ class Prefetcher
 			}
 		}
 
-		// "<Skill> training" is a wiki convention: a page or redirect to
-		// the canonical guide exists for every skill.
+		// The label carries the page title: the footer links it for
+		// attribution and the model sees which audience the guide targets.
 		if (needs.contains(Router.NEED_TRAINING))
 		{
 			for (String skill : limit(ents.skills, 2))
 			{
-				addFact(facts, "Training guide: " + skill, wiki.page(skill + " training"));
+				String guide = trainingGuide(skill, cap.accountTypeName());
+				addFact(facts, "Training guide: " + guide, wiki.page(guide));
 			}
 		}
 
@@ -264,6 +265,21 @@ class Prefetcher
 				}
 			}
 		}
+	}
+
+	/** The training guide page for the player's account type. "<Skill>
+	 * training" is a wiki convention (page or redirect for every skill);
+	 * the ironman guide families have a chapter per skill, with Attack
+	 * and Strength consolidated under Melee. */
+	static String trainingGuide(String skill, String accountType)
+	{
+		if ("NORMAL".equals(accountType))
+		{
+			return skill + " training";
+		}
+		String chapter = "Attack".equals(skill) || "Strength".equals(skill) ? "Melee" : skill;
+		return ("ULTIMATE_IRONMAN".equals(accountType)
+			? "Ultimate Ironman Guide/" : "Ironman Guide/") + chapter;
 	}
 
 	/** Whether {monster}/Strategies exists per the snapshot index; null
@@ -509,13 +525,13 @@ class Prefetcher
 			// Fetched from /Strategies when it exists, else the main page;
 			// both are already their own fact, so the page stays linked.
 			case "Recommended equipment":
+			// The label already names the guide page.
+			case "Training guide":
 				return name;
 			case "Strategy":
 				return name + "/Strategies";
 			case "Slayer task guide":
 				return "Slayer task/" + name;
-			case "Training guide":
-				return name + " training";
 			default:
 				return null;
 		}

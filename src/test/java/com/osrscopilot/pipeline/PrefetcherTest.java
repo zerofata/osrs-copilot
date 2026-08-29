@@ -428,9 +428,33 @@ public class PrefetcherTest
 	{
 		assertEquals("Vorkath", Prefetcher.sourcePage("Monster info: Vorkath"));
 		assertEquals("Vorkath/Strategies", Prefetcher.sourcePage("Strategy: Vorkath"));
-		assertEquals("Smithing training", Prefetcher.sourcePage("Training guide: Smithing"));
+		assertEquals("Smithing training", Prefetcher.sourcePage("Training guide: Smithing training"));
+		assertEquals("Ironman Guide/Sailing",
+			Prefetcher.sourcePage("Training guide: Ironman Guide/Sailing"));
 		assertEquals("Varrock Diary", Prefetcher.sourcePage("Diary tasks (medium): Varrock Diary"));
 		assertEquals("Adamantite bar", Prefetcher.sourcePage("How to obtain: Adamantite bar"));
+	}
+
+	// --- trainingGuide: account-type guide selection ---
+
+	@Test
+	public void trainingGuideMatchesAccountType()
+	{
+		assertEquals("Sailing training", Prefetcher.trainingGuide("Sailing", "NORMAL"));
+		assertEquals("Ironman Guide/Sailing", Prefetcher.trainingGuide("Sailing", "IRONMAN"));
+		assertEquals("Ironman Guide/Slayer",
+			Prefetcher.trainingGuide("Slayer", "HARDCORE_GROUP_IRONMAN"));
+		assertEquals("Ultimate Ironman Guide/Herblore",
+			Prefetcher.trainingGuide("Herblore", "ULTIMATE_IRONMAN"));
+	}
+
+	@Test
+	public void ironmanGuidesConsolidateAttackAndStrengthUnderMelee()
+	{
+		assertEquals("Ironman Guide/Melee", Prefetcher.trainingGuide("Attack", "IRONMAN"));
+		assertEquals("Ultimate Ironman Guide/Melee",
+			Prefetcher.trainingGuide("Strength", "ULTIMATE_IRONMAN"));
+		assertEquals("Attack training", Prefetcher.trainingGuide("Attack", "NORMAL"));
 	}
 
 	@Test

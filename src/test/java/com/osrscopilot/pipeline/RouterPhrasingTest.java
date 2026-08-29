@@ -114,6 +114,10 @@ public class RouterPhrasingTest
 		{"training magic on a budget", false, false, need(Router.NEED_TRAINING)},
 		{"levelling herblore cheap", false, false, need(Router.NEED_TRAINING)},
 		{"leveling agility fast", false, false, need(Router.NEED_TRAINING)},
+		{"whats the best way to level sailing forme", false, false, need(Router.NEED_TRAINING)},
+		{"how do i level herblore", false, false, need(Router.NEED_TRAINING)},
+		{"how to level fishing without banking", false, false, need(Router.NEED_TRAINING)},
+		{"fastest way to level up mining", false, false, need(Router.NEED_TRAINING)},
 
 		// --- Drop table ---
 		{"what does vorkath drop", false, false, need(Router.NEED_DROP_TABLE)},
@@ -143,6 +147,9 @@ public class RouterPhrasingTest
 		{"on average how many kc needed for corrupted gauntlet", true, false, Router.NEED_STRATEGY},
 		// Item resolved but no obtain verb.
 		{"what does a bowfa look like", false, true, Router.NEED_ITEM_SOURCES},
+		// "level" as a noun is XP math, not a training question.
+		{"what level do i need for barrows gloves", false, false, Router.NEED_TRAINING},
+		{"what level is my attack", false, false, Router.NEED_TRAINING},
 	};
 
 	@Test

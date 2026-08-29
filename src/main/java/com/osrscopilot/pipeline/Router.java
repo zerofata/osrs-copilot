@@ -116,7 +116,11 @@ class Router
 			new String[]{NEED_STRATEGY, NEED_MECHANICS}},
 		{Pattern.compile("\\b(afk|aggro|mechanic|spawn|attack style|weakness)\\b"), new String[]{NEED_MECHANICS}},
 		{Pattern.compile("\\b(level|xp|experience)\\b"), new String[]{NEED_XP_MATH}},
-		{Pattern.compile("\\btrain(ing)?\\b|\\blevell?ing\\b"), new String[]{NEED_TRAINING}},
+		// Bare "level" belongs to XP math ("what level do i need"); only
+		// verb frames make it a training question.
+		{Pattern.compile("\\btrain(ing)?\\b|\\blevel(l?ing| up)\\b|\\b("
+			+ HOW + "|(quickest|fastest|easiest|best) (way|method) to) level\\b"),
+			new String[]{NEED_TRAINING}},
 		{Pattern.compile("\\b(drop|dropped|loot)\\b"), new String[]{NEED_DROP_TABLE}},
 		{Pattern.compile("\\b(fastest|quickest|best) way\\b|\\b" + HOW + " (get|travel) to\\b|\\broute to\\b"),
 			new String[]{NEED_TRANSPORT}},
