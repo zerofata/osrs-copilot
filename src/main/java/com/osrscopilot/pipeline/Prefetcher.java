@@ -1,6 +1,7 @@
 package com.osrscopilot.pipeline;
 
 import com.google.gson.Gson;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -422,20 +423,11 @@ class Prefetcher
 	 * system prompt forbids inferring from absence). Matches names
 	 * against fact text, so a wiki reformat can't break it. */
 	boolean addOwnershipFromFacts(List<String> facts, Map<String, long[]> owned,
-		Map<String, String> names)
+		Map<String, String> names) throws IOException
 	{
-		List<ItemDescriptor> vocabulary = null;
-		try
-		{
-			vocabulary = wiki.itemCatalog();
-		}
-		catch (Exception e)
-		{
-			log.debug("item vocabulary unavailable; ownership fact stays partial", e);
-		}
 		Ownership.Slice slice = Ownership.slice(
 			String.join("\n", facts).toLowerCase(Locale.ROOT),
-			owned, names, vocabulary);
+			owned, names, wiki.itemCatalog());
 		if (slice == null)
 		{
 			return false;

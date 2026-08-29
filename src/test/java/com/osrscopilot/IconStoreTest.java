@@ -60,7 +60,8 @@ public class IconStoreTest
 		cap.equipment = List.of(Map.of("id", WHIP, "name", "Abyssal whip", "quantity", 1));
 
 		String html = AnswerDecorator
-			.build(cap, new EntityResolver.Resolution(), List.of(), List.of(), store)
+			.build(cap, new EntityResolver.Resolution(), List.of(),
+				List.of(new ItemDescriptor("Abyssal whip", "Abyssal whip", null, true, null, null)), store)
 			.decorate("Bring your Abyssal whip.");
 		assertTrue("owned item icon must come from its captured ID",
 			html.contains("item-" + WHIP + ".png"));

@@ -107,8 +107,8 @@ public final class Ownership
 	static final class Slice
 	{
 		final String text;
-		/** True when the lists may claim completeness: the vocabulary was
-		 * available and nothing was cut for length. */
+		/** True when the lists may claim completeness: nothing was cut
+		 * for length. */
 		final boolean complete;
 
 		private Slice(String text, boolean complete)
@@ -127,8 +127,6 @@ public final class Ownership
 
 	/**
 	 * @param haystackLower lowercased text to scan for item mentions
-	 * @param vocabulary the item catalogue, or null when unavailable (the
-	 *        slice then omits NOT OWNED and reports incomplete)
 	 * @return the rendered lists, or null when the text mentions nothing
 	 *         catalogued or owned
 	 */
@@ -149,9 +147,8 @@ public final class Ownership
 			ownedMentioned.merge(display, e.getValue()[0], Long::sum);
 		}
 
-		Set<String> lacked = vocabulary != null
-			? lackedMentioned(haystackLower, ownedBases, vocabulary) : null;
-		if (ownedMentioned.isEmpty() && (lacked == null || lacked.isEmpty()))
+		Set<String> lacked = lackedMentioned(haystackLower, ownedBases, vocabulary);
+		if (ownedMentioned.isEmpty() && lacked.isEmpty())
 		{
 			return null;
 		}
@@ -177,26 +174,23 @@ public final class Ownership
 		{
 			sb.append("none of them");
 		}
-		if (lacked != null)
+		sb.append("\nNOT OWNED (verified absent at capture): ");
+		n = 0;
+		for (String name : lacked)
 		{
-			sb.append("\nNOT OWNED (verified absent at capture): ");
-			n = 0;
-			for (String name : lacked)
+			if (n >= LACKED_LIMIT)
 			{
-				if (n >= LACKED_LIMIT)
-				{
-					sb.append(", ...");
-					truncated = true;
-					break;
-				}
-				sb.append(n++ > 0 ? ", " : "").append(name);
+				sb.append(", ...");
+				truncated = true;
+				break;
 			}
-			if (n == 0)
-			{
-				sb.append("nothing relevant");
-			}
+			sb.append(n++ > 0 ? ", " : "").append(name);
 		}
-		return new Slice(sb.toString(), lacked != null && !truncated);
+		if (n == 0)
+		{
+			sb.append("nothing relevant");
+		}
+		return new Slice(sb.toString(), !truncated);
 	}
 
 	/**

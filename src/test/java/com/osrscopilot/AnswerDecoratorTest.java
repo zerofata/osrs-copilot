@@ -151,19 +151,6 @@ public class AnswerDecoratorTest
 	}
 
 	@Test
-	public void unavailableCatalogueLeavesOwnedDecorationIntact()
-	{
-		// Fail-soft: with no catalogue the policy is unknowable; losing
-		// ownership badges too would compound the degradation.
-		GameCapture cap = new GameCapture();
-		cap.bank = List.of(Map.of("name", "Abyssal whip", "quantity", 1));
-		String html = AnswerDecorator.build(cap, new EntityResolver.Resolution(),
-			List.of(), List.of(), null)
-			.decorate("Sell your Abyssal whip.");
-		assertTrue(html.contains(">Abyssal whip</font>"));
-	}
-
-	@Test
 	public void versionedNameLinksToItsCanonicalPage()
 	{
 		List<ItemDescriptor> items = List.of(

@@ -4,11 +4,14 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -269,6 +272,7 @@ class ToolRegistry
 					return Map.of("error", "provide 'queries': a list of item names to look for");
 				}
 				Map<String, Object> result = new LinkedHashMap<>();
+				Set<String> known = validItemNames();
 				for (String query : queries)
 				{
 					String ql = query.toLowerCase(Locale.ROOT);
@@ -283,13 +287,36 @@ class ToolRegistry
 							hits.add(hit);
 						}
 					}
-					result.put(query, hits.isEmpty()
-						? "no match in bank/inventory/equipment" : hits);
+					if (!hits.isEmpty())
+					{
+						result.put(query, hits);
+						continue;
+					}
+					// A miss on an invented name must not read as a verified
+					// zero ("Dwarf multicannon" is a page, not an item).
+					result.put(query, known.contains(ql)
+						? "no match in bank/inventory/equipment"
+						: "not a valid OSRS item name -- search queries must use "
+							+ "exact in-game item names");
 				}
 				return result;
 			});
 		}
 		return tools;
+	}
+
+	/** Lowercased catalogue names plus their bases ("saradomin brew" for
+	 * "Saradomin brew(4)", since prose and queries drop the qualifier). */
+	private Set<String> validItemNames() throws IOException
+	{
+		Set<String> names = new HashSet<>();
+		for (ItemDescriptor it : wiki.itemCatalog())
+		{
+			String lower = it.name.toLowerCase(Locale.ROOT);
+			names.add(lower);
+			names.add(Ownership.baseName(lower));
+		}
+		return names;
 	}
 
 	/** Appends the ownership slice for every catalogued item a tool result
@@ -309,17 +336,8 @@ class ToolRegistry
 				return out;
 			}
 			String text = out instanceof String ? (String) out : gson.toJson(out);
-			List<ItemDescriptor> vocabulary;
-			try
-			{
-				vocabulary = wiki.itemCatalog();
-			}
-			catch (Exception e)
-			{
-				vocabulary = null;
-			}
 			Ownership.Slice slice = Ownership.slice(text.toLowerCase(Locale.ROOT),
-				owned, ownedNames, vocabulary);
+				owned, ownedNames, wiki.itemCatalog());
 			if (slice == null)
 			{
 				return out;

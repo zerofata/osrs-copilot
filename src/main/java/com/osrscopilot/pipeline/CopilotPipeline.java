@@ -220,43 +220,26 @@ public class CopilotPipeline
 		return Prefetcher.displayTitle(factTitle);
 	}
 
-	/** The item catalogue, for UI entity linking. Best-effort: empty when
-	 * the snapshot is unavailable. */
-	public List<ItemDescriptor> knownItems()
+	/** The item catalogue, for UI entity linking. */
+	public List<ItemDescriptor> knownItems() throws IOException
 	{
-		try
-		{
-			return wiki.itemCatalog();
-		}
-		catch (Exception e)
-		{
-			log.debug("item catalogue unavailable for decoration", e);
-			return List.of();
-		}
+		return wiki.itemCatalog();
 	}
 
 	/** Every plain monster name, for UI entity linking. Variant pages with
 	 * parenthetical disambiguators are excluded: prose never writes "Black
-	 * demon (The Grand Tree)". Empty when the snapshot is unavailable. */
-	public List<String> knownMonsterNames()
+	 * demon (The Grand Tree)". */
+	public List<String> knownMonsterNames() throws IOException
 	{
-		try
+		List<String> out = new ArrayList<>();
+		for (String name : wiki.monsterNames())
 		{
-			List<String> out = new ArrayList<>();
-			for (String name : wiki.monsterNames())
+			if (name.indexOf('(') < 0)
 			{
-				if (name.indexOf('(') < 0)
-				{
-					out.add(name);
-				}
+				out.add(name);
 			}
-			return out;
 		}
-		catch (Exception e)
-		{
-			log.debug("monster names unavailable for decoration", e);
-			return List.of();
-		}
+		return out;
 	}
 
 	public Prepared prepare(String question, GameCapture cap, EntityResolver.Resolution previous)

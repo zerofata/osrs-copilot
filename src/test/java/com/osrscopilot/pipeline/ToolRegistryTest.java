@@ -123,6 +123,62 @@ public class ToolRegistryTest
 		assertTrue(((Map<?, ?>) xpCall(null, "Herblore", 72)).containsKey("error"));
 	}
 
+	// ---- owned-item search ----------------------------------------------
+
+	private static Object searchOwned(WikiApi wiki, Map<String, Long> ownedItems,
+		String... queries) throws Exception
+	{
+		Map<String, long[]> owned = new java.util.LinkedHashMap<>();
+		Map<String, String> names = new java.util.LinkedHashMap<>();
+		for (Map.Entry<String, Long> e : ownedItems.entrySet())
+		{
+			owned.put(e.getKey().toLowerCase(java.util.Locale.ROOT), new long[]{e.getValue()});
+			names.put(e.getKey().toLowerCase(java.util.Locale.ROOT), e.getKey());
+		}
+		JsonArray list = new JsonArray();
+		for (String q : queries)
+		{
+			list.add(q);
+		}
+		JsonObject args = new JsonObject();
+		args.add("queries", list);
+		return new ToolRegistry(wiki, new Gson())
+			.buildTools(new GameCapture(), owned, names, true, false)
+			.get("search_owned_items").call(args);
+	}
+
+	@Test
+	public void inventedNameIsFlaggedInsteadOfReadingAsNotOwned() throws Exception
+	{
+		// "Dwarf multicannon" is a page, not an item; the parts are.
+		WikiApi wiki = stubWiki("", Map.of(), "Cannon base", "Cannon stand");
+		Map<?, ?> result = (Map<?, ?>) searchOwned(wiki,
+			Map.of("Cannon base", 1L), "Dwarf multicannon");
+		assertTrue(String.valueOf(result.get("Dwarf multicannon"))
+			.contains("not a valid OSRS item name"));
+	}
+
+	@Test
+	public void validNameWithNoCopiesStaysAVerifiedZero() throws Exception
+	{
+		WikiApi wiki = stubWiki("", Map.of(), "Cannon base", "Saradomin brew(4)");
+		Map<?, ?> result = (Map<?, ?>) searchOwned(wiki, Map.of(),
+			"Cannon base", "Saradomin brew");
+		assertEquals("no match in bank/inventory/equipment", result.get("Cannon base"));
+		// Base names of versioned items are how prose refers to them.
+		assertEquals("no match in bank/inventory/equipment", result.get("Saradomin brew"));
+	}
+
+	@Test
+	public void substringHitsBypassValidation() throws Exception
+	{
+		WikiApi wiki = stubWiki("", Map.of(), "Cannon base");
+		Map<?, ?> result = (Map<?, ?>) searchOwned(wiki,
+			Map.of("Cannon base", 1L, "Cannon stand", 1L), "cannon");
+		assertTrue(result.get("cannon") instanceof List);
+		assertEquals(2, ((List<?>) result.get("cannon")).size());
+	}
+
 	// ---- ownership annotation on tool results ---------------------------
 
 	/** WikiApi serving fixed content and a fixed item vocabulary. */

@@ -55,7 +55,7 @@ public class PrefetcherTest
 	}
 
 	private static List<String> ownershipFacts(WikiApi wiki, List<String> pageFacts,
-		Map<String, Long> ownedItems)
+		Map<String, Long> ownedItems) throws Exception
 	{
 		Map<String, long[]> owned = new LinkedHashMap<>();
 		Map<String, String> names = new LinkedHashMap<>();
@@ -70,7 +70,7 @@ public class PrefetcherTest
 	}
 
 	@Test
-	public void ownedAndLackedAreBothStatedPositively()
+	public void ownedAndLackedAreBothStatedPositively() throws Exception
 	{
 		List<String> added = ownershipFacts(
 			vocabOf("Abyssal whip", "Twisted bow", "Dragon dagger"),
@@ -88,7 +88,7 @@ public class PrefetcherTest
 	}
 
 	@Test
-	public void variantNamedGearMatchesTheCanonicalWikiName()
+	public void variantNamedGearMatchesTheCanonicalWikiName() throws Exception
 	{
 		// The wiki says "Slayer helmet (i)"; the player owns the black
 		// variant. It must land in OWNED, not NOT OWNED -- a false
@@ -104,7 +104,7 @@ public class PrefetcherTest
 	}
 
 	@Test
-	public void singleSharedWordIsNotAMention()
+	public void singleSharedWordIsNotAMention() throws Exception
 	{
 		// "helmet" alone appearing in prose must not drag in every owned
 		// helmet: only multi-word remainders count as an item reference.
@@ -116,21 +116,7 @@ public class PrefetcherTest
 	}
 
 	@Test
-	public void unavailableVocabularyDropsTheCompletenessClaim()
-	{
-		// wiki=null: itemCatalog() fails, so the lacked list is unknown
-		// and the block may not claim completeness.
-		List<String> added = ownershipFacts(
-			null,
-			List.of("### Recommended equipment\nWeapon: Abyssal whip"),
-			Map.of("Abyssal whip", 1L));
-		assertEquals(1, added.size());
-		assertFalse("without the vocabulary the completeness claim would be false",
-			added.get(0).contains("complete both ways"));
-	}
-
-	@Test
-	public void truncatedLackedListDropsTheCompletenessClaim()
+	public void truncatedLackedListDropsTheCompletenessClaim() throws Exception
 	{
 		StringBuilder page = new StringBuilder("### Drop table\n");
 		List<String> vocab = new ArrayList<>();
@@ -245,7 +231,7 @@ public class PrefetcherTest
 	}
 
 	@Test
-	public void doseAndChargeVariantsStillMatchProse()
+	public void doseAndChargeVariantsStillMatchProse() throws Exception
 	{
 		List<String> added = ownershipFacts(
 			vocabOf("Prayer potion(4)", "Saradomin brew(4)"),

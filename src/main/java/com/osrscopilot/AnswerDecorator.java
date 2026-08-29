@@ -133,37 +133,26 @@ final class AnswerDecorator
 				}
 			}
 		}
-		if (monsterNames != null)
+		for (String name : monsterNames)
 		{
-			for (String name : monsterNames)
-			{
-				add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null, false);
-			}
+			add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null, false);
 		}
-		if (items != null)
+		// Versioned names ("Fire cape (l)") match by name but link to
+		// their shared page; items without an ID render iconless.
+		for (ItemDescriptor it : items)
 		{
-			// Versioned names ("Fire cape (l)") match by name but link to
-			// their shared page; items without an ID render iconless.
-			for (ItemDescriptor it : items)
-			{
-				add(byName, it.name, it.page, theme.itemUnownedHex,
-					null, it.id != null ? it.id : -1, ITEM_ICON_W, ICON_SQUARE, false, null,
-					!it.tradeable && it.name.indexOf(' ') < 0);
-			}
+			add(byName, it.name, it.page, theme.itemUnownedHex,
+				null, it.id != null ? it.id : -1, ITEM_ICON_W, ICON_SQUARE, false, null,
+				!it.tradeable && it.name.indexOf(' ') < 0);
 		}
 		return new AnswerDecorator(new ArrayList<>(byName.values()), icons);
 	}
 
-	/** Lowercased base names of every catalogued item, or null when the
-	 * catalogue is unavailable. Owned rules obey the same prose-safety
-	 * policy as catalogue rules: a name the snapshot excluded ("Coins")
-	 * must not decorate just because copies are owned. */
+	/** Lowercased base names of every catalogued item. Owned rules obey
+	 * the same prose-safety policy as catalogue rules: a name the snapshot
+	 * excluded ("Coins") must not decorate just because copies are owned. */
 	private static Set<String> safeBaseNames(List<ItemDescriptor> items)
 	{
-		if (items == null || items.isEmpty())
-		{
-			return null;
-		}
 		Set<String> safe = new HashSet<>(items.size() * 2);
 		for (ItemDescriptor it : items)
 		{
@@ -186,7 +175,7 @@ final class AnswerDecorator
 		accumulate(counts, iconId, cap.bank, 2);
 		for (Map.Entry<String, long[]> e : counts.entrySet())
 		{
-			if (safeNames != null && !safeNames.contains(e.getKey().toLowerCase(Locale.ROOT)))
+			if (!safeNames.contains(e.getKey().toLowerCase(Locale.ROOT)))
 			{
 				continue;
 			}
