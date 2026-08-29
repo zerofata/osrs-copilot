@@ -151,6 +151,40 @@ public class AnswerDecoratorTest
 	}
 
 	@Test
+	public void canonicalNameTakesTheOwnedVariantsStyling()
+	{
+		// Prose says "Slayer helmet (i)"; the player's copy is black. The
+		// prompt's variant policy counts it owned, so the display must not
+		// paint it in the unowned color with no badge.
+		GameCapture cap = new GameCapture();
+		cap.bank = List.of(Map.of("name", "Black slayer helmet (i)", "quantity", 1, "id", 25179));
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Slayer helmet (i)", "Slayer helmet", 11865, false, null, null),
+			new ItemDescriptor("Black slayer helmet (i)", "Black slayer helmet", 25179,
+				false, null, null));
+		String html = AnswerDecorator.build(cap, new EntityResolver.Resolution(),
+			List.of(), items, null)
+			.decorate("Keep the Slayer helmet (i) on for the task.");
+		assertTrue(html.contains(">Slayer helmet (i)</font>"));
+		assertTrue(html.contains("banked"));
+	}
+
+	@Test
+	public void sharedWordsWithoutContainmentDoNotCover()
+	{
+		GameCapture cap = new GameCapture();
+		cap.bank = List.of(Map.of("name", "Granite maul", "quantity", 1, "id", 4153));
+		List<ItemDescriptor> items = List.of(
+			new ItemDescriptor("Granite shield", "Granite shield", 27441, true, null, null),
+			new ItemDescriptor("Granite maul", "Granite maul", 4153, true, null, null));
+		String html = AnswerDecorator.build(cap, new EntityResolver.Resolution(),
+			List.of(), items, null)
+			.decorate("A Granite shield blocks well.");
+		assertTrue(html.contains(">Granite shield</font>"));
+		assertFalse("owning the maul must not badge the shield", html.contains("banked"));
+	}
+
+	@Test
 	public void versionedNameLinksToItsCanonicalPage()
 	{
 		List<ItemDescriptor> items = List.of(

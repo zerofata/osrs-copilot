@@ -113,10 +113,9 @@ final class AnswerDecorator
 					questIcon, -1, ICON_SQUARE, ICON_SQUARE, false, null, false);
 			}
 		}
-		if (cap != null)
-		{
-			addOwnedItems(byName, cap, theme, safeBaseNames(items));
-		}
+		Map<String, Rule> owned = cap != null
+			? ownedRules(cap, theme, safeBaseNames(items)) : Map.of();
+		owned.forEach(byName::putIfAbsent);
 		for (String skill : SKILLS)
 		{
 			add(byName, skill, skill, theme.plainLinkHex,
@@ -138,14 +137,59 @@ final class AnswerDecorator
 			add(byName, name, name, theme.plainLinkHex, null, -1, 0, 0, false, null, false);
 		}
 		// Versioned names ("Fire cape (l)") match by name but link to
-		// their shared page; items without an ID render iconless.
+		// their shared page; items without an ID render iconless. A name
+		// covered by an owned variant takes that variant's styling: prose
+		// says "Slayer helmet (i)", the player's copy is black, and the
+		// prompt already told the model the variant counts as owned.
+		Map<String, List<Rule>> ownedByWord = indexByWord(owned);
 		for (ItemDescriptor it : items)
 		{
-			add(byName, it.name, it.page, theme.itemUnownedHex,
-				null, it.id != null ? it.id : -1, ITEM_ICON_W, ICON_SQUARE, false, null,
-				!it.tradeable && it.name.indexOf(' ') < 0);
+			Rule cover = coveringOwned(ownedByWord, Ownership.baseName(it.name));
+			if (cover != null)
+			{
+				add(byName, it.name, it.page, cover.color, null, cover.iconItemId,
+					ITEM_ICON_W, ICON_SQUARE, false, cover.badge, false);
+			}
+			else
+			{
+				add(byName, it.name, it.page, theme.itemUnownedHex,
+					null, it.id != null ? it.id : -1, ITEM_ICON_W, ICON_SQUARE, false, null,
+					!it.tradeable && it.name.indexOf(' ') < 0);
+			}
 		}
 		return new AnswerDecorator(new ArrayList<>(byName.values()), icons);
+	}
+
+	/** Owned rules under every word of their name, so the covering rule
+	 * for a catalogue name is found without scanning all owned items. */
+	private static Map<String, List<Rule>> indexByWord(Map<String, Rule> owned)
+	{
+		Map<String, List<Rule>> byWord = new LinkedHashMap<>();
+		for (Rule rule : owned.values())
+		{
+			for (String word : rule.lowerName.split(" "))
+			{
+				byWord.computeIfAbsent(word, k -> new ArrayList<>()).add(rule);
+			}
+		}
+		return byWord;
+	}
+
+	/** The owned rule covering a canonical name, or null. A whole-word
+	 * containment means the canonical's last word is a word of the owned
+	 * name, so only that index bucket needs the full test. */
+	private static Rule coveringOwned(Map<String, List<Rule>> ownedByWord, String canonical)
+	{
+		String lower = canonical.toLowerCase(Locale.ROOT);
+		String lastWord = lower.substring(lower.lastIndexOf(' ') + 1);
+		for (Rule rule : ownedByWord.getOrDefault(lastWord, List.of()))
+		{
+			if (Ownership.covers(rule.lowerName, lower))
+			{
+				return rule;
+			}
+		}
+		return null;
 	}
 
 	/** Lowercased base names of every catalogued item. Owned rules obey
@@ -163,9 +207,9 @@ final class AnswerDecorator
 
 	/** Aggregate every owned copy of an item across containers (dose and
 	 * charge variants collapse to one base name), then emit a single rule
-	 * whose badge states quantity and place: "×5,006 banked", "equipped",
-	 * "×20 carried, ×5,006 banked". */
-	private static void addOwnedItems(Map<String, Rule> byName, GameCapture cap, Theme theme,
+	 * per base name whose badge states quantity and place: "×5,006
+	 * banked", "equipped", "×20 carried, ×5,006 banked". */
+	private static Map<String, Rule> ownedRules(GameCapture cap, Theme theme,
 		Set<String> safeNames)
 	{
 		Map<String, long[]> counts = new LinkedHashMap<>(); // {carried, equipped, banked}
@@ -173,9 +217,11 @@ final class AnswerDecorator
 		accumulate(counts, iconId, cap.inventory, 0);
 		accumulate(counts, iconId, cap.equipment, 1);
 		accumulate(counts, iconId, cap.bank, 2);
+		Map<String, Rule> rules = new LinkedHashMap<>();
 		for (Map.Entry<String, long[]> e : counts.entrySet())
 		{
-			if (!safeNames.contains(e.getKey().toLowerCase(Locale.ROOT)))
+			String lower = e.getKey().toLowerCase(Locale.ROOT);
+			if (e.getKey().length() < MIN_NAME_LENGTH || !safeNames.contains(lower))
 			{
 				continue;
 			}
@@ -195,11 +241,12 @@ final class AnswerDecorator
 				parts.add(String.format("×%,d banked", c[2]));
 			}
 			Integer id = iconId.get(e.getKey());
-			add(byName, e.getKey(), e.getKey(),
+			rules.putIfAbsent(lower, new Rule(lower, e.getKey(),
 				carried ? theme.itemCarriedHex : theme.itemBankedHex,
 				null, id != null ? id : -1, ITEM_ICON_W, ICON_SQUARE, false,
-				String.join(", ", parts), false);
+				String.join(", ", parts), false));
 		}
+		return rules;
 	}
 
 	private static void accumulate(Map<String, long[]> counts, Map<String, Integer> iconId,

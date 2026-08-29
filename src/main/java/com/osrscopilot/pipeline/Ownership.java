@@ -215,7 +215,7 @@ public final class Ownership
 			boolean ownedVariant = false;
 			for (String ownedBase : ownedBases)
 			{
-				if (ownedBase.equals(lower) || mentionsWord(ownedBase, lower))
+				if (covers(ownedBase, lower))
 				{
 					ownedVariant = true;
 					break;
@@ -249,6 +249,16 @@ public final class Ownership
 			}
 			candidate = candidate.substring(space + 1);
 		}
+	}
+
+	/** True when an owned item's base name covers a canonical base name:
+	 * equal, or the canonical appears whole-word inside the owned name.
+	 * Pages and answers name canonical gear ("Slayer helmet") while the
+	 * player's copy may be decorated ("Black slayer helmet"). Both
+	 * arguments lowercased. */
+	public static boolean covers(String ownedBase, String canonicalBase)
+	{
+		return ownedBase.equals(canonicalBase) || mentionsWord(ownedBase, canonicalBase);
 	}
 
 	/** Case-folded whole-word containment. */
