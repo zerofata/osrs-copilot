@@ -1,9 +1,14 @@
 # Account-type contract. Run with:
-#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample-ironman.json -PevalBattery=eval\battery-ironman.txt -PevalRouteOnly=true
-# Routing is account-blind by design; the ironman rule lives in the system
-# prompt and is only observable in full runs, where sourcing advice must not
-# lean on the Grand Exchange. Route-only verifies the ironman fixture routes
-# identically to a normal account.
+#   gradlew evalRun -PevalSnapshot=eval\snapshot-sample-ironman.json -PevalBattery=eval\battery-ironman.txt -PevalPromptOnly=true
+# Routing is account-blind by design; the ironman fixture must route
+# identically to a normal account. Account type shows up in two places
+# only: the system prompt's ironman rule (observable in full runs, where
+# sourcing advice must not lean on the Grand Exchange) and training-guide
+# prefetch, which picks the ironman guide family -- pinned by the facts
+# assertion below.
 
 Where do I get addy bars?
 ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"]}
+
+whats the best way to level sailing forme
+ASSERT {"skills": ["Sailing"], "needs": ["training"], "facts": ["Training guide: Ironman Guide/Sailing"]}

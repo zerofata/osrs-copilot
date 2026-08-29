@@ -37,8 +37,7 @@ ASSERT {"quests": ["Dragon Slayer I"], "facts": ["Quest requirements: Dragon Sla
 Where do I get addy bars?
 ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"], "facts": ["How to obtain: Adamantite bar"]}
 
-# Training guide pages ("<Skill> training" convention; the ironman guide
-# families are exercised against snapshot-ironman by hand, selection is
-# unit-tested).
+# Training guide pages ("<Skill> training" convention; battery-ironman
+# covers the ironman guide family, selection is unit-tested).
 whats the best way to level sailing forme
 ASSERT {"skills": ["Sailing"], "needs": ["training"], "facts": ["Training guide: Sailing training"]}
