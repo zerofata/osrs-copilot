@@ -1,7 +1,6 @@
 package com.osrscopilot.pipeline;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
