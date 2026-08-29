@@ -12,10 +12,11 @@ public class ItemCollectivesTest
 	public void substitutionKeepsQualifiers()
 	{
 		List<String> out = ItemCollectives.expand("imbued god cape");
-		assertEquals(3, out.size());
 		assertTrue(out.contains("imbued saradomin cape"));
 		assertTrue(out.contains("imbued zamorak cape"));
 		assertTrue(out.contains("imbued guthix cape"));
+		assertTrue("max variants are separate names, not substring-reachable",
+			out.contains("imbued zamorak max cape"));
 	}
 
 	@Test

@@ -185,6 +185,20 @@ public class ToolRegistryTest
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
+	public void collectiveTermReachesMaxCapeVariants() throws Exception
+	{
+		// "zamorak cape" is not a substring of "zamorak max cape": the max
+		// variants need their own members or an owner gets a false zero.
+		WikiApi wiki = stubWiki("", Map.of(), "Imbued Zamorak max cape");
+		Map<?, ?> result = (Map<?, ?>) searchOwned(wiki,
+			Map.of("Imbued Zamorak max cape", 1L), "Imbued god cape");
+		List<Map<String, Object>> hits =
+			(List<Map<String, Object>>) result.get("Imbued god cape");
+		assertEquals("Imbued Zamorak max cape", hits.get(0).get("item"));
+	}
+
+	@Test
 	public void unownedCollectiveIsAVerifiedZeroNotAnInvalidName() throws Exception
 	{
 		// Every variant was searched, so the miss is real -- unlike an
