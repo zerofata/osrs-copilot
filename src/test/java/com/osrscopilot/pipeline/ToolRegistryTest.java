@@ -150,11 +150,10 @@ public class ToolRegistryTest
 	@Test
 	public void inventedNameIsFlaggedInsteadOfReadingAsNotOwned() throws Exception
 	{
-		// "Dwarf multicannon" is a page, not an item; the parts are.
 		WikiApi wiki = stubWiki("", Map.of(), "Cannon base", "Cannon stand");
 		Map<?, ?> result = (Map<?, ?>) searchOwned(wiki,
-			Map.of("Cannon base", 1L), "Dwarf multicannon");
-		assertTrue(String.valueOf(result.get("Dwarf multicannon"))
+			Map.of("Cannon base", 1L), "Reinforced cannon frame");
+		assertTrue(String.valueOf(result.get("Reinforced cannon frame"))
 			.contains("not a valid OSRS item name"));
 	}
 
@@ -167,6 +166,32 @@ public class ToolRegistryTest
 		assertEquals("no match in bank/inventory/equipment", result.get("Cannon base"));
 		// Base names of versioned items are how prose refers to them.
 		assertEquals("no match in bank/inventory/equipment", result.get("Saradomin brew"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	public void collectiveTermFindsOwnedVariants() throws Exception
+	{
+		WikiApi wiki = stubWiki("", Map.of(), "Imbued Zamorak cape", "Cannon base");
+		Map<?, ?> result = (Map<?, ?>) searchOwned(wiki,
+			Map.of("Imbued Zamorak cape", 1L, "Cannon base", 1L),
+			"Imbued god cape", "Dwarf multicannon");
+		List<Map<String, Object>> capes =
+			(List<Map<String, Object>>) result.get("Imbued god cape");
+		assertEquals("Imbued Zamorak cape", capes.get(0).get("item"));
+		List<Map<String, Object>> cannon =
+			(List<Map<String, Object>>) result.get("Dwarf multicannon");
+		assertEquals("Cannon base", cannon.get(0).get("item"));
+	}
+
+	@Test
+	public void unownedCollectiveIsAVerifiedZeroNotAnInvalidName() throws Exception
+	{
+		// Every variant was searched, so the miss is real -- unlike an
+		// invented name, which stays flagged.
+		WikiApi wiki = stubWiki("", Map.of(), "Cannon base");
+		Map<?, ?> result = (Map<?, ?>) searchOwned(wiki, Map.of(), "God cape");
+		assertEquals("no match in bank/inventory/equipment", result.get("God cape"));
 	}
 
 	@Test

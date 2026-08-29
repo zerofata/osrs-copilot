@@ -300,6 +300,19 @@ public final class VocabSnapshotTool
 				+ " id-bearing descriptors, expected >= " + MIN_ITEM_IDS
 				+ " -- refusing to publish");
 		}
+		Set<String> lowerNames = new HashSet<>();
+		for (ItemDescriptor it : items)
+		{
+			lowerNames.add(it.name.toLowerCase(Locale.ROOT));
+		}
+		for (String variant : ItemCollectives.variantTerms())
+		{
+			if (lowerNames.stream().noneMatch(n -> n.contains(variant)))
+			{
+				throw new IllegalStateException("SANITY FAIL: collective variant '"
+					+ variant + "' matches no catalogued item -- table is stale");
+			}
+		}
 		return new Sized(gson.toJson(items), items.size());
 	}
 

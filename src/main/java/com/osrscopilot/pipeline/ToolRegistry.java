@@ -276,15 +276,19 @@ class ToolRegistry
 				for (String query : queries)
 				{
 					String ql = query.toLowerCase(Locale.ROOT);
+					List<String> needles = ItemCollectives.expand(ql);
 					List<Map<String, Object>> hits = new ArrayList<>();
-					for (Map.Entry<String, long[]> e : owned.entrySet())
+					for (String needle : needles)
 					{
-						if (e.getKey().contains(ql) && hits.size() < 20)
+						for (Map.Entry<String, long[]> e : owned.entrySet())
 						{
-							Map<String, Object> hit = new LinkedHashMap<>();
-							hit.put("item", ownedNames.get(e.getKey()));
-							hit.put("quantity", e.getValue()[0]);
-							hits.add(hit);
+							if (e.getKey().contains(needle) && hits.size() < 20)
+							{
+								Map<String, Object> hit = new LinkedHashMap<>();
+								hit.put("item", ownedNames.get(e.getKey()));
+								hit.put("quantity", e.getValue()[0]);
+								hits.add(hit);
+							}
 						}
 					}
 					if (!hits.isEmpty())
@@ -292,9 +296,10 @@ class ToolRegistry
 						result.put(query, hits);
 						continue;
 					}
-					// A miss on an invented name must not read as a verified
-					// zero ("Dwarf multicannon" is a page, not an item).
-					result.put(query, known.contains(ql)
+					// An expanded query searched every variant: a true zero.
+					// Otherwise a miss on an invented name must not read as
+					// one ("Dwarf multicannon" is a page, not an item).
+					result.put(query, needles.size() > 1 || known.contains(ql)
 						? "no match in bank/inventory/equipment"
 						: "not a valid OSRS item name -- search queries must use "
 							+ "exact in-game item names");
