@@ -91,6 +91,13 @@ ASSERT {"skills": ["Prayer"], "needs": ["xp_math"]}
 whats the best way to train smithing to 99
 ASSERT {"skills": ["Smithing"], "needs": ["training"], "not_facilities": ["Anvil", "Furnace"], "not_needs": ["transport"], "not_pages": ["Skill mastery"]}
 
+# "level" as a verb is a training question; as a noun it stays xp math.
+whats the best way to level sailing forme
+ASSERT {"skills": ["Sailing"], "needs": ["training"]}
+
+what level do i need for barrows gloves
+ASSERT {"needs": ["xp_math"], "not_needs": ["training"]}
+
 # Group-vs-solo etiquette resolves the place itself.
 do players normally group or solo gwd
 ASSERT {"pages": ["God Wars Dungeon"]}
