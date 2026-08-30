@@ -311,7 +311,8 @@ public class ToolRegistryTest
 		assertTrue(text.contains("OWNED: Giantsoul amulet"));
 		assertTrue("mentioned unowned items are named, not implied",
 			text.contains("NOT OWNED") && text.contains("Twisted bow"));
-		assertTrue(text.contains("(complete)"));
+		assertTrue("untruncated footer carries no cut note",
+			text.contains("[Player ownership of items this result mentions]"));
 	}
 
 	@Test

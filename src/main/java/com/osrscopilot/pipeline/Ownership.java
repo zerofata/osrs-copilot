@@ -159,8 +159,7 @@ public final class Ownership
 	static final class Slice
 	{
 		final String text;
-		/** True when the lists may claim completeness: nothing was cut
-		 * for length. */
+		/** True when nothing was cut for length. */
 		final boolean complete;
 
 		private Slice(String text, boolean complete)

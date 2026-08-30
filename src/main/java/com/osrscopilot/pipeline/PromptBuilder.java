@@ -38,7 +38,7 @@ class PromptBuilder
 	private static final String SYNTH_SYSTEM =
 		"You are an OSRS copilot running inside RuneLite. Answer the player's question "
 		+ "using their live game state and the retrieved facts provided. Principles:\n"
-		+ "- PLAYER STATE is what the client observes. A field or fact block marked "
+		+ "- PLAYER STATE is what the client observes. A field marked "
 		+ "\"complete\" is exhaustive (absence there means not owned -- never search or "
 		+ "guess for what it already rules out). Everything else not shown is UNKNOWN, "
 		+ "not absent: never infer missing items, progress, or experience from absence -- say "
