@@ -29,6 +29,8 @@ public class GameCapture
 	public List<Map<String, Object>> equipment;
 	public List<Map<String, Object>> bank;
 	public List<Map<String, Object>> recentEvents;
+	/** POH facilities from the last house visit; null if never visited. */
+	public List<String> house;
 
 	public static final Map<Integer, String> ACCOUNT_TYPES = Map.of(
 		0, "NORMAL", 1, "IRONMAN", 2, "ULTIMATE_IRONMAN", 3, "HARDCORE_IRONMAN",

@@ -36,15 +36,17 @@ class GameStateReader
 	private final ConfigManager configManager;
 	private final CopilotConfig config;
 	private final BankStore bankStore;
+	private final HouseStore houseStore;
 	private final EventRecorder events;
 
 	GameStateReader(Client client, ConfigManager configManager, CopilotConfig config,
-		BankStore bankStore, EventRecorder events)
+		BankStore bankStore, HouseStore houseStore, EventRecorder events)
 	{
 		this.client = client;
 		this.configManager = configManager;
 		this.config = config;
 		this.bankStore = bankStore;
+		this.houseStore = houseStore;
 		this.events = events;
 	}
 
@@ -125,6 +127,7 @@ class GameStateReader
 		{
 			cap.recentEvents = events.recent();
 		}
+		cap.house = houseStore.forCapture();
 		return cap;
 	}
 

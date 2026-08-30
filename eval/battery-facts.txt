@@ -34,8 +34,15 @@ Can I start Dragon Slayer?
 ASSERT {"quests": ["Dragon Slayer I"], "facts": ["Quest requirements: Dragon Slayer I"]}
 
 # dropsline + recipe + storeline buckets (the composite acquisition fact).
+# Also the negative half of the house-facilities gate: no transport or
+# strategy need, so the snapshot's house scan must stay out of the prompt.
 Where do I get addy bars?
-ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"], "facts": ["How to obtain: Adamantite bar"]}
+ASSERT {"items": ["Adamantite bar"], "needs": ["item_sources"], "facts": ["How to obtain: Adamantite bar"], "not_facts": ["House facilities (from your last home visit)"]}
+
+# House facilities (game-state bucket, no wiki call): the snapshot's
+# last-visit scan reaches the prompt when transport is in play.
+how do I get to the grand exchange from here?
+ASSERT {"needs": ["transport"], "facts": ["House facilities (from your last home visit)"]}
 
 # Training guide pages ("<Skill> training" convention; battery-ironman
 # covers the ironman guide family, selection is unit-tested).

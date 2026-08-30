@@ -19,8 +19,10 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,12 +41,15 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.CommandExecuted;
+import net.runelite.api.events.DecorativeObjectSpawned;
+import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.WallObjectSpawned;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.Widget;
@@ -82,6 +87,10 @@ public class CopilotPlugin extends Plugin
 {
 	private static final File DATA_DIR = new File(RuneLite.RUNELITE_DIR, "osrs-copilot");
 	private static final File CACHE_DIR = new File(DATA_DIR, "cache");
+
+	/** The nexus Teleport Menu interface, calibrated in-game 2026-08-30;
+	 * its first text is "Portal Nexus". */
+	private static final int NEXUS_MENU_GROUP = 17;
 
 	@Inject
 	private Client client;
@@ -132,9 +141,14 @@ public class CopilotPlugin extends Plugin
 	// -> executor (pipeline; network + LLM) -> Swing EDT (render).
 	private volatile String pendingQuestion;
 	private String pendingSnapshotLabel;
-	private int pendingWidgetDumpGroup = -1;
 	private BankStore bankStore;
 	private BankMutations bankMutations;
+	private HouseStore houseStore;
+	/** Facilities seen in the current scene; cleared on every scene load,
+	 * committed to the store only while the player stands in the POH. */
+	private final Set<String> houseSeen = new LinkedHashSet<>();
+	private boolean housePendingCommit;
+	private boolean pendingNexusScrape;
 	/** Arms the drift audit for the next bank capture; set at startup and
 	 * whenever the bank interface closes, cleared once the visit's first
 	 * capture has been audited. */
@@ -169,8 +183,9 @@ public class CopilotPlugin extends Plugin
 		DATA_DIR.mkdirs();
 		bankStore = new BankStore(DATA_DIR, gson, sharedExecutor);
 		bankMutations = new BankMutations(bankStore, itemManager);
+		houseStore = new HouseStore(DATA_DIR, gson, sharedExecutor);
 		events = new EventRecorder(client, gson, config, DATA_DIR);
-		reader = new GameStateReader(client, configManager, config, bankStore, events);
+		reader = new GameStateReader(client, configManager, config, bankStore, houseStore, events);
 
 		pipelineExecutor = Executors.newSingleThreadExecutor(r -> {
 			Thread t = new Thread(r, "osrs-copilot-pipeline");
@@ -229,11 +244,12 @@ public class CopilotPlugin extends Plugin
 		navIcon = null;
 		bankStore = null;
 		bankMutations = null;
+		houseStore = null;
+		houseSeen.clear();
 		events = null;
 		reader = null;
 		pendingQuestion = null;
 		pendingSnapshotLabel = null;
-		pendingWidgetDumpGroup = -1;
 		synchronized (conversation)
 		{
 			conversation.clear();
@@ -412,11 +428,23 @@ public class CopilotPlugin extends Plugin
 				: "Copilot: snapshot FAILED, see client log";
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", msg, null);
 		}
-		if (pendingWidgetDumpGroup >= 0)
+		houseStore.sync(client.getAccountHash());
+		if (housePendingCommit && inPoh())
 		{
-			int group = pendingWidgetDumpGroup;
-			pendingWidgetDumpGroup = -1;
-			dumpWidgetGroup(group);
+			housePendingCommit = false;
+			List<String> facilities = new ArrayList<>(houseSeen);
+			facilities.sort(String::compareTo);
+			houseStore.updateFacilities(facilities);
+		}
+		if (pendingNexusScrape)
+		{
+			pendingNexusScrape = false;
+			List<String> destinations =
+				HouseStore.parseNexusMenu(widgetGroupTexts(NEXUS_MENU_GROUP));
+			if (destinations != null)
+			{
+				houseStore.updateNexus(destinations);
+			}
 		}
 
 		if (pendingQuestion != null)
@@ -654,9 +682,48 @@ public class CopilotPlugin extends Plugin
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		events.log("gameState", Map.of("state", event.getGameState().name()));
+		if (event.getGameState() == GameState.LOADING)
+		{
+			houseSeen.clear();
+		}
 		if (event.getGameState() == GameState.LOGGED_IN)
 		{
 			pipeline.onLogin();
+		}
+	}
+
+	// House facilities exist only as scene objects while the player stands
+	// inside the POH (RuneLite's bundled POH plugin reads them the same
+	// way). Spawns collect scene-wide; the POH check happens at commit.
+	@Subscribe
+	public void onGameObjectSpawned(GameObjectSpawned event)
+	{
+		collectHouseFacility(event.getGameObject());
+	}
+
+	@Subscribe
+	public void onWallObjectSpawned(WallObjectSpawned event)
+	{
+		collectHouseFacility(event.getWallObject());
+	}
+
+	@Subscribe
+	public void onDecorativeObjectSpawned(DecorativeObjectSpawned event)
+	{
+		collectHouseFacility(event.getDecorativeObject());
+	}
+
+	private void collectHouseFacility(TileObject obj)
+	{
+		ObjectComposition comp = resolvedComposition(obj);
+		if (comp == null)
+		{
+			return;
+		}
+		String facility = HouseStore.describe(comp.getName(), comp.getActions());
+		if (facility != null && houseSeen.add(facility))
+		{
+			housePendingCommit = true;
 		}
 	}
 
@@ -817,11 +884,11 @@ public class CopilotPlugin extends Plugin
 				client.getItemContainer(InventoryID.INV),
 				client.getItemContainer(InventoryID.WORN));
 		}
-		// Calibration aid: interfaces opened inside the POH dump their texts
-		// a tick later (populated by then; some block ::house input).
-		if (inPoh())
+		// The nexus Teleport Menu lists only the destinations actually
+		// added; read it a tick after load, once its texts are populated.
+		if (event.getGroupId() == NEXUS_MENU_GROUP && inPoh())
 		{
-			pendingWidgetDumpGroup = event.getGroupId();
+			pendingNexusScrape = true;
 		}
 	}
 
@@ -928,6 +995,18 @@ public class CopilotPlugin extends Plugin
 		}
 	}
 
+	/** The object's composition with any impostor resolved: POH facility
+	 * objects are varbit-multiloc, the base id is an empty shell. */
+	private ObjectComposition resolvedComposition(TileObject obj)
+	{
+		ObjectComposition comp = client.getObjectDefinition(obj.getId());
+		if (comp != null && comp.getImpostorIds() != null)
+		{
+			comp = comp.getImpostor();
+		}
+		return comp == null || "null".equals(comp.getName()) ? null : comp;
+	}
+
 	private void describeObjects(Map<Integer, String> out, TileObject... objects)
 	{
 		for (TileObject obj : objects)
@@ -936,12 +1015,8 @@ public class CopilotPlugin extends Plugin
 			{
 				continue;
 			}
-			ObjectComposition comp = client.getObjectDefinition(obj.getId());
-			if (comp != null && comp.getImpostorIds() != null)
-			{
-				comp = comp.getImpostor();
-			}
-			if (comp == null || "null".equals(comp.getName()))
+			ObjectComposition comp = resolvedComposition(obj);
+			if (comp == null)
 			{
 				continue;
 			}
@@ -956,31 +1031,14 @@ public class CopilotPlugin extends Plugin
 		return wp != null && "Player Owned House".equals(Areas.resolve(wp));
 	}
 
-	private void dumpWidgetGroup(int group)
+	private List<String> widgetGroupTexts(int group)
 	{
-		try
+		Map<Integer, List<String>> byGroup = new TreeMap<>();
+		for (Widget root : client.getWidgetRoots())
 		{
-			Map<Integer, List<String>> byGroup = new TreeMap<>();
-			for (Widget root : client.getWidgetRoots())
-			{
-				collectWidgetTexts(root, byGroup, 0);
-			}
-			List<String> texts = byGroup.get(group);
-			if (texts == null)
-			{
-				return;
-			}
-			File out = new File(DATA_DIR, "house-widget-" + group + "-"
-				+ System.currentTimeMillis() + ".txt");
-			Files.write(out.toPath(), ("group " + group + ": " + texts)
-				.getBytes(StandardCharsets.UTF_8));
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-				"Copilot: widget dump written to " + out.getName(), null);
+			collectWidgetTexts(root, byGroup, 0);
 		}
-		catch (Exception e)
-		{
-			log.error("Widget dump failed", e);
-		}
+		return byGroup.getOrDefault(group, List.of());
 	}
 
 	private void collectWidgetTexts(Widget widget, Map<Integer, List<String>> byGroup, int depth)

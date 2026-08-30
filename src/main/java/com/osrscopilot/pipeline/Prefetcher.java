@@ -68,7 +68,20 @@ class Prefetcher
 		questFacts(facts, ents.quests);
 		pageFacts(facts, needs, route);
 		skillFacts(facts, needs, ents, cap);
+		houseFact(facts, needs, cap);
 		return facts;
+	}
+
+	/** The player's POH facilities, so travel and prep answers can weigh
+	 * a house teleport. Captured on house visits; absent until one. */
+	private void houseFact(List<String> facts, Set<String> needs, GameCapture cap)
+	{
+		if (cap.house != null && !cap.house.isEmpty()
+			&& (needs.contains(Router.NEED_TRANSPORT) || needs.contains(Router.NEED_STRATEGY)))
+		{
+			addFact(facts, "House facilities (from your last home visit)",
+				String.join("; ", cap.house));
+		}
 	}
 
 	/** Core bundle: monster info always; extras per needs. */

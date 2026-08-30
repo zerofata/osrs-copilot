@@ -477,5 +477,12 @@
    "quantity": 2500000
   }
  ],
- "recentEvents": []
+ "recentEvents": [],
+ "house": [
+  "Altar",
+  "Kourend Portal",
+  "Ornate pool of Rejuvenation",
+  "Portal Nexus: Arceuus Library",
+  "Varrock Portal (Varrock or Grand Exchange)"
+ ]
 }
