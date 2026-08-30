@@ -17,9 +17,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -30,6 +32,9 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.ObjectComposition;
+import net.runelite.api.Tile;
+import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
@@ -42,6 +47,7 @@ import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.widgets.Widget;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.client.RuneLite;
@@ -681,6 +687,15 @@ public class CopilotPlugin extends Plugin
 			}
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", msg, null);
 		}
+		// Dev aid: ::house dumps impostor-resolved scene objects and open
+		// widget texts, for calibrating the POH facility whitelist.
+		if ("house".equalsIgnoreCase(event.getCommand()))
+		{
+			File f = dumpHouseCalibration();
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", f != null
+				? "Copilot: house dump written to " + f.getName()
+				: "Copilot: house dump FAILED, see client log", null);
+		}
 	}
 
 	@Subscribe
@@ -842,6 +857,112 @@ public class CopilotPlugin extends Plugin
 		{
 			log.error("Snapshot failed", e);
 			return null;
+		}
+	}
+
+	/** One calibration file: every distinct scene object (impostor-resolved,
+	 * so varbit-built house furniture reports what is actually built) and
+	 * the texts of every open widget group. Run inside the POH, then again
+	 * with the nexus Teleport Menu open to identify its group ID. */
+	private File dumpHouseCalibration()
+	{
+		try
+		{
+			StringBuilder sb = new StringBuilder();
+			WorldPoint wp = GameStateReader.playerLocation(client);
+			sb.append("location: ").append(wp).append(" -> ")
+				.append(wp != null ? Areas.resolve(wp) : null).append('\n');
+
+			sb.append("\n-- scene objects (deduped by resolved id) --\n");
+			Map<Integer, String> seen = new TreeMap<>();
+			for (Tile[][] plane : client.getScene().getTiles())
+			{
+				for (Tile[] row : plane)
+				{
+					for (Tile tile : row)
+					{
+						if (tile == null)
+						{
+							continue;
+						}
+						describeObjects(seen, tile.getGameObjects());
+						describeObjects(seen, tile.getWallObject(),
+							tile.getDecorativeObject(), tile.getGroundObject());
+					}
+				}
+			}
+			seen.values().forEach(line -> sb.append(line).append('\n'));
+
+			sb.append("\n-- open widget groups with text --\n");
+			Map<Integer, List<String>> byGroup = new TreeMap<>();
+			for (Widget root : client.getWidgetRoots())
+			{
+				collectWidgetTexts(root, byGroup, 0);
+			}
+			byGroup.forEach((group, texts) ->
+				sb.append("group ").append(group).append(": ").append(texts).append('\n'));
+
+			File out = new File(DATA_DIR, "house-calibration-" + System.currentTimeMillis() + ".txt");
+			Files.write(out.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+			log.info("House calibration written: {}", out.getAbsolutePath());
+			return out;
+		}
+		catch (Exception e)
+		{
+			log.error("House calibration failed", e);
+			return null;
+		}
+	}
+
+	private void describeObjects(Map<Integer, String> out, TileObject... objects)
+	{
+		for (TileObject obj : objects)
+		{
+			if (obj == null)
+			{
+				continue;
+			}
+			ObjectComposition comp = client.getObjectDefinition(obj.getId());
+			if (comp != null && comp.getImpostorIds() != null)
+			{
+				comp = comp.getImpostor();
+			}
+			if (comp == null || "null".equals(comp.getName()))
+			{
+				continue;
+			}
+			out.putIfAbsent(comp.getId(), String.format("id=%d base=%d name=%s ops=%s",
+				comp.getId(), obj.getId(), comp.getName(), Arrays.toString(comp.getActions())));
+		}
+	}
+
+	private void collectWidgetTexts(Widget widget, Map<Integer, List<String>> byGroup, int depth)
+	{
+		if (widget == null || depth > 12)
+		{
+			return;
+		}
+		String text = widget.getText();
+		if (text != null && !text.isEmpty())
+		{
+			List<String> texts = byGroup.computeIfAbsent(widget.getId() >>> 16,
+				k -> new ArrayList<>());
+			if (texts.size() < 60)
+			{
+				texts.add(text);
+			}
+		}
+		for (Widget[] children : new Widget[][]{widget.getStaticChildren(),
+			widget.getDynamicChildren(), widget.getNestedChildren()})
+		{
+			if (children == null)
+			{
+				continue;
+			}
+			for (Widget child : children)
+			{
+				collectWidgetTexts(child, byGroup, depth + 1);
+			}
 		}
 	}
 
