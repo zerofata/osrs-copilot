@@ -9,17 +9,22 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
 /**
  * The player's ownership index: bank + inventory + equipment flattened into
- * case-folded name -> quantity. Pure functions of a GameCapture, shared by
- * the prefetcher, the tool registry, and the answer decorator so prompted
- * and displayed ownership can't drift apart.
+ * case-folded name -> per-location quantities. Pure functions of a
+ * GameCapture, shared by the prefetcher, the tool registry, and the answer
+ * decorator so prompted and displayed ownership can't drift apart.
  */
 public final class Ownership
 {
+	/** Slots of the per-name quantity array. */
+	static final int CARRIED = 0;
+	static final int EQUIPPED = 1;
+	static final int BANKED = 2;
+	private static final String[] SLOT_NAMES = {"carried", "equipped", "banked"};
+
 	private static final Pattern TRAILING_QUALIFIER = Pattern.compile("\\s*\\([^)]*\\)$");
 
 	private Ownership()
@@ -33,14 +38,15 @@ public final class Ownership
 		return TRAILING_QUALIFIER.matcher(name).replaceAll("").trim();
 	}
 
+	/** name -> {carried, equipped, banked} quantities. */
 	static Map<String, long[]> buildIndex(GameCapture cap)
 	{
 		Map<String, long[]> owned = new LinkedHashMap<>();
-		eachOwnedItem(cap, (name, item) -> {
+		eachOwnedItem(cap, (name, item, slot) -> {
 			long qty = item.get("quantity") instanceof Number
 				? ((Number) item.get("quantity")).longValue() : 1;
-			owned.merge(name.toLowerCase(Locale.ROOT), new long[]{qty},
-				(a, b) -> new long[]{a[0] + b[0]});
+			owned.computeIfAbsent(name.toLowerCase(Locale.ROOT),
+				k -> new long[3])[slot] += qty;
 		});
 		return owned;
 	}
@@ -48,26 +54,72 @@ public final class Ownership
 	static Map<String, String> buildNames(GameCapture cap)
 	{
 		Map<String, String> names = new LinkedHashMap<>();
-		eachOwnedItem(cap, (name, item) ->
+		eachOwnedItem(cap, (name, item, slot) ->
 			names.putIfAbsent(name.toLowerCase(Locale.ROOT), name));
 		return names;
 	}
 
-	/** The one walk over everything the player holds; absent containers
-	 * are skipped. */
-	private static void eachOwnedItem(GameCapture cap,
-		BiConsumer<String, Map<String, Object>> fn)
+	static long total(long[] counts)
 	{
-		for (List<Map<String, Object>> container :
-			Arrays.asList(cap.bank, cap.inventory, cap.equipment))
+		return counts[CARRIED] + counts[EQUIPPED] + counts[BANKED];
+	}
+
+	/** The location phrase for a count array: "banked" when everything is
+	 * in one place (the caller already carries the quantity), counted
+	 * parts like "3 carried, 5 banked" when the copies are split. */
+	static String whereLabel(long[] counts)
+	{
+		int locations = 0;
+		for (long c : counts)
 		{
+			if (c > 0)
+			{
+				locations++;
+			}
+		}
+		StringBuilder sb = new StringBuilder();
+		for (int slot = 0; slot < counts.length; slot++)
+		{
+			if (counts[slot] == 0)
+			{
+				continue;
+			}
+			if (sb.length() > 0)
+			{
+				sb.append(", ");
+			}
+			if (locations > 1)
+			{
+				sb.append(counts[slot]).append(' ');
+			}
+			sb.append(SLOT_NAMES[slot]);
+		}
+		return sb.toString();
+	}
+
+	private interface OwnedItemVisitor
+	{
+		void accept(String name, Map<String, Object> item, int slot);
+	}
+
+	/** The one walk over everything the player holds; absent containers
+	 * are skipped. Iteration order (bank first) fixes which container
+	 * names the display variant in buildNames. */
+	private static void eachOwnedItem(GameCapture cap, OwnedItemVisitor fn)
+	{
+		int[] slots = {BANKED, CARRIED, EQUIPPED};
+		List<List<Map<String, Object>>> containers =
+			Arrays.asList(cap.bank, cap.inventory, cap.equipment);
+		for (int i = 0; i < containers.size(); i++)
+		{
+			List<Map<String, Object>> container = containers.get(i);
 			if (container == null)
 			{
 				continue;
 			}
 			for (Map<String, Object> item : container)
 			{
-				fn.accept(String.valueOf(item.get("name")), item);
+				fn.accept(String.valueOf(item.get("name")), item, slots[i]);
 			}
 		}
 	}
@@ -77,7 +129,7 @@ public final class Ownership
 		String key = itemName.toLowerCase(Locale.ROOT);
 		if (owned.containsKey(key))
 		{
-			return Map.of("item", names.get(key), "owned", owned.get(key)[0]);
+			return Map.of("item", names.get(key), "owned", total(owned.get(key)));
 		}
 		List<Map<String, Object>> partial = new ArrayList<>();
 		for (Map.Entry<String, long[]> e : owned.entrySet())
@@ -86,7 +138,7 @@ public final class Ownership
 			{
 				Map<String, Object> hit = new LinkedHashMap<>();
 				hit.put("item", names.get(e.getKey()));
-				hit.put("owned", e.getValue()[0]);
+				hit.put("owned", total(e.getValue()));
 				partial.add(hit);
 			}
 		}
@@ -133,7 +185,7 @@ public final class Ownership
 	static Slice slice(String haystackLower, Map<String, long[]> owned,
 		Map<String, String> names, List<ItemDescriptor> vocabulary)
 	{
-		Map<String, Long> ownedMentioned = new LinkedHashMap<>();
+		Map<String, long[]> ownedMentioned = new LinkedHashMap<>();
 		List<String> ownedBases = new ArrayList<>();
 		for (Map.Entry<String, long[]> e : owned.entrySet())
 		{
@@ -144,7 +196,11 @@ public final class Ownership
 				continue;
 			}
 			String display = baseName(names.get(e.getKey()));
-			ownedMentioned.merge(display, e.getValue()[0], Long::sum);
+			long[] sum = ownedMentioned.computeIfAbsent(display, k -> new long[3]);
+			for (int slot = 0; slot < sum.length; slot++)
+			{
+				sum[slot] += e.getValue()[slot];
+			}
 		}
 
 		Set<String> lacked = lackedMentioned(haystackLower, ownedBases, vocabulary);
@@ -156,7 +212,7 @@ public final class Ownership
 		StringBuilder sb = new StringBuilder("OWNED: ");
 		int n = 0;
 		boolean truncated = false;
-		for (Map.Entry<String, Long> e : ownedMentioned.entrySet())
+		for (Map.Entry<String, long[]> e : ownedMentioned.entrySet())
 		{
 			if (n >= OWNED_LIMIT)
 			{
@@ -165,10 +221,12 @@ public final class Ownership
 				break;
 			}
 			sb.append(n++ > 0 ? ", " : "").append(e.getKey());
-			if (e.getValue() > 1)
+			long qty = total(e.getValue());
+			if (qty > 1)
 			{
-				sb.append(" x").append(e.getValue());
+				sb.append(" x").append(qty);
 			}
+			sb.append(" (").append(whereLabel(e.getValue())).append(')');
 		}
 		if (n == 0)
 		{

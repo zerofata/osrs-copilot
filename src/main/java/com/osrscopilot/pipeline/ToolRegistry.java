@@ -265,7 +265,11 @@ class ToolRegistry
 		});
 		if (offerOwnedSearch)
 		{
-			tools.put("search_owned_items", args -> {
+			// The annotated wrap adds the ownership slice footer, whose
+			// entries carry the carried/equipped/banked locations for the
+			// items the hits name; the hits themselves stay totals.
+			tools.put("search_owned_items", annotated(owned, ownedNames, annotateOwnership,
+				args -> {
 				List<String> queries = strList(args, "queries", "query");
 				if (queries.isEmpty())
 				{
@@ -286,7 +290,7 @@ class ToolRegistry
 							{
 								Map<String, Object> hit = new LinkedHashMap<>();
 								hit.put("item", ownedNames.get(e.getKey()));
-								hit.put("quantity", e.getValue()[0]);
+								hit.put("quantity", Ownership.total(e.getValue()));
 								hits.add(hit);
 							}
 						}
@@ -305,7 +309,7 @@ class ToolRegistry
 							+ "exact in-game item names");
 				}
 				return result;
-			});
+			}));
 		}
 		return tools;
 	}

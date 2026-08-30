@@ -61,12 +61,49 @@ public class PrefetcherTest
 		Map<String, String> names = new LinkedHashMap<>();
 		for (Map.Entry<String, Long> e : ownedItems.entrySet())
 		{
-			owned.put(e.getKey().toLowerCase(java.util.Locale.ROOT), new long[]{e.getValue()});
+			// Fixture quantities sit in the bank, the common case for the
+			// summarized-bank mode these facts exist in.
+			owned.put(e.getKey().toLowerCase(java.util.Locale.ROOT),
+				new long[]{0, 0, e.getValue()});
 			names.put(e.getKey().toLowerCase(java.util.Locale.ROOT), e.getKey());
 		}
 		List<String> facts = new ArrayList<>(pageFacts);
 		new Prefetcher(wiki, new Gson()).addOwnershipFromFacts(facts, owned, names);
 		return facts.subList(pageFacts.size(), facts.size());
+	}
+
+	@Test
+	public void ownershipFactHeadingCarriesTheLocation() throws Exception
+	{
+		// The wiki stub yields no page/stats facts, so the ownership fact
+		// is the only one the item produces; its heading must place the
+		// item, the payload staying quantity-only.
+		WikiApi wiki = new WikiApi(null, new Gson(), new File("build/tmp"))
+		{
+			@Override
+			String page(String title, int charLimit)
+			{
+				return null;
+			}
+
+			@Override
+			Map<String, Object> itemStats(String name)
+			{
+				return null;
+			}
+		};
+		CopilotPipeline.Route route = new CopilotPipeline.Route();
+		route.entities = new EntityResolver.Resolution();
+		route.entities.items.add("Rune platebody");
+		route.needs = List.of();
+		route.facilityPages = List.of();
+		Map<String, long[]> owned = new LinkedHashMap<>();
+		owned.put("rune platebody", new long[]{0, 0, 1});
+		List<String> facts = new Prefetcher(wiki, new Gson()).prefetch(route,
+			new GameCapture(), owned, Map.of("rune platebody", "Rune platebody"), false);
+		assertEquals(1, facts.size());
+		assertTrue(facts.get(0).startsWith("### Ownership: Rune platebody (banked)\n"));
+		assertTrue(facts.get(0).contains("\"owned\":1"));
 	}
 
 	@Test
@@ -78,7 +115,8 @@ public class PrefetcherTest
 			Map.of("Abyssal whip", 1L));
 		assertEquals(1, added.size());
 		String block = added.get(0);
-		assertTrue(block.contains("OWNED: Abyssal whip"));
+		assertTrue("owned entries carry their location",
+			block.contains("OWNED: Abyssal whip (banked)"));
 		assertTrue("fact-mentioned unowned items must be named, not implied",
 			block.contains("NOT OWNED") && block.contains("Twisted bow"));
 		assertFalse("unmentioned items stay out of both lists",

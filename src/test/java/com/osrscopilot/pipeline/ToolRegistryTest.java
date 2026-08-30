@@ -132,7 +132,8 @@ public class ToolRegistryTest
 		Map<String, String> names = new java.util.LinkedHashMap<>();
 		for (Map.Entry<String, Long> e : ownedItems.entrySet())
 		{
-			owned.put(e.getKey().toLowerCase(java.util.Locale.ROOT), new long[]{e.getValue()});
+			owned.put(e.getKey().toLowerCase(java.util.Locale.ROOT),
+				new long[]{0, 0, e.getValue()});
 			names.put(e.getKey().toLowerCase(java.util.Locale.ROOT), e.getKey());
 		}
 		JsonArray list = new JsonArray();
@@ -218,6 +219,29 @@ public class ToolRegistryTest
 		assertEquals(2, ((List<?>) result.get("cannon")).size());
 	}
 
+	@Test
+	public void searchResultsCarryLocationsThroughTheSliceFooter() throws Exception
+	{
+		// The hits state totals; where the copies sit rides the ownership
+		// slice footer, same as every other annotated tool result.
+		WikiApi wiki = stubWiki("", Map.of(), "Cannon base");
+		Map<String, long[]> owned = new java.util.LinkedHashMap<>();
+		owned.put("cannon base", new long[]{0, 0, 1});
+		Map<String, String> names = Map.of("cannon base", "Cannon base");
+		JsonArray list = new JsonArray();
+		list.add("Cannon base");
+		JsonObject args = new JsonObject();
+		args.add("queries", list);
+		Object out = new ToolRegistry(wiki, new Gson())
+			.buildTools(new GameCapture(), owned, names, true, true)
+			.get("search_owned_items").call(args);
+		String text = (String) out;
+		assertTrue("hit payload survives the wrap",
+			text.contains("Cannon base") && text.contains("\"quantity\":1"));
+		assertTrue("footer locates the found item",
+			text.contains("OWNED: Cannon base (banked)"));
+	}
+
 	// ---- ownership annotation on tool results ---------------------------
 
 	/** WikiApi serving fixed content and a fixed item vocabulary. */
@@ -258,7 +282,8 @@ public class ToolRegistryTest
 		Map<String, String> names = new java.util.LinkedHashMap<>();
 		for (Map.Entry<String, Long> e : ownedItems.entrySet())
 		{
-			owned.put(e.getKey().toLowerCase(java.util.Locale.ROOT), new long[]{e.getValue()});
+			owned.put(e.getKey().toLowerCase(java.util.Locale.ROOT),
+				new long[]{0, 0, e.getValue()});
 			names.put(e.getKey().toLowerCase(java.util.Locale.ROOT), e.getKey());
 		}
 		JsonObject args = new JsonObject();

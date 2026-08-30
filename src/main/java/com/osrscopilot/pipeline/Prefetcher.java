@@ -157,7 +157,13 @@ class Prefetcher
 			addFact(facts, "Equipment stats: " + item, wiki.itemStats(item));
 			if (!bankInlined)
 			{
-				addFact(facts, "Ownership: " + item, Ownership.check(owned, ownedNames, item));
+				// An exact hit puts the location in the heading ("Ownership:
+				// Ring of wealth (banked)"); the payload stays quantity-only.
+				long[] counts = owned.get(item.toLowerCase(Locale.ROOT));
+				String where = counts != null && Ownership.total(counts) > 0
+					? " (" + Ownership.whereLabel(counts) + ")" : "";
+				addFact(facts, "Ownership: " + item + where,
+					Ownership.check(owned, ownedNames, item));
 			}
 			if (needs.contains(Router.NEED_ITEM_SOURCES) || needs.contains(Router.NEED_DROP_TABLE))
 			{

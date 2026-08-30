@@ -2,6 +2,7 @@ package com.osrscopilot.pipeline;
 
 import java.util.List;
 import java.util.Map;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -23,11 +24,41 @@ public class OwnershipTest
 	}
 
 	@Test
-	public void indexSumsQuantitiesAcrossContainers()
+	public void indexTracksQuantitiesPerLocation()
 	{
 		Map<String, long[]> owned = Ownership.buildIndex(capture());
-		assertEquals(4763, owned.get("dragon arrow")[0]);
-		assertEquals(1, owned.get("scorching bow")[0]);
+		assertArrayEquals(new long[]{100, 0, 4663}, owned.get("dragon arrow"));
+		assertArrayEquals(new long[]{0, 1, 0}, owned.get("scorching bow"));
+		assertArrayEquals(new long[]{0, 0, 1}, owned.get("rune platebody"));
+		assertEquals(4763, Ownership.total(owned.get("dragon arrow")));
+	}
+
+	@Test
+	public void whereLabelCountsOnlyWhenLocationsMix()
+	{
+		assertEquals("banked", Ownership.whereLabel(new long[]{0, 0, 4663}));
+		assertEquals("carried", Ownership.whereLabel(new long[]{3, 0, 0}));
+		assertEquals("equipped", Ownership.whereLabel(new long[]{0, 1, 0}));
+		assertEquals("100 carried, 4663 banked",
+			Ownership.whereLabel(new long[]{100, 0, 4663}));
+		assertEquals("2 carried, 1 equipped, 5 banked",
+			Ownership.whereLabel(new long[]{2, 1, 5}));
+	}
+
+	@Test
+	public void sliceLabelsEachOwnedEntryWithItsLocation()
+	{
+		GameCapture cap = capture();
+		Ownership.Slice slice = Ownership.slice(
+			"bring dragon arrows and a scorching bow; a twisted bow also works",
+			Ownership.buildIndex(cap), Ownership.buildNames(cap),
+			List.of(new ItemDescriptor("Dragon arrow", "Dragon arrow", null, false, null, null),
+				new ItemDescriptor("Scorching bow", "Scorching bow", null, false, null, null),
+				new ItemDescriptor("Twisted bow", "Twisted bow", null, false, null, null)));
+		assertTrue(slice.text.contains("Dragon arrow x4763 (100 carried, 4663 banked)"));
+		assertTrue(slice.text.contains("Scorching bow (equipped)"));
+		assertTrue("locations never leak into the not-owned list",
+			slice.text.contains("NOT OWNED (verified absent at capture): Twisted bow"));
 	}
 
 	@Test
