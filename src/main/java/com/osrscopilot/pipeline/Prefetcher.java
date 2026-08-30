@@ -79,7 +79,7 @@ class Prefetcher
 		if (cap.house != null && !cap.house.isEmpty()
 			&& (needs.contains(Router.NEED_TRANSPORT) || needs.contains(Router.NEED_STRATEGY)))
 		{
-			addFact(facts, "House facilities (from your last home visit)",
+			addFact(facts, "User's player owned house (POH) facilities",
 				String.join("; ", cap.house));
 		}
 	}
