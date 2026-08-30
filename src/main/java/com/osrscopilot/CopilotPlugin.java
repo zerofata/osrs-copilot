@@ -132,6 +132,7 @@ public class CopilotPlugin extends Plugin
 	// -> executor (pipeline; network + LLM) -> Swing EDT (render).
 	private volatile String pendingQuestion;
 	private String pendingSnapshotLabel;
+	private int pendingWidgetDumpGroup = -1;
 	private BankStore bankStore;
 	private BankMutations bankMutations;
 	/** Arms the drift audit for the next bank capture; set at startup and
@@ -232,6 +233,7 @@ public class CopilotPlugin extends Plugin
 		reader = null;
 		pendingQuestion = null;
 		pendingSnapshotLabel = null;
+		pendingWidgetDumpGroup = -1;
 		synchronized (conversation)
 		{
 			conversation.clear();
@@ -409,6 +411,12 @@ public class CopilotPlugin extends Plugin
 				? "Copilot: snapshot written to " + f.getName()
 				: "Copilot: snapshot FAILED, see client log";
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", msg, null);
+		}
+		if (pendingWidgetDumpGroup >= 0)
+		{
+			int group = pendingWidgetDumpGroup;
+			pendingWidgetDumpGroup = -1;
+			dumpWidgetGroup(group);
 		}
 
 		if (pendingQuestion != null)
@@ -809,6 +817,12 @@ public class CopilotPlugin extends Plugin
 				client.getItemContainer(InventoryID.INV),
 				client.getItemContainer(InventoryID.WORN));
 		}
+		// Calibration aid: interfaces opened inside the POH dump their texts
+		// a tick later (populated by then; some block ::house input).
+		if (inPoh())
+		{
+			pendingWidgetDumpGroup = event.getGroupId();
+		}
 	}
 
 	@Subscribe
@@ -933,6 +947,39 @@ public class CopilotPlugin extends Plugin
 			}
 			out.putIfAbsent(comp.getId(), String.format("id=%d base=%d name=%s ops=%s",
 				comp.getId(), obj.getId(), comp.getName(), Arrays.toString(comp.getActions())));
+		}
+	}
+
+	private boolean inPoh()
+	{
+		WorldPoint wp = GameStateReader.playerLocation(client);
+		return wp != null && "Player Owned House".equals(Areas.resolve(wp));
+	}
+
+	private void dumpWidgetGroup(int group)
+	{
+		try
+		{
+			Map<Integer, List<String>> byGroup = new TreeMap<>();
+			for (Widget root : client.getWidgetRoots())
+			{
+				collectWidgetTexts(root, byGroup, 0);
+			}
+			List<String> texts = byGroup.get(group);
+			if (texts == null)
+			{
+				return;
+			}
+			File out = new File(DATA_DIR, "house-widget-" + group + "-"
+				+ System.currentTimeMillis() + ".txt");
+			Files.write(out.toPath(), ("group " + group + ": " + texts)
+				.getBytes(StandardCharsets.UTF_8));
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+				"Copilot: widget dump written to " + out.getName(), null);
+		}
+		catch (Exception e)
+		{
+			log.error("Widget dump failed", e);
 		}
 	}
 
