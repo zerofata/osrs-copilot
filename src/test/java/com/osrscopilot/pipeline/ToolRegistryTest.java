@@ -311,7 +311,7 @@ public class ToolRegistryTest
 		assertTrue(text.contains("OWNED: Giantsoul amulet"));
 		assertTrue("mentioned unowned items are named, not implied",
 			text.contains("NOT OWNED") && text.contains("Twisted bow"));
-		assertTrue(text.contains("complete both ways"));
+		assertTrue(text.contains("(complete)"));
 	}
 
 	@Test

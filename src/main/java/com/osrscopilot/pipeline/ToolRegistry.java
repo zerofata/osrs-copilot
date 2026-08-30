@@ -352,9 +352,7 @@ class ToolRegistry
 				return out;
 			}
 			return text + "\n\n[Player ownership of items this result mentions"
-				+ (slice.complete
-					? " (complete both ways: absent from OWNED means not owned)"
-					: " (lists cut for length)")
+				+ (slice.complete ? " (complete)" : " (lists cut for length)")
 				+ "]\n" + slice.text;
 		};
 	}

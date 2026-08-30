@@ -122,7 +122,7 @@ public class PrefetcherTest
 		assertFalse("unmentioned items stay out of both lists",
 			block.contains("Dragon dagger"));
 		assertTrue("untruncated block claims completeness",
-			block.contains("complete both ways"));
+			block.contains("(complete)"));
 	}
 
 	@Test
@@ -169,7 +169,7 @@ public class PrefetcherTest
 			List.of(page.toString()), Map.of("Abyssal whip", 1L));
 		assertEquals(1, added.size());
 		assertFalse("a cut list may not claim completeness",
-			added.get(0).contains("complete both ways"));
+			added.get(0).contains("(complete)"));
 	}
 
 	@Test
@@ -502,8 +502,7 @@ public class PrefetcherTest
 		assertEquals(null, Prefetcher.sourcePage("GE price: Old school bond"));
 		assertEquals(null, Prefetcher.sourcePage("XP math: Prayer"));
 		assertEquals(null, Prefetcher.sourcePage(
-			"Ownership of every item these facts mention (complete both ways: "
-				+ "owned means owned, absent from OWNED means not owned)"));
+			"Ownership of every item these facts mention (complete)"));
 		assertEquals(null, Prefetcher.sourcePage(
 			"Quest progress (authoritative, from the game client)"));
 	}
@@ -520,8 +519,7 @@ public class PrefetcherTest
 		assertEquals("Quest progress", Prefetcher.displayTitle(
 			"Quest progress (authoritative, from the game client)"));
 		assertEquals("Ownership", Prefetcher.displayTitle(
-			"Ownership of every item these facts mention (complete both ways: "
-				+ "owned means owned, absent from OWNED means not owned)"));
+			"Ownership of every item these facts mention (complete)"));
 		assertEquals("Ownership", Prefetcher.displayTitle(
 			"Ownership (lists cut for length; for items in neither list, decide "
 				+ "what actually matters to the answer and verify just those in ONE "

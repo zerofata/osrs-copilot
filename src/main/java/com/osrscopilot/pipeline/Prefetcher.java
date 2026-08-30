@@ -467,10 +467,10 @@ class Prefetcher
 		{
 			return false;
 		}
-		// On a complete block the caller withholds the search tool.
+		// On a complete block the caller withholds the search tool. The
+		// system prompt defines "complete" once; no local restatement.
 		addFact(facts, slice.complete
-			? "Ownership of every item these facts mention (complete both ways: "
-				+ "owned means owned, absent from OWNED means not owned)"
+			? "Ownership of every item these facts mention (complete)"
 			: "Ownership (lists cut for length; for items in neither list, decide "
 				+ "what actually matters to the answer and verify just those in ONE "
 				+ "batched search_owned_items call)",
