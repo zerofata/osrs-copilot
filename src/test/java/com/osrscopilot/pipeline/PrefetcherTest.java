@@ -369,6 +369,46 @@ public class PrefetcherTest
 	}
 
 	@Test
+	public void equipmentFactOpensWithTheTierPreferenceNote()
+	{
+		WikiApi wiki = new WikiApi(null, new Gson(), new File("build/tmp"))
+		{
+			@Override
+			java.util.Set<String> strategiesPages()
+			{
+				return java.util.Set.of("Vorkath/Strategies");
+			}
+
+			@Override
+			Map<String, Object> monsterInfo(String name)
+			{
+				return new LinkedHashMap<>(Map.of("name", name));
+			}
+
+			@Override
+			String page(String title)
+			{
+				return "Guide: " + title;
+			}
+
+			@Override
+			String sectionByHeading(String title, java.util.regex.Pattern heading, int charLimit)
+			{
+				return "{{Recommended equipment|head1={{plink|Torva full helm}}}}";
+			}
+		};
+		List<String> facts = prefetchMonsterRoute(wiki, "Vorkath", Router.NEED_STRATEGY);
+		String equipment = facts.stream()
+			.filter(f -> f.startsWith("### Recommended equipment: Vorkath"))
+			.findFirst().orElseThrow(AssertionError::new);
+		assertTrue("the tier-preference note must lead the gear table",
+			equipment.startsWith("### Recommended equipment: Vorkath\n"
+				+ "[Where gear is tiered, recommend each slot's highest tier the player "
+				+ "owns; example setups are illustrations, not the player's best option.]\n"
+				+ "{{Recommended equipment"));
+	}
+
+	@Test
 	public void unavailableIndexKeepsBlindFetchBehavior()
 	{
 		List<String> fetched = new ArrayList<>();

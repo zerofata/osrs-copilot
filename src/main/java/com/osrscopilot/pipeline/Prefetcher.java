@@ -47,6 +47,13 @@ class Prefetcher
 	private static final Pattern EQUIPMENT_HEADING =
 		Pattern.compile("(?i)\\b(equipment|gear|setups?|loadout)\\b");
 
+	/** Reading rule for gear sections: pages carry both per-slot tier
+	 * tables and worked-example setups, and models otherwise follow the
+	 * concrete example over the player's best owned tier. */
+	private static final String EQUIPMENT_NOTE =
+		"[Where gear is tiered, recommend each slot's highest tier the player "
+		+ "owns; example setups are illustrations, not the player's best option.]";
+
 	private final WikiApi wiki;
 	private final Gson gson;
 
@@ -132,10 +139,8 @@ class Prefetcher
 					label = "Page: " + monster;
 				}
 				addFact(facts, label, text);
-				// Equipment tables are stripped from plaintext extracts
-				// without tripping the husk detector; fetch as wikitext.
 				addFact(facts, "Recommended equipment: " + monster,
-					wiki.sectionByHeading(strategyPage, EQUIPMENT_HEADING, EQUIPMENT_CHAR_LIMIT));
+					equipmentSection(strategyPage));
 			}
 			if (needs.contains(Router.NEED_TRANSPORT))
 			{
@@ -229,7 +234,7 @@ class Prefetcher
 				String strategyPage = page + "/Strategies";
 				addFact(facts, "Strategy: " + page, wiki.page(strategyPage));
 				addFact(facts, "Recommended equipment: " + page,
-					wiki.sectionByHeading(strategyPage, EQUIPMENT_HEADING, EQUIPMENT_CHAR_LIMIT));
+					equipmentSection(strategyPage));
 			}
 			// Untradeable equipment (Arclight, Emberlight, barrows gloves...)
 			// resolves as a page, not an item -- it still has an infobox.
@@ -347,6 +352,17 @@ class Prefetcher
 			}
 		}
 		return null;
+	}
+
+	/** Gear-section wikitext with the tier-preference note prepended, or
+	 * null when the page has no such section. Fetched as wikitext because
+	 * plaintext extracts strip equipment tables without tripping the husk
+	 * detector. */
+	private String equipmentSection(String strategyPage)
+	{
+		String section = wiki.sectionByHeading(
+			strategyPage, EQUIPMENT_HEADING, EQUIPMENT_CHAR_LIMIT);
+		return section == null ? null : EQUIPMENT_NOTE + "\n" + section;
 	}
 
 	/** Bosses, dungeons, and cities carry a dedicated travel section;
