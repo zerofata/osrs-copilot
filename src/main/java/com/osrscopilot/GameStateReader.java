@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import net.runelite.api.Client;
 import net.runelite.api.Item;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
 import net.runelite.api.Quest;
@@ -230,9 +231,17 @@ class GameStateReader
 			{
 				continue;
 			}
+			ItemComposition def = itemDefinition(item.getId());
+			// A bank placeholder is a distinct item sharing the real
+			// item's name, delivered with quantity 1; recording it would
+			// claim a banked copy of every item ever withdrawn.
+			if (def == null || def.getPlaceholderTemplateId() != -1)
+			{
+				continue;
+			}
 			items.add(Map.of(
 				"id", item.getId(),
-				"name", itemName(item.getId()),
+				"name", def.getName(),
 				"quantity", item.getQuantity()));
 		}
 		return items;
@@ -240,13 +249,19 @@ class GameStateReader
 
 	String itemName(int id)
 	{
+		ItemComposition def = itemDefinition(id);
+		return def != null ? def.getName() : "unknown";
+	}
+
+	private ItemComposition itemDefinition(int id)
+	{
 		try
 		{
-			return client.getItemDefinition(id).getName();
+			return client.getItemDefinition(id);
 		}
 		catch (Exception e)
 		{
-			return "unknown";
+			return null;
 		}
 	}
 }
